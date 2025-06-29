@@ -14,6 +14,7 @@ urlpatterns = [
     path('user/', include('usermanagement.urls')),
     path('product/', include('product.urls')), 
     path('prescription/', include('prescriptions.urls')),
+    path('orders/', include('orders.urls')),  
 
 
       # JWT Authentication Endpoints

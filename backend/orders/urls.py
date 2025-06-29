@@ -1,9 +1,12 @@
-# Example of product/urls.py if you have one:
-# backend/product/urls.py
-from django.urls import path, include # <-- Make sure you're not including yourself!
-from . import views # or from .views import some_view
+# order/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import OrderViewSet, OrderItemViewSet
+
+router = DefaultRouter()
+router.register(r'orders', OrderViewSet)
+router.register(r'order-items', OrderItemViewSet)
 
 urlpatterns = [
-    # path('some-route/', views.some_view),
-    # AVOID: path('products/', include('product.urls')),  <--- This would cause a recursion!
+    path('', include(router.urls)),
 ]
