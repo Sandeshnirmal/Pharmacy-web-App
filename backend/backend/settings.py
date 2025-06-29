@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=
 DEBUG = True
 
 ALLOWED_HOSTS = []
-AUTH_USER_MODEL = 'usermanagement.User'
+
 
 # Application definition
 
@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'rest_framework',
+    'rest_framework_simplejwt',
     'product',
     'orders',
     'prescriptions',
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
+AUTH_USER_MODEL = 'usermanagement.User'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware', # Must be very high, preferably before CommonMiddleware
@@ -88,7 +90,7 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
+APPEND_SLASH = True
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -130,3 +132,45 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication', # Keep for Django Admin/Browsable API
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny', # A common default for API endpoints
+    )
+}
+
+
+
+
+
+# SIMPLE_JWT = {
+#     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),  # Short-lived access tokens
+#     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # Longer-lived refresh tokens
+#     'ROTATE_REFRESH_TOKENS': True,                 # Rotate refresh tokens on use
+#     'BLACKLIST_AFTER_ROTATION': True,              # Invalidate old refresh tokens
+#     'UPDATE_LAST_LOGIN': True,                     # Update user's last login on token refresh
+
+#     'ALGORITHM': 'HS256',
+#     'SIGNING_KEY': 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=', # Use your SECRET_KEY or a strong, separate key
+#     'VERIFYING_KEY': None,
+#     'AUDIENCE': None,
+#     'ISSUER': None,
+
+#     'AUTH_HEADER_TYPES': ('Bearer',), # Common practice for JWT
+#     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+#     'USER_ID_FIELD': 'id', # Assuming your custom User model uses 'id' as PK
+#     'USER_ID_CLAIM': 'user_id', # Claim name for user ID in token
+
+#     'TOKEN_TYPE_CLAIM': 'token_type',
+#     'JTI_CLAIM': 'jti', # JWT ID claim for blacklist
+#     'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+
+#     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5), # For sliding tokens, if you use them
+#     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # For sliding tokens
+# }
