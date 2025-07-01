@@ -55,6 +55,8 @@ const SidebarItem = ({ icon, label, to, children }) => {
   // Use Link for navigation, button for dropdown parents
   const Tag = isDropdown ? 'button' : Link;
 
+
+
   return (
     <div
       className="w-full relative"
