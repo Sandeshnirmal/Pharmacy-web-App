@@ -111,17 +111,17 @@ const SidebarNavbar = () => {
           <SidebarItem
             icon={<LinkIcon />}
             label="Generic Mappings"
-            to="/generic-mappings"
+            to="/Generics"
           />
           <SidebarItem
             icon={<FileTextIcon />}
             label="Prescriptions"
-            to="/prescriptions"
+            to="/Prescription"
           />
           <SidebarItem
             icon={<PackageIcon />}
             label="Orders"
-            to="/orders"
+            to="/Orders"
           />
           <SidebarItem
             icon={<TruckIcon />}
