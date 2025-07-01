@@ -1,6 +1,6 @@
 // OrdersTable.jsx
 import React, { useState } from 'react';
-// import { useNavigate } from 'react-router-dom'; // Uncomment if you want to use useNavigate for routing
+import { Link, Navigate } from "react-router-dom";
 
 const OrdersTable = () => {
   // const navigate = useNavigate(); // Initialize useNavigate hook
@@ -230,14 +230,16 @@ const OrdersTable = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">
-                    {/* Using a regular button for now, can be wrapped in <Link> or use navigate() later */}
+                    {/* Using a regular button for now, can be wrapped in <Link> or use navigate() later */}\
+                    <Link to="/Orders/OrderDetails"> 
                     <button
                       onClick={() => handleViewDetails(order.orderId)}
                       className="text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50
                                  p-1 rounded-md transition duration-150 ease-in-out"
                     >
                       View Details
-                    </button>
+                      </button>
+                    </Link>
                   </td>
                 </tr>
               ))}
