@@ -131,7 +131,7 @@ const SidebarNavbar = () => {
           <SidebarItem
             icon={<UsersIcon />}
             label="Users & Customers"
-            to="/users-customers"
+            to="/customers"
           />
           <SidebarItem
             icon={<BoxIcon />}
@@ -150,6 +150,7 @@ const SidebarNavbar = () => {
           />
         </nav>
       </div>
+      <img classname="pt-3" src="/src/assets/full_logo.png" alt="logo" />
       <div className="mt-8">
         <Link
           to="/settings" // Example path for settings
