@@ -1,116 +1,140 @@
-// GenericsTable.jsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 
 const GenericsTable = () => {
-  // Sample data for generics
-  const genericsData = [
-    { name: 'Acetaminophen', linkedBrands: 15, strength: '500mg', action: 'Pain reliever' },
-    { name: 'Ibuprofen', linkedBrands: 12, strength: '200mg', action: 'Anti-inflammatory' },
-    { name: 'Amoxicillin', linkedBrands: 8, strength: '250mg', action: 'Antibiotic' },
-    { name: 'Lisinopril', linkedBrands: 10, strength: '10mg', action: 'Antihypertensive' },
-    { name: 'Metformin', linkedBrands: 7, strength: '500mg', action: 'Antidiabetic' },
-  ];
+  const [activeTab, setActiveTab] = useState('generics');
+  const [genericsData, setGenericsData] = useState([]);
+  const [categoriesData, setCategoriesData] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({ name: '', description: '' });
 
-  /**
-   * Handles the click event for the "Add new" button.
-   * In a real application, this would trigger navigation to a new form
-   * or open a modal for adding a new generic entry.
-   */
-  const handleAddNew = () => {
-    console.log('Add new generic button clicked!');
-    // Example: navigate('/add-generic'); or openAddGenericModal();
+  // Fetch generics on load
+  useEffect(() => {
+    fetchData();
+  }, [activeTab]);
+
+  const fetchData = () => {
+    const endpoint = activeTab === 'generics' ? 'generic-names' : 'categories';
+    axios.get(`http://127.0.0.1:8000/product/${endpoint}/`)
+      .then(res => {
+        if (activeTab === 'generics') {
+          setGenericsData(res.data);
+        } else {
+          setCategoriesData(res.data);
+        }
+      })
+      .catch(err => console.error('Error fetching data:', err));
   };
 
-  /**
-   * Handles the click event for a "View" button in a table row.
-   * @param {object} generic - The generic data for the clicked row.
-   */
-  const handleViewDetails = (generic) => {
-    console.log('View details for:', generic.name);
-    // In a real application, this would navigate to a detail page
-    // or open a modal displaying more information about the generic.
+  const handleAddNew = () => {
+    setFormData({ name: '', description: '' });
+    setShowModal(true);
+  };
+
+  const handleFormChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const endpoint = activeTab === 'generics' ? 'generic-names' : 'categories';
+    const url = `http://127.0.0.1:8000/product/${endpoint}/`;
+    try {
+      await axios.post(url, formData);
+      fetchData();
+      setShowModal(false);
+    } catch (err) {
+      console.error('Error submitting form:', err);
+    }
   };
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter"> {/* Main container with responsive padding */}
-      <div className="flex justify-between items-center mb-6"> {/* Header section with title and button */}
-        <h1 className="text-3xl font-semibold text-gray-800">Generics</h1>
+    <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter">
+      {/* Tabs */}
+      <div className="mb-6 flex gap-4 border-b border-gray-200">
         <button
-          onClick={handleAddNew}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md shadow-md
-                     transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
-        >
-          Add new
-        </button>
+          className={`pb-2 px-4 font-medium ${activeTab === 'generics' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+          onClick={() => setActiveTab('generics')}
+        >Generics</button>
+        <button
+          className={`pb-2 px-4 font-medium ${activeTab === 'categories' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+          onClick={() => setActiveTab('categories')}
+        >Categories</button>
       </div>
 
-      <div className="bg-white shadow-lg rounded-lg overflow-hidden"> {/* Table wrapper with shadow and rounded corners */}
-        <div className="overflow-x-auto"> {/* Ensures horizontal scrolling on small screens if needed */}
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-semibold text-gray-800 capitalize">{activeTab}</h1>
+        <button
+          onClick={handleAddNew}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md shadow-md"
+        >Add new</button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50"> {/* Table header background */}
+            <thead className="bg-gray-50">
               <tr>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Generic Name
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Linked Brands Count
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Strength
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Drug for
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Action {/* New header for the action column */}
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200"> {/* Table body background and dividers */}
-              {genericsData.map((generic, index) => (
-                <tr key={index} className="hover:bg-gray-50 transition duration-150 ease-in-out"> {/* Row hover effect */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {generic.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {generic.linkedBrands}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:underline cursor-pointer"> {/* Example: make strength clickable */}
-                    {generic.strength}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:underline cursor-pointer"> {/* Example: make action clickable */}
-                    {generic.action}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium"> {/* Changed text-right to text-left */}
-                    <button
-                      onClick={() => handleViewDetails(generic)}
-                      className="text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50
-                                 p-1 rounded-md transition duration-150 ease-in-out"
-                    >
-                      View
-                    </button>
-                  </td>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {(activeTab === 'generics' ? genericsData : categoriesData).map((item, index) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm text-gray-900">{item.name}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{item.description}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-xl">
+            <h2 className="text-xl font-semibold mb-4">Add {activeTab.slice(0, -1)}</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="block text-gray-700">Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleFormChange}
+                  required
+                  className="w-full mt-1 px-3 py-2 border rounded-md shadow-sm focus:ring focus:ring-blue-300"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700">Description</label>
+                <input
+                  type="text"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleFormChange}
+                  required
+                  className="w-full mt-1 px-3 py-2 border rounded-md shadow-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-sm font-medium bg-gray-200 rounded-md"
+                >Cancel</button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                >Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

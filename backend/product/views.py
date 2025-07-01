@@ -1,6 +1,6 @@
 from rest_framework import viewsets
-from .models import Category, Product, Batch, Inventory
-from .serializers import CategorySerializer, ProductSerializer, BatchSerializer, InventorySerializer
+from .models import Category, Product, Batch, Inventory,GenericName
+from .serializers import CategorySerializer, ProductSerializer, BatchSerializer, InventorySerializer,GenericNameSerializer
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -17,3 +17,8 @@ class BatchViewSet(viewsets.ModelViewSet):
 class InventoryViewSet(viewsets.ModelViewSet):
     queryset = Inventory.objects.all()
     serializer_class = InventorySerializer
+
+
+class GenericNameViewSet(viewsets.ModelViewSet):
+    queryset = GenericName.objects.all()
+    serializer_class = GenericNameSerializer
