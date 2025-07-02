@@ -12,9 +12,10 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include('usermanagement.urls')),
-    path('product/', include('product.urls')), 
+    path('product/', include('product.urls')),
     path('prescription/', include('prescriptions.urls')),
-    path('orders/', include('orders.urls')),  
+    path('orders/', include('orders.urls')),
+    path('inventory/', include('inventory.urls')),
 
 
       # JWT Authentication Endpoints

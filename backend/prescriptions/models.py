@@ -22,6 +22,10 @@ class Prescription(models.Model):
     pharmacist_notes = models.TextField(blank=True, null=True)
     verified_by_admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,related_name='verified_prescriptions_set')
     verification_date = models.DateTimeField(null=True, blank=True)
+    ai_processed = models.BooleanField(default=False)
+    ai_confidence_score = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 class PrescriptionDetail(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='details')

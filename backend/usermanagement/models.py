@@ -27,6 +27,12 @@ class CustomUserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('O', 'Other')]
+    ROLE_CHOICES = [
+        ('admin', 'Admin'),
+        ('pharmacist', 'Pharmacist'),
+        ('staff', 'Staff'),
+        ('customer', 'Customer'),
+    ]
 
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -36,11 +42,14 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     # AbstractBaseUser handles the 'password' field internally.
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
+    date_joined = models.DateTimeField(auto_now_add=True)
     registration_date = models.DateTimeField(auto_now_add=True)
     profile_picture_url = models.URLField(blank=True, null=True)
     is_active = models.BooleanField(default=True) # <--- REQUIRED by AbstractBaseUser
     is_staff = models.BooleanField(default=False) # <--- REQUIRED by PermissionsMixin
     is_superuser = models.BooleanField(default=False) # <--- REQUIRED by PermissionsMixin
+    last_login = models.DateTimeField(null=True, blank=True)
 
     objects = CustomUserManager() # <--- REQUIRED to use your custom manager
 

@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { PlusIcon } from '@heroicons/react/24/solid';
+import { useState, useEffect } from 'react';
+import axiosInstance from '../api/axiosInstance';
 
 const Medicines = () => {
   const [medicines, setMedicines] = useState([]);
@@ -33,7 +32,7 @@ const Medicines = () => {
 
   const fetchMedicines = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/product/products/');
+      const res = await axiosInstance.get('product/products/');
       setMedicines(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error('Error fetching medicines:', error);
@@ -42,7 +41,7 @@ const Medicines = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/product/categories/');
+      const res = await axiosInstance.get('product/categories/');
       setCategories(res.data);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -51,7 +50,7 @@ const Medicines = () => {
 
   const fetchGenerics = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/product/generic-names/');
+      const res = await axiosInstance.get('product/generic-names/');
       setGenerics(res.data);
     } catch (error) {
       console.error('Error fetching generics:', error);
@@ -78,7 +77,7 @@ const Medicines = () => {
     };
 
     try {
-      await axios.post('http://localhost:8000/product/products/', payload);
+      await axiosInstance.post('product/products/', payload);
       fetchMedicines();
       setShowModal(false);
       setFormData({
@@ -108,21 +107,20 @@ const Medicines = () => {
     <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Medicines</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Medicines</h1>
         <button
           onClick={onAddMedicineClick}
-          className="flex items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700"
+          className="px-4 py-2 bg-gray-800 text-white font-medium rounded hover:bg-gray-700"
         >
-          <PlusIcon className="w-5 h-5 mr-2" />
           Add Medicine
         </button>
       </div>
 
       {/* Table */}
-      <div className="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+      <div className="bg-white border border-gray-200 p-6 rounded-lg overflow-x-auto">
         <table className="min-w-full leading-normal">
           <thead>
-            <tr className="bg-blue-50 text-blue-700 text-sm uppercase font-semibold">
+            <tr className="bg-gray-50 text-gray-700 text-sm uppercase font-medium">
               <th className="px-5 py-3">Image</th>
               <th className="px-5 py-3">Name</th>
               <th className="px-5 py-3">Brand</th>

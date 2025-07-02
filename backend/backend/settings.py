@@ -44,14 +44,37 @@ INSTALLED_APPS = [
     'orders',
     'prescriptions',
     'usermanagement',
+    'inventory',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Configuration for Admin Dashboard
+CORS_ALLOW_ALL_ORIGINS = True  # For development only
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # React development server
+    "http://localhost:5173",  # Vite development server
+    "http://localhost:5174",  # Vite development server (alternative port)
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 AUTH_USER_MODEL = 'usermanagement.User'
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', # Must be very high, preferably before CommonMiddleware
-    'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Must be first
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

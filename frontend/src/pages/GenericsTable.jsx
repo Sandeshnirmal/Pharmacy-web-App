@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import { useEffect, useState } from 'react';
+import axiosInstance from '../api/axiosInstance';
 
 const GenericsTable = () => {
   const [activeTab, setActiveTab] = useState('generics');
@@ -15,7 +15,7 @@ const GenericsTable = () => {
 
   const fetchData = () => {
     const endpoint = activeTab === 'generics' ? 'generic-names' : 'categories';
-    axios.get(`http://127.0.0.1:8000/product/${endpoint}/`)
+    axiosInstance.get(`product/${endpoint}/`)
       .then(res => {
         if (activeTab === 'generics') {
           setGenericsData(res.data);
@@ -38,9 +38,8 @@ const GenericsTable = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const endpoint = activeTab === 'generics' ? 'generic-names' : 'categories';
-    const url = `http://127.0.0.1:8000/product/${endpoint}/`;
     try {
-      await axios.post(url, formData);
+      await axiosInstance.post(`product/${endpoint}/`, formData);
       fetchData();
       setShowModal(false);
     } catch (err) {

@@ -1,24 +1,11 @@
 from rest_framework import serializers
+from django.contrib.auth import authenticate
 from .models import User, Address
 
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Address
         fields = '__all__'
-
-class UserSerializer(serializers.ModelSerializer):
-    addresses = AddressSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = User
-        fields = [
-            'id', 'first_name', 'last_name', 'email', 'phone_number',
-            'date_of_birth', 'gender', 'registration_date', 'profile_picture_url',
-            'is_active', 'is_staff', 'is_superuser', 'addresses'
-        ]
-from rest_framework import serializers
-from django.contrib.auth import authenticate
-from .models import User
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -45,6 +32,27 @@ class LoginSerializer(serializers.Serializer):
         }
 
 class UserSerializer(serializers.ModelSerializer):
+    addresses = AddressSerializer(many=True, read_only=True)
+    full_name = serializers.CharField(source='get_full_name', read_only=True)
+
     class Meta:
         model = User
-        exclude = ['password']
+        fields = [
+            'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
+            'date_of_birth', 'gender', 'role', 'date_joined', 'registration_date',
+            'profile_picture_url', 'is_active', 'is_staff', 'is_superuser',
+            'last_login', 'addresses'
+        ]
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=6)
+
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 'last_name', 'email', 'phone_number',
+            'date_of_birth', 'gender', 'role', 'password'
+        ]
+
+    def create(self, validated_data):
+        return User.objects.create_user(**validated_data)

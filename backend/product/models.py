@@ -34,6 +34,8 @@ class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True)
     packaging_unit = models.CharField(max_length=50)  # e.g., Box, Strip
     pack_size = models.CharField(max_length=50)  # e.g., 10 Tablets
+    stock_quantity = models.PositiveIntegerField(default=0)  # Current stock level
+    min_stock_level = models.PositiveIntegerField(default=10)  # Minimum stock alert level
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -44,10 +46,15 @@ class Product(models.Model):
 class Batch(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='batches')
     batch_number = models.CharField(max_length=100)
-    manufacturing_date = models.DateField()
+    manufacturing_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField()
-    current_quantity = models.PositiveIntegerField()    
-    mfg_license_number = models.CharField(max_length=100)
+    quantity = models.PositiveIntegerField(default=0)  # Initial quantity
+    current_quantity = models.PositiveIntegerField()  # Current available quantity
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.product.name} - {self.batch_number}"

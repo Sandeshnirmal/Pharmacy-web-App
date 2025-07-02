@@ -11,14 +11,65 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer # Imp
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import User, Address
-from .serializers import UserSerializer, AddressSerializer, RegisterSerializer # Ensure LoginSerializer is also imported if you use it
+from .serializers import UserSerializer, AddressSerializer, RegisterSerializer, UserCreateSerializer
+from rest_framework.decorators import action
+from django.db.models import Q
 
 # --- ViewSets for CRUD operations (require authentication for most actions) ---
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated] # Requires JWT authentication for all actions
     authentication_classes = [JWTAuthentication] # Explicitly use JWT for this ViewSet
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return UserCreateSerializer
+        return UserSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        role = self.request.query_params.get('role', None)
+        is_active = self.request.query_params.get('active', None)
+        search = self.request.query_params.get('search', None)
+
+        if role:
+            queryset = queryset.filter(role=role)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        if search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+
+        return queryset
+
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        user = self.get_object()
+        user.is_active = not user.is_active
+        user.save()
+        return Response({
+            'status': 'User status updated',
+            'is_active': user.is_active
+        })
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        total_users = User.objects.count()
+        active_users = User.objects.filter(is_active=True).count()
+        customers = User.objects.filter(role='customer').count()
+        staff = User.objects.filter(role__in=['admin', 'pharmacist', 'staff']).count()
+
+        return Response({
+            'total_users': total_users,
+            'active_users': active_users,
+            'customers': customers,
+            'staff': staff
+        })
 
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = Address.objects.all()
