@@ -43,6 +43,14 @@ def create_sample_data():
             'role': 'pharmacist'
         },
         {
+            'email': 'customer@pharmacy.com',
+            'password': 'customer123',
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'phone_number': '5555551111',
+            'role': 'customer'
+        },
+        {
             'email': 'customer1@example.com',
             'password': 'customer123',
             'first_name': 'Alice',
@@ -110,7 +118,15 @@ def create_sample_data():
             'is_prescription_required': True,
             'hsn_code': '30041000',
             'packaging_unit': 'Strip',
-            'pack_size': '10 Capsules'
+            'pack_size': '10 Capsules',
+            'description': 'Amoxil is a penicillin antibiotic used to treat bacterial infections.',
+            'composition': 'Each capsule contains Amoxicillin Trihydrate equivalent to Amoxicillin 500mg',
+            'uses': 'Treatment of bacterial infections including respiratory tract infections, urinary tract infections, skin and soft tissue infections, and dental infections.',
+            'side_effects': 'Common: Nausea, vomiting, diarrhea, stomach pain. Rare: Allergic reactions, skin rash, difficulty breathing.',
+            'how_to_use': 'Take as directed by physician. Usually 1 capsule every 8 hours. Complete the full course even if symptoms improve.',
+            'precautions': 'Inform doctor about allergies to penicillin. Not recommended during pregnancy without medical supervision.',
+            'storage': 'Store in a cool, dry place below 25°C. Keep away from children.',
+            'manufacturer': 'GlaxoSmithKline'
         },
         {
             'name': 'Brufen 400mg',
@@ -125,7 +141,15 @@ def create_sample_data():
             'is_prescription_required': False,
             'hsn_code': '30041000',
             'packaging_unit': 'Strip',
-            'pack_size': '10 Tablets'
+            'pack_size': '10 Tablets',
+            'description': 'Brufen is a non-steroidal anti-inflammatory drug (NSAID) used for pain relief and reducing inflammation.',
+            'composition': 'Each tablet contains Ibuprofen 400mg',
+            'uses': 'Relief from pain and inflammation in conditions like headache, dental pain, menstrual cramps, muscle aches, and arthritis.',
+            'side_effects': 'Common: Stomach upset, heartburn, nausea. Rare: Stomach ulcers, kidney problems, allergic reactions.',
+            'how_to_use': 'Take 1 tablet every 6-8 hours as needed. Do not exceed 3 tablets in 24 hours. Take with food to reduce stomach irritation.',
+            'precautions': 'Avoid if allergic to NSAIDs. Use with caution in elderly, pregnant women, and those with heart, kidney, or liver problems.',
+            'storage': 'Store below 25°C in a dry place. Protect from light and moisture.',
+            'manufacturer': 'Abbott Healthcare'
         },
         {
             'name': 'Crocin 650mg',
@@ -140,7 +164,15 @@ def create_sample_data():
             'is_prescription_required': False,
             'hsn_code': '30041000',
             'packaging_unit': 'Strip',
-            'pack_size': '15 Tablets'
+            'pack_size': '15 Tablets',
+            'description': 'Crocin is a trusted paracetamol-based pain reliever and fever reducer.',
+            'composition': 'Each tablet contains Paracetamol 650mg',
+            'uses': 'Relief from headache, body ache, toothache, cold and flu symptoms, and fever reduction.',
+            'side_effects': 'Generally well tolerated. Rare: Skin rash, liver damage with overdose.',
+            'how_to_use': 'Adults: 1 tablet every 4-6 hours. Maximum 4 tablets in 24 hours. Can be taken with or without food.',
+            'precautions': 'Do not exceed recommended dose. Avoid alcohol consumption. Consult doctor if symptoms persist.',
+            'storage': 'Store below 30°C in a dry place. Keep away from children.',
+            'manufacturer': 'GlaxoSmithKline'
         },
         {
             'name': 'Glycomet 500mg',
@@ -255,6 +287,9 @@ def create_sample_data():
 
     # Create sample prescriptions
     create_prescription_data()
+
+    # Create sample orders
+    create_order_data()
 
     print("\n🎉 Sample data created successfully!")
     print("\nLogin credentials:")
@@ -493,6 +528,224 @@ def create_prescription_data():
                 PrescriptionDetail.objects.create(**detail_data)
 
     print("✓ Created realistic prescription demo data")
+
+def create_order_data():
+    """Create realistic order demo data"""
+
+    # Get users, products, and addresses
+    customers = User.objects.filter(role='customer')
+    products = Product.objects.all()
+
+    if not customers.exists() or not products.exists():
+        print("⚠️ No customers or products found, skipping order creation")
+        return
+
+    # Create addresses for customers if they don't exist
+    for customer in customers:
+        if not customer.addresses.exists():
+            Address.objects.create(
+                user=customer,
+                address_line1=f"{random.randint(100, 999)} Medical Street",
+                address_line2=f"Apartment {random.randint(1, 50)}",
+                city="Healthcare City",
+                state="Medical State",
+                pincode=f"{random.randint(100000, 999999)}",
+                address_type="Home",
+                is_default=True
+            )
+
+    # Get verified prescriptions for prescription orders
+    verified_prescriptions = Prescription.objects.filter(verification_status='Verified')
+
+    # Order scenarios with realistic data
+    order_scenarios = [
+        {
+            'type': 'regular',
+            'status': 'Delivered',
+            'payment_status': 'Paid',
+            'payment_method': 'UPI',
+            'items': [
+                {'product_name': 'Crocin 650mg', 'quantity': 2},
+                {'product_name': 'Brufen 400mg', 'quantity': 1}
+            ],
+            'notes': 'Regular order for pain relief medicines',
+            'days_ago': 15
+        },
+        {
+            'type': 'prescription',
+            'status': 'Processing',
+            'payment_status': 'Paid',
+            'payment_method': 'Card',
+            'items': [
+                {'product_name': 'Glycomet 500mg', 'quantity': 3},
+                {'product_name': 'Omez 20mg', 'quantity': 2}
+            ],
+            'notes': 'Prescription order for diabetes management',
+            'days_ago': 3
+        },
+        {
+            'type': 'regular',
+            'status': 'Shipped',
+            'payment_status': 'Paid',
+            'payment_method': 'UPI',
+            'items': [
+                {'product_name': 'Amoxil 500mg', 'quantity': 2},
+                {'product_name': 'Crocin 650mg', 'quantity': 1}
+            ],
+            'notes': 'Antibiotic course with fever medicine',
+            'days_ago': 5
+        },
+        {
+            'type': 'regular',
+            'status': 'Pending',
+            'payment_status': 'Pending',
+            'payment_method': 'COD',
+            'items': [
+                {'product_name': 'Asthalin Inhaler', 'quantity': 1}
+            ],
+            'notes': 'Emergency inhaler order - COD preferred',
+            'days_ago': 1
+        },
+        {
+            'type': 'prescription',
+            'status': 'Delivered',
+            'payment_status': 'Paid',
+            'payment_method': 'UPI',
+            'items': [
+                {'product_name': 'Amoxil 500mg', 'quantity': 3}
+            ],
+            'notes': 'Prescription order - 10 day antibiotic course',
+            'days_ago': 20
+        },
+        {
+            'type': 'regular',
+            'status': 'Cancelled',
+            'payment_status': 'Refunded',
+            'payment_method': 'Card',
+            'items': [
+                {'product_name': 'Glycomet 500mg', 'quantity': 2}
+            ],
+            'notes': 'Order cancelled due to stock unavailability',
+            'days_ago': 10
+        },
+        {
+            'type': 'regular',
+            'status': 'Processing',
+            'payment_status': 'Paid',
+            'payment_method': 'UPI',
+            'items': [
+                {'product_name': 'Omez 20mg', 'quantity': 2},
+                {'product_name': 'Brufen 400mg', 'quantity': 1},
+                {'product_name': 'Crocin 650mg', 'quantity': 2}
+            ],
+            'notes': 'Bulk order for family medicine cabinet',
+            'days_ago': 2
+        }
+    ]
+
+    # Create orders
+    for scenario in order_scenarios:
+        customer = random.choice(customers)
+        address = customer.addresses.first()
+
+        if not address:
+            continue
+
+        # Calculate order totals
+        total_amount = Decimal('0.00')
+        order_items_data = []
+
+        for item_data in scenario['items']:
+            try:
+                product = Product.objects.filter(name__icontains=item_data['product_name'].split()[0]).first()
+                if product:
+                    quantity = item_data['quantity']
+                    unit_price = product.price
+                    item_total = unit_price * quantity
+                    total_amount += item_total
+
+                    order_items_data.append({
+                        'product': product,
+                        'quantity': quantity,
+                        'unit_price': unit_price,
+                        'unit_price_at_order': unit_price
+                    })
+            except:
+                continue
+
+        if not order_items_data:
+            continue
+
+        # Add shipping fee for orders under ₹500
+        shipping_fee = Decimal('50.00') if total_amount < Decimal('500.00') else Decimal('0.00')
+
+        # Add discount for large orders
+        discount_amount = Decimal('0.00')
+        if total_amount > Decimal('1000.00'):
+            discount_amount = total_amount * Decimal('0.10')  # 10% discount
+
+        final_amount = total_amount + shipping_fee - discount_amount
+
+        # Set order date
+        order_date = datetime.now() - timedelta(days=scenario['days_ago'])
+
+        # Set expected delivery date
+        expected_delivery = None
+        if scenario['status'] in ['Pending', 'Processing', 'Shipped']:
+            expected_delivery = order_date + timedelta(days=random.randint(3, 7))
+
+        # Create order
+        order_data = {
+            'user': customer,
+            'address': address,
+            'total_amount': final_amount,
+            'discount_amount': discount_amount,
+            'shipping_fee': shipping_fee,
+            'payment_method': scenario['payment_method'],
+            'payment_status': scenario['payment_status'],
+            'order_status': scenario['status'],
+            'is_prescription_order': scenario['type'] == 'prescription',
+            'delivery_method': 'Standard Delivery' if shipping_fee > 0 else 'Free Delivery',
+            'expected_delivery_date': expected_delivery,
+            'notes': scenario['notes'],
+            'order_date': order_date
+        }
+
+        # Link to prescription if it's a prescription order
+        if scenario['type'] == 'prescription' and verified_prescriptions.exists():
+            order_data['prescription'] = random.choice(verified_prescriptions)
+
+        order, created = Order.objects.get_or_create(
+            user=customer,
+            order_date=order_date,
+            defaults=order_data
+        )
+
+        if created:
+            # Create order items
+            for item_data in order_items_data:
+                # Try to assign a batch
+                batch = None
+                try:
+                    available_batches = Batch.objects.filter(
+                        product=item_data['product'],
+                        current_quantity__gte=item_data['quantity']
+                    ).first()
+                    if available_batches:
+                        batch = available_batches
+                except:
+                    pass
+
+                OrderItem.objects.create(
+                    order=order,
+                    product=item_data['product'],
+                    quantity=item_data['quantity'],
+                    unit_price=item_data['unit_price'],
+                    unit_price_at_order=item_data['unit_price_at_order'],
+                    batch=batch
+                )
+
+    print("✓ Created realistic order demo data")
 
 if __name__ == '__main__':
     create_sample_data()

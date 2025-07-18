@@ -24,8 +24,8 @@ const OrderDetails = () => {
     try {
       setLoading(true);
       const [orderRes, itemsRes] = await Promise.all([
-        axiosInstance.get(`orders/orders/${orderId}/`),
-        axiosInstance.get(`orders/order-items/?order=${orderId}`)
+        axiosInstance.get(`order/orders/${orderId}/`),
+        axiosInstance.get(`order/order-items/?order=${orderId}`)
       ]);
 
       setOrder(orderRes.data);
@@ -41,7 +41,7 @@ const OrderDetails = () => {
   const handleStatusUpdate = async (newStatus) => {
     try {
       setStatusUpdating(true);
-      await axiosInstance.patch(`orders/orders/${orderId}/`, {
+      await axiosInstance.patch(`order/orders/${orderId}/`, {
         order_status: newStatus
       });
       await fetchOrderDetails(); // Refresh data

@@ -145,12 +145,19 @@ const PrescriptionUploadsTable = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">
-                      <Link
-                        to={`/Prescription_Review/${prescription.id}`}
-                        className="text-gray-600 hover:text-gray-800 hover:underline"
-                      >
-                        Review
-                      </Link>
+                      <div className="flex space-x-2">
+                        <Link
+                          to={`/Prescription_Review/${prescription.id}`}
+                          className="text-gray-600 hover:text-gray-800 hover:underline"
+                        >
+                          Review
+                        </Link>
+                        {prescription.has_order && (
+                          <span className="text-green-600 text-xs bg-green-100 px-2 py-1 rounded">
+                            Order Created
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

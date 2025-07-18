@@ -29,7 +29,7 @@ function DashboardMainContent() {
 
       // Fetch all required data in parallel
       const [ordersRes, prescriptionsRes, usersRes, productsRes] = await Promise.all([
-        axiosInstance.get('orders/orders/'),
+        axiosInstance.get('order/orders/'),
         axiosInstance.get('prescription/prescriptions/'),
         axiosInstance.get('user/users/'),
         axiosInstance.get('product/products/')

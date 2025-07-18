@@ -117,6 +117,10 @@ const SidebarNavbar = () => {
             to="/Pending_Prescriptions"
           />
           <SidebarItem
+            label="AI Test Page"
+            to="/AI_Test"
+          />
+          <SidebarItem
             label="Orders"
             to="/Orders"
           />

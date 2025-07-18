@@ -14,11 +14,13 @@ urlpatterns = [
     path('user/', include('usermanagement.urls')),
     path('product/', include('product.urls')),
     path('prescription/', include('prescriptions.urls')),
-    path('orders/', include('orders.urls')),
+    path('order/', include('orders.urls')),  # Fixed: Changed from 'orders/' to 'order/'
     path('inventory/', include('inventory.urls')),
 
+    # Mobile App Authentication Endpoints (Token-based)
+    path('api/auth/', include('authentication.urls')),  # This creates /api/auth/user/, /api/auth/register/, etc.
 
-      # JWT Authentication Endpoints
+    # JWT Authentication Endpoints (for web dashboard)
     # This endpoint handles username/password login and returns access/refresh tokens
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     # This endpoint handles refreshing an expired access token using a refresh token

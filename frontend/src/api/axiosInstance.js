@@ -3,9 +3,11 @@ import axios from 'axios';
 // Base config
 const axiosInstance = axios.create({
   baseURL: 'http://127.0.0.1:8001/',
-  timeout: 5000,
+  timeout: 10000, // Increased timeout for better reliability
+  withCredentials: true, // Enable credentials for CORS
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
 });
 
@@ -35,6 +37,12 @@ axiosInstance.interceptors.response.use(
         const refreshToken = localStorage.getItem('refresh_token');
         const res = await axios.post('http://127.0.0.1:8000/api/token/refresh/', {
           refresh: refreshToken,
+        }, {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          }
         });
 
         // Store new access token

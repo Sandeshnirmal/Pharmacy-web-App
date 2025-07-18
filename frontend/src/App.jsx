@@ -11,6 +11,7 @@ import InventoryManagement from './pages/InventoryManagement.jsx';
 import PrescriptionUploadsTable from './pages/PrescriptionUploadsTable.jsx';
 import PrescriptionReview from './pages/PrescriptionReview.jsx';
 import PendingPrescriptionsTable from './pages/PendingPrescriptionsTable.jsx';
+import AITestPage from './pages/AITestPage.jsx';
 
 // Order Management
 import OrderDetails from './pages/OrderDetails.jsx';
@@ -44,6 +45,7 @@ function App() {
           <Route path="/Prescription" element={<PrescriptionUploadsTable />} />
           <Route path="/Pending_Prescriptions" element={<PendingPrescriptionsTable />} />
           <Route path="/Prescription_Review/:prescriptionId" element={<PrescriptionReview />} />
+          <Route path="/AI_Test" element={<AITestPage />} />
 
           {/* Order Management */}
           <Route path="/Orders" element={<OrdersTable />} />

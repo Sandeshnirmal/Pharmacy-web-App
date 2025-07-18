@@ -1,4 +1,8 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+User = get_user_model()
 
 class GenericName(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -36,6 +40,15 @@ class Product(models.Model):
     pack_size = models.CharField(max_length=50)  # e.g., 10 Tablets
     stock_quantity = models.PositiveIntegerField(default=0)  # Current stock level
     min_stock_level = models.PositiveIntegerField(default=10)  # Minimum stock alert level
+
+    # Enhanced medicine information
+    composition = models.TextField(blank=True, help_text="Active ingredients and their quantities")
+    uses = models.TextField(blank=True, help_text="Medical uses and indications")
+    side_effects = models.TextField(blank=True, help_text="Possible side effects")
+    how_to_use = models.TextField(blank=True, help_text="Dosage and administration instructions")
+    precautions = models.TextField(blank=True, help_text="Warnings and precautions")
+    storage = models.TextField(blank=True, help_text="Storage conditions")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -70,4 +83,80 @@ class Inventory(models.Model):
         return f"{self.product.name} - {self.quantity_on_hand} in stock"
 
 
+class ProductReview(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    title = models.CharField(max_length=200, blank=True)
+    comment = models.TextField(blank=True)
+    is_verified_purchase = models.BooleanField(default=False)
+    helpful_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('product', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.product.name} ({self.rating}/5)"
+
+
+class ProductImage(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
+    image_url = models.URLField()
+    alt_text = models.CharField(max_length=255, blank=True)
+    is_primary = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"{self.product.name} - Image {self.order}"
+
+
+class Wishlist(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'product')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.product.name}"
+
+
+class ProductTag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    color = models.CharField(max_length=7, default='#007bff')  # Hex color
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class ProductTagAssignment(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='tags')
+    tag = models.ForeignKey(ProductTag, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('product', 'tag')
+
+    def __str__(self):
+        return f"{self.product.name} - {self.tag.name}"
+
+
+class ProductViewHistory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    viewed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-viewed_at']
+
+    def __str__(self):
+        return f"{self.user.username} viewed {self.product.name}"
 

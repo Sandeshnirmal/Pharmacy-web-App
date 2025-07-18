@@ -147,7 +147,193 @@ class UserProfileView(APIView):
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
+            'phone_number': getattr(user, 'phone_number', None),
+            'role': getattr(user, 'role', 'customer'),
             'is_staff': user.is_staff,
-            # Add any other user fields you want to expose from the User model
+            'is_active': user.is_active,
+            'date_joined': user.date_joined.isoformat() if user.date_joined else None,
+            'last_login': user.last_login.isoformat() if user.last_login else None,
         }
         return Response(data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        user = request.user
+        serializer = UserSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EnhancedProfileView(APIView):
+    """Enhanced user profile management"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get complete user profile with all related data"""
+        from .serializers import EnhancedUserSerializer
+        serializer = EnhancedUserSerializer(request.user, context={'request': request})
+        return Response(serializer.data)
+
+    def put(self, request):
+        """Update user profile"""
+        from .serializers import UserUpdateSerializer
+        serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+
+            # Update or create user profile
+            from .models import UserProfile
+            profile_data = request.data.get('profile', {})
+            if profile_data:
+                profile, created = UserProfile.objects.get_or_create(user=request.user)
+                from .serializers import UserProfileSerializer
+                profile_serializer = UserProfileSerializer(profile, data=profile_data, partial=True)
+                if profile_serializer.is_valid():
+                    profile_serializer.save()
+
+            # Update or create user preferences
+            from .models import UserPreferences
+            preferences_data = request.data.get('preferences', {})
+            if preferences_data:
+                preferences, created = UserPreferences.objects.get_or_create(user=request.user)
+                from .serializers import UserPreferencesSerializer
+                pref_serializer = UserPreferencesSerializer(preferences, data=preferences_data, partial=True)
+                if pref_serializer.is_valid():
+                    pref_serializer.save()
+
+            # Return updated profile
+            from .serializers import EnhancedUserSerializer
+            response_serializer = EnhancedUserSerializer(request.user, context={'request': request})
+            return Response(response_serializer.data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ChangePasswordView(APIView):
+    """Change user password"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .serializers import ChangePasswordSerializer
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+
+        if serializer.is_valid():
+            user = request.user
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+
+            return Response({'message': 'Password changed successfully'})
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserActivityView(APIView):
+    """Track and retrieve user activities"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get user activity history"""
+        from .models import UserActivity
+        from .serializers import UserActivitySerializer
+
+        activities = UserActivity.objects.filter(
+            user=request.user
+        ).order_by('-created_at')[:50]  # Last 50 activities
+
+        serializer = UserActivitySerializer(activities, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        """Log user activity"""
+        from .models import UserActivity
+
+        activity_type = request.data.get('activity_type')
+        description = request.data.get('description', '')
+        metadata = request.data.get('metadata', {})
+
+        if not activity_type:
+            return Response(
+                {'error': 'Activity type is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get client IP and user agent
+        ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+
+        UserActivity.objects.create(
+            user=request.user,
+            activity_type=activity_type,
+            description=description,
+            metadata=metadata,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        return Response({'message': 'Activity logged successfully'})
+
+
+class UserDashboardView(APIView):
+    """User dashboard with statistics and recent activities"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # Get user statistics
+        from product.models import ProductReview, Wishlist, ProductViewHistory
+        from .models import UserActivity
+
+        stats = {
+            'total_orders': 0,  # Will be implemented with orders enhancement
+            'total_reviews': ProductReview.objects.filter(user=user).count(),
+            'wishlist_items': Wishlist.objects.filter(user=user).count(),
+            'products_viewed': ProductViewHistory.objects.filter(user=user).count(),
+            'recent_activities': UserActivity.objects.filter(user=user).count(),
+        }
+
+        # Get recent activities
+        recent_activities = UserActivity.objects.filter(
+            user=user
+        ).order_by('-created_at')[:10]
+
+        from .serializers import UserActivitySerializer
+        activities_serializer = UserActivitySerializer(recent_activities, many=True)
+
+        # Get recent viewed products
+        recent_views = ProductViewHistory.objects.filter(
+            user=user
+        ).select_related('product').order_by('-viewed_at')[:5]
+
+        viewed_products = []
+        for view in recent_views:
+            viewed_products.append({
+                'id': view.product.id,
+                'name': view.product.name,
+                'price': view.product.price,
+                'image_url': view.product.image_url,
+                'viewed_at': view.viewed_at
+            })
+
+        # Get wishlist items
+        wishlist_items = Wishlist.objects.filter(
+            user=user
+        ).select_related('product').order_by('-created_at')[:5]
+
+        wishlist_products = []
+        for item in wishlist_items:
+            wishlist_products.append({
+                'id': item.product.id,
+                'name': item.product.name,
+                'price': item.product.price,
+                'image_url': item.product.image_url,
+                'added_at': item.created_at
+            })
+
+        return Response({
+            'stats': stats,
+            'recent_activities': activities_serializer.data,
+            'recent_views': viewed_products,
+            'wishlist_items': wishlist_products
+        })

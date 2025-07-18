@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axiosInstance from '../api/axiosInstance';
+import OCRReprocessButton from '../components/OCRReprocessButton';
+import OCRResultsDisplay from '../components/OCRResultsDisplay';
 
 const PrescriptionReview = () => {
   const { prescriptionId } = useParams();
@@ -24,8 +26,14 @@ const PrescriptionReview = () => {
     if (prescriptionId) {
       fetchPrescriptionData();
     }
-    fetchProducts();
   }, [prescriptionId]);
+
+  // Fetch products after prescription details are loaded
+  useEffect(() => {
+    if (prescriptionDetails.length > 0) {
+      fetchProducts();
+    }
+  }, [prescriptionDetails]);
 
   const fetchPrescriptionData = async () => {
     try {
@@ -36,7 +44,8 @@ const PrescriptionReview = () => {
       ]);
 
       setPrescription(prescriptionRes.data);
-      setPrescriptionDetails(detailsRes.data.results || detailsRes.data);
+      const details = detailsRes.data.results || detailsRes.data;
+      setPrescriptionDetails(details);
       setNotes(prescriptionRes.data.pharmacist_notes || '');
     } catch (err) {
       setError('Failed to fetch prescription data');
@@ -48,10 +57,31 @@ const PrescriptionReview = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await axiosInstance.get('product/products/');
-      setProducts(response.data.results || response.data);
+      // Only fetch products if we have prescription details to match against
+      if (prescriptionDetails.length > 0) {
+        // Get unique medicine names from OCR results
+        const medicineNames = prescriptionDetails
+          .map(detail => detail.ai_extracted_medicine_name)
+          .filter(name => name && name.trim() !== '')
+          .join(',');
+
+        // Fetch products with search filter based on extracted medicines
+        const response = await axiosInstance.get(`product/products/?search=${encodeURIComponent(medicineNames)}`);
+        setProducts(response.data.results || response.data);
+      } else {
+        // If no prescription details yet, fetch a limited set
+        const response = await axiosInstance.get('product/products/?limit=20');
+        setProducts(response.data.results || response.data);
+      }
     } catch (err) {
       console.error('Error fetching products:', err);
+      // Fallback to limited products
+      try {
+        const response = await axiosInstance.get('product/products/?limit=20');
+        setProducts(response.data.results || response.data);
+      } catch (fallbackErr) {
+        console.error('Fallback fetch also failed:', fallbackErr);
+      }
     }
   };
 
@@ -137,6 +167,17 @@ const PrescriptionReview = () => {
     }
   };
 
+  const handleOCRReprocessComplete = (ocrResult) => {
+    // Refresh prescription data after OCR reprocessing
+    fetchPrescriptionData();
+
+    // Show success message
+    setError(null);
+
+    // You could also show a success toast here
+    console.log('OCR Reprocessing completed:', ocrResult);
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.generic_name?.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -187,6 +228,57 @@ const PrescriptionReview = () => {
         </div>
       </div>
 
+      {/* OCR Results Summary - Prominent Display */}
+      {prescription && prescriptionDetails.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-blue-900">
+              📋 OCR Extraction Results
+            </h2>
+            <div className="flex items-center space-x-4">
+              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                {prescriptionDetails.length} medicines extracted
+              </span>
+              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                {prescription.ai_confidence_score * 100}% confidence
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {prescriptionDetails.map((detail, index) => (
+              <div key={detail.id} className="bg-white rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-600">Medicine {index + 1}</span>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${detail.ai_confidence_score > 0.8 ? 'bg-green-100 text-green-800' :
+                      detail.ai_confidence_score > 0.5 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                    }`}>
+                    {Math.round(detail.ai_confidence_score * 100)}%
+                  </span>
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-1">
+                  {detail.ai_extracted_medicine_name || 'Unknown'}
+                </h3>
+                <p className="text-sm text-gray-600 mb-1">
+                  {detail.ai_extracted_dosage || 'No dosage'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {detail.ai_extracted_instructions || 'No instructions'}
+                </p>
+                {detail.mapped_product && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <p className="text-xs text-green-600 font-medium">
+                      ✅ Mapped to: {detail.mapped_product_name || 'Product'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Prescription Image Section (spanning 2 columns on large screens) */}
         <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
@@ -199,40 +291,72 @@ const PrescriptionReview = () => {
               onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Image+Not+Found'; }}
             />
           </div>
+
+          {/* OCR Reprocess Button */}
+          <div className="mt-4 border-t pt-4">
+            <OCRReprocessButton
+              prescriptionId={prescriptionId}
+              onReprocessComplete={handleOCRReprocessComplete}
+            />
+          </div>
         </div>
 
-        {/* Product Mapping Section (1 column) */}
+        {/* Product Mapping Section (1 column) - Only for unmapped medicines */}
         <div className="lg:col-span-1 bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-medium text-gray-700 mb-4">Product Mapping</h2>
-          <ul className="space-y-3">
-            {prescriptionDetails.map((detail) => (
-              <li key={detail.id} className="flex justify-between items-center py-2 border-b last:border-b-0 border-gray-200">
-                <div>
-                  <p className="text-gray-800 font-medium">
-                    {detail.ai_extracted_medicine_name || detail.verified_medicine_name || 'Unknown Medicine'}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {detail.ai_extracted_dosage || detail.verified_dosage} -
-                    {detail.ai_extracted_quantity || detail.verified_quantity} units
-                  </p>
-                  {detail.mapped_product && (
-                    <p className="text-xs text-green-600">Mapped to product</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => openProductModal(detail.id)}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-opacity-50 ${
-                    detail.mapped_product
-                      ? 'bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500'
-                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-blue-500'
-                  }`}
+          <h2 className="text-xl font-medium text-gray-700 mb-4">
+            Manual Product Mapping
+            <span className="text-sm font-normal text-gray-500 block">
+              Only for medicines that need manual mapping
+            </span>
+          </h2>
+
+          {prescriptionDetails.filter(detail => !detail.mapped_product).length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-green-600 mb-2">
+                <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <p className="text-green-700 font-medium">All medicines mapped automatically!</p>
+              <p className="text-sm text-gray-500">OCR successfully matched all medicines with products</p>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {prescriptionDetails.filter(detail => !detail.mapped_product).map((detail) => (
+                <li
+                  key={detail.id}
+                  className="flex justify-between items-center py-3 border border-orange-200 rounded-lg px-3 bg-orange-50"
                 >
-                  {detail.mapped_product ? 'Remap' : 'Map'}
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <div>
+                    <p className="text-gray-800 font-medium">
+                      {detail.ai_extracted_medicine_name || 'Unknown Medicine'}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {detail.ai_extracted_dosage || 'No dosage'}
+                    </p>
+                    <p className="text-xs text-orange-600">⚠️ Needs manual mapping</p>
+                  </div>
+                  <button
+                    onClick={() => openProductModal(detail.id)}
+                    className="px-3 py-1 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-md text-sm font-medium transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50"
+                  >
+                    Map Product
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+
+      </div>
+
+      {/* OCR Results Display Section */}
+      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 className="text-xl font-medium text-gray-700 mb-4">OCR Processing Results</h2>
+        <OCRResultsDisplay
+          prescription={prescription}
+          prescriptionDetails={prescriptionDetails}
+        />
       </div>
 
       {/* AI Extracted Information Section */}
@@ -297,11 +421,10 @@ const PrescriptionReview = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      detail.mapping_status === 'Mapped' ? 'bg-green-100 text-green-800' :
-                      detail.mapping_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`px-2 py-1 text-xs rounded-full ${detail.mapping_status === 'Mapped' ? 'bg-green-100 text-green-800' :
+                        detail.mapping_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                      }`}>
                       {detail.mapping_status}
                     </span>
                   </td>
@@ -378,7 +501,10 @@ const PrescriptionReview = () => {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Map Product</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Map Product</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Products filtered based on OCR extracted medicines. Search to find more.
+              </p>
 
               {/* Search input for products */}
               <div className="mb-4">
@@ -396,9 +522,8 @@ const PrescriptionReview = () => {
                 {filteredProducts.map((product) => (
                   <div
                     key={product.id}
-                    className={`p-3 border rounded-md mb-2 cursor-pointer hover:bg-gray-50 ${
-                      selectedProduct?.id === product.id ? 'bg-blue-50 border-blue-300' : 'border-gray-200'
-                    }`}
+                    className={`p-3 border rounded-md mb-2 cursor-pointer hover:bg-gray-50 ${selectedProduct?.id === product.id ? 'bg-blue-50 border-blue-300' : 'border-gray-200'
+                      }`}
                     onClick={() => setSelectedProduct(product)}
                   >
                     <div className="font-medium text-gray-900">{product.name}</div>
