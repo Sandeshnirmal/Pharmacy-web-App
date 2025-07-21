@@ -1,257 +1,382 @@
 // OrdersTable.jsx
-import React, { useState } from 'react';
-import { Link, Navigate } from "react-router-dom";
+import { useState, useEffect } from 'react';
+import { Link } from "react-router-dom";
+import axiosInstance from '../api/axiosInstance';
 
 const OrdersTable = () => {
-  // const navigate = useNavigate(); // Initialize useNavigate hook
 
-  // Sample data for orders
-  const ordersData = [
-    {
-      orderId: '#12345',
-      customer: 'Sophia Clark',
-      orderDate: '2024-01-15',
-      totalAmount: '$75.00',
-      status: 'Shipped',
-      prescriptionStatus: 'Verified',
-    },
-    {
-      orderId: '#12346',
-      customer: 'Liam Carter',
-      orderDate: '2024-01-16',
-      totalAmount: '$120.00',
-      status: 'Delivered',
-      prescriptionStatus: 'Not Required',
-    },
-    {
-      orderId: '#12347',
-      customer: 'Olivia Bennett',
-      orderDate: '2024-01-17',
-      totalAmount: '$50.00',
-      status: 'Pending',
-      prescriptionStatus: 'Pending Verification',
-    },
-    {
-      orderId: '#12348',
-      customer: 'Noah Foster',
-      orderDate: '2024-01-18',
-      totalAmount: '$90.00',
-      status: 'Shipped',
-      prescriptionStatus: 'Verified',
-    },
-    {
-      orderId: '#12349',
-      customer: 'Ava Harper',
-      orderDate: '2024-01-19',
-      totalAmount: '$60.00',
-      status: 'Delivered',
-      prescriptionStatus: 'Not Required',
-    },
-    {
-      orderId: '#12350',
-      customer: 'Ethan Hayes',
-      orderDate: '2024-01-20',
-      totalAmount: '$100.00',
-      status: 'Pending',
-      prescriptionStatus: 'Pending Verification',
-    },
-    {
-      orderId: '#12351',
-      customer: 'Isabella Reed',
-      orderDate: '2024-01-21',
-      totalAmount: '$85.00',
-      status: 'Shipped',
-      prescriptionStatus: 'Verified',
-    },
-    {
-      orderId: '#12352',
-      customer: 'Jackson Cole',
-      orderDate: '2024-01-22',
-      totalAmount: '$110.00',
-      status: 'Delivered',
-      prescriptionStatus: 'Not Required',
-    },
-    {
-      orderId: '#12353',
-      customer: 'Mia Morgan',
-      orderDate: '2024-01-23',
-      totalAmount: '$45.00',
-      status: 'Pending',
-      prescriptionStatus: 'Pending Verification',
-    },
-    {
-      orderId: '#12354',
-      customer: 'Aiden Parker',
-      orderDate: '2024-01-24',
-      totalAmount: '$70.00',
-      status: 'Shipped',
-      prescriptionStatus: 'Verified',
-    },
-  ];
+  // State management
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selectedOrders, setSelectedOrders] = useState([]);
+  const itemsPerPage = 10;
 
-  /**
-   * Returns Tailwind CSS classes for the status badge based on its value.
-   * @param {string} status - The status string (e.g., 'Pending', 'Shipped', 'Delivered').
-   * @returns {string} - Tailwind CSS classes for background and text color.
-   */
-  const getStatusClasses = (status) => {
-    switch (status) {
-      case 'Pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Shipped':
-        return 'bg-blue-100 text-blue-800';
-      case 'Delivered':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  useEffect(() => {
+    fetchOrders();
+  }, [currentPage, statusFilter, searchTerm]);
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: currentPage,
+        page_size: itemsPerPage,
+      });
+
+      if (statusFilter !== 'all') {
+        params.append('order_status', statusFilter);
+      }
+
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+
+      const response = await axiosInstance.get(`order/orders/?${params}`);
+      const data = response.data;
+
+      setOrders(data.results || data);
+      setTotalPages(Math.ceil((data.count || data.length) / itemsPerPage));
+    } catch (err) {
+      setError('Failed to fetch orders');
+      console.error('Error fetching orders:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  /**
-   * Returns Tailwind CSS classes for the prescription status badge.
-   * @param {string} status - The prescription status string (e.g., 'Verified', 'Pending Verification', 'Not Required').
-   * @returns {string} - Tailwind CSS classes for background and text color.
-   */
-  const getPrescriptionStatusClasses = (status) => {
-    switch (status) {
-      case 'Verified':
-        return 'bg-green-100 text-green-800';
-      case 'Pending Verification':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Not Required':
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  const handleStatusUpdate = async (orderId, newStatus) => {
+    try {
+      await axiosInstance.patch(`order/orders/${orderId}/`, {
+        order_status: newStatus
+      });
+      await fetchOrders(); // Refresh the list
+    } catch (err) {
+      console.error('Error updating order status:', err);
+      setError('Failed to update order status');
     }
   };
 
-  /**
-   * Handles the click event for the "New Order" button.
-   */
-  const handleNewOrder = () => {
-    console.log('New Order button clicked!');
-    // In a real app, this would navigate to an order creation form.
+  const handleBulkStatusUpdate = async (newStatus) => {
+    try {
+      const updatePromises = selectedOrders.map(id =>
+        axiosInstance.patch(`order/orders/${id}/`, {
+          order_status: newStatus
+        })
+      );
+
+      await Promise.all(updatePromises);
+      setSelectedOrders([]);
+      await fetchOrders();
+    } catch (err) {
+      console.error('Error updating order statuses:', err);
+      setError('Failed to update order statuses');
+    }
   };
 
-  /**
-   * Handles the click event for a "View Details" button in a table row.
-   * @param {string} orderId - The Order ID for the clicked row.
-   */
-  const handleViewDetails = (orderId) => {
-    console.log('Viewing details for Order ID:', orderId);
-    // When using <Link>, the actual navigation is handled by the Link component's `to` prop.
-    // If using useNavigate: navigate(`/order-details/${orderId}`);
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedOrders(filteredOrders.map(o => o.id));
+    } else {
+      setSelectedOrders([]);
+    }
   };
+
+  const handleSelectOrder = (orderId, checked) => {
+    if (checked) {
+      setSelectedOrders(prev => [...prev, orderId]);
+    } else {
+      setSelectedOrders(prev => prev.filter(id => id !== orderId));
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      'Pending': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
+      'Processing': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Processing' },
+      'Shipped': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Shipped' },
+      'Delivered': { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
+      'Cancelled': { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' }
+    };
+
+    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
+
+    return (
+      <span className={`px-2 py-1 text-xs rounded-full ${config.bg} ${config.text}`}>
+        {config.label}
+      </span>
+    );
+  };
+
+  const getPrescriptionStatusBadge = (order) => {
+    if (!order.is_prescription_order) {
+      return <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Not Required</span>;
+    }
+
+    if (order.prescription?.verification_status === 'Verified') {
+      return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Verified</span>;
+    } else if (order.prescription?.verification_status === 'Pending_Review') {
+      return <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">Pending Review</span>;
+    } else if (order.prescription?.verification_status === 'Rejected') {
+      return <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">Rejected</span>;
+    } else {
+      return <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">Uploaded</span>;
+    }
+  };
+
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = !searchTerm ||
+      order.user?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.user?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.id.toString().includes(searchTerm);
+
+    const matchesStatus = statusFilter === 'all' || order.order_status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
-      {/* Header with Title and New Order Button */}
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-semibold text-gray-800">Orders</h1>
-        <button
-          onClick={handleNewOrder}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md shadow-md
-                     transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
-        >
-          New Order
-        </button>
-      </div>
+        <div>
+          <h1 className="text-3xl font-semibold text-gray-800">📱 Order Management</h1>
+          <p className="text-sm text-gray-600">Manage and track orders placed by customers via mobile app</p>
+          <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded inline-block">
+            Orders from mobile e-commerce app
+          </div>
+        </div>
+        <div className="flex space-x-4">
+          {/* Search Input */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search orders..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </div>
 
-      {/* Search Bar */}
-      <div className="mb-6">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search orders"
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          />
-          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-          </svg>
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          >
+            <option value="all">All Status</option>
+            <option value="Pending">Pending</option>
+            <option value="Processing">Processing</option>
+            <option value="Shipped">Shipped</option>
+            <option value="Delivered">Delivered</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
         </div>
       </div>
 
-      {/* Filter Buttons */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        {['Status', 'Date Range', 'Customer', 'Prescription Status', 'More Filters'].map((filter, index) => (
-          <div key={index} className="relative inline-block text-left">
-            <button
-              type="button"
-              className="inline-flex justify-center items-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-              id={`menu-button-${index}`}
-              aria-expanded="true"
-              aria-haspopup="true"
-            >
-              {filter}
-              <svg className="-mr-1 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-              </svg>
-            </button>
-            {/* Dropdown content for filters would go here, hidden by default */}
-            {/* <div className="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="menu-button-0" tabIndex="-1">
-              <div className="py-1" role="none">
-                <a href="#" className="text-gray-700 block px-4 py-2 text-sm" role="menuitem" tabIndex="-1" id="menu-item-0">Option 1</a>
-              </div>
-            </div> */}
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+
+      {/* Bulk Actions Bar */}
+      {selectedOrders.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <span className="text-sm font-medium text-blue-900">
+                {selectedOrders.length} order(s) selected
+              </span>
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handleBulkStatusUpdate('Processing')}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
+              >
+                Mark Processing
+              </button>
+              <button
+                onClick={() => handleBulkStatusUpdate('Shipped')}
+                className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
+              >
+                Mark Shipped
+              </button>
+              <button
+                onClick={() => handleBulkStatusUpdate('Delivered')}
+                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
+              >
+                Mark Delivered
+              </button>
+              <button
+                onClick={() => setSelectedOrders([])}
+                className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
+              >
+                Clear Selection
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Orders Table */}
-      <div className="bg-white shadow-lg rounded-lg overflow-hidden mb-8">
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Date</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prescription Status</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Order ID
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Customer
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Order Date
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total Amount
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Order Status
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Prescription Status
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {ordersData.map((order, index) => (
-                <tr key={index} className="hover:bg-gray-50 transition duration-150 ease-in-out">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{order.orderId}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:underline cursor-pointer">{order.customer}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.orderDate}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{order.totalAmount}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClasses(order.status)}`}>
-                      {order.status}
-                    </span>
+              {filteredOrders.map((order) => (
+                <tr key={order.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.includes(order.id)}
+                      onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPrescriptionStatusClasses(order.prescriptionStatus)}`}>
-                      {order.prescriptionStatus}
-                    </span>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    #{order.id}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">
-                    {/* Using a regular button for now, can be wrapped in <Link> or use navigate() later */}\
-                    <Link to="/Orders/OrderDetails"> 
-                    <button
-                      onClick={() => handleViewDetails(order.orderId)}
-                      className="text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50
-                                 p-1 rounded-md transition duration-150 ease-in-out"
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div>
+                      <div className="font-medium text-gray-900">
+                        {order.user?.first_name} {order.user?.last_name}
+                      </div>
+                      <div className="text-gray-500">{order.user?.email}</div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(order.order_date).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ₹{order.total_amount}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {getStatusBadge(order.order_status)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {getPrescriptionStatusBadge(order)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                    <Link
+                      to={`/Orders/OrderDetails?id=${order.id}`}
+                      className="text-blue-600 hover:text-blue-900 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-md transition duration-150"
                     >
-                      View Details
-                      </button>
+                      View
                     </Link>
+
+                    {order.order_status === 'Pending' && (
+                      <button
+                        onClick={() => handleStatusUpdate(order.id, 'Processing')}
+                        className="text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-md transition duration-150"
+                      >
+                        Process
+                      </button>
+                    )}
+
+                    {order.order_status === 'Processing' && (
+                      <button
+                        onClick={() => handleStatusUpdate(order.id, 'Shipped')}
+                        className="text-purple-600 hover:text-purple-900 bg-purple-100 hover:bg-purple-200 px-3 py-1 rounded-md transition duration-150"
+                      >
+                        Ship
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Empty State */}
+        {filteredOrders.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No orders found</h3>
+            <p className="mt-1 text-sm text-gray-500">No orders match your current filters.</p>
+          </div>
+        )}
       </div>
 
-      {/* Footer */}
-      <footer className="text-center text-gray-500 text-sm py-4">
-        &copy; {new Date().getFullYear()} MediCo
-      </footer>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-between items-center mt-6">
+          <div className="text-sm text-gray-700">
+            Showing page {currentPage} of {totalPages}
+          </div>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

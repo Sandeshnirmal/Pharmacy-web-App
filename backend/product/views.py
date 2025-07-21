@@ -1,19 +1,307 @@
-from rest_framework import viewsets
-from .models import Category, Product, Batch, Inventory
-from .serializers import CategorySerializer, ProductSerializer, BatchSerializer, InventorySerializer
+from rest_framework import viewsets, status, filters
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.db.models import Q, Sum, Count, F, Avg
+from django.utils import timezone
+from datetime import timedelta
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import (
+    Category, Product, Batch, Inventory, GenericName,
+    ProductReview, ProductImage, Wishlist, ProductTag,
+    ProductViewHistory
+)
+from .serializers import (
+    CategorySerializer, ProductSerializer, BatchSerializer,
+    InventorySerializer, GenericNameSerializer, EnhancedProductSerializer,
+    ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer
+)
 
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
+    queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticated]
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all()
+    queryset = Product.objects.all().order_by('name')
     serializer_class = ProductSerializer
+    permission_classes = [AllowAny]  # Allow public access for mobile app browsing
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        category = self.request.query_params.get('category', None)
+        search = self.request.query_params.get('search', None)
+        stock_status = self.request.query_params.get('stock_status', None)
+        prescription_required = self.request.query_params.get('prescription_required', None)
+
+        if category:
+            queryset = queryset.filter(category_id=category)
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(generic_name__name__icontains=search) |
+                Q(manufacturer__icontains=search)
+            )
+        if stock_status:
+            if stock_status == 'low':
+                queryset = queryset.filter(stock_quantity__lte=F('min_stock_level'))
+            elif stock_status == 'out':
+                queryset = queryset.filter(stock_quantity=0)
+            elif stock_status == 'in':
+                queryset = queryset.filter(stock_quantity__gt=F('min_stock_level'))
+        if prescription_required is not None:
+            queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
+
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def low_stock(self, request):
+        """Get products with low stock"""
+        from django.db.models import F
+        products = Product.objects.filter(stock_quantity__lte=F('min_stock_level'))
+        serializer = self.get_serializer(products, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def out_of_stock(self, request):
+        """Get products that are out of stock"""
+        products = Product.objects.filter(stock_quantity=0)
+        serializer = self.get_serializer(products, many=True)
+        return Response(serializer.data)
 
 class BatchViewSet(viewsets.ModelViewSet):
-    queryset = Batch.objects.all()
+    queryset = Batch.objects.all().order_by('-created_at')
     serializer_class = BatchSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        product = self.request.query_params.get('product', None)
+        expiring_soon = self.request.query_params.get('expiring_soon', None)
+        expired = self.request.query_params.get('expired', None)
+
+        if product:
+            queryset = queryset.filter(product_id=product)
+        if expiring_soon:
+            thirty_days_from_now = timezone.now().date() + timedelta(days=30)
+            queryset = queryset.filter(expiry_date__lte=thirty_days_from_now, expiry_date__gte=timezone.now().date())
+        if expired:
+            queryset = queryset.filter(expiry_date__lt=timezone.now().date())
+
+        return queryset
 
 class InventoryViewSet(viewsets.ModelViewSet):
     queryset = Inventory.objects.all()
     serializer_class = InventorySerializer
+    permission_classes = [IsAuthenticated]
+
+class GenericNameViewSet(viewsets.ModelViewSet):
+    queryset = GenericName.objects.all().order_by('name')
+    serializer_class = GenericNameSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search', None)
+
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+
+        return queryset
+
+
+class EnhancedProductViewSet(viewsets.ModelViewSet):
+    """Enhanced product viewset with additional features for mobile app"""
+    queryset = Product.objects.select_related('category', 'generic_name').prefetch_related(
+        'images', 'reviews', 'tags__tag'
+    ).all()
+    serializer_class = EnhancedProductSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description']
+    ordering_fields = ['price', 'created_at', 'name']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        # Filter parameters
+        category = self.request.query_params.get('category')
+        min_price = self.request.query_params.get('min_price')
+        max_price = self.request.query_params.get('max_price')
+        prescription_required = self.request.query_params.get('prescription_required')
+        in_stock = self.request.query_params.get('in_stock')
+        rating = self.request.query_params.get('min_rating')
+
+        if category:
+            queryset = queryset.filter(category_id=category)
+        if min_price:
+            queryset = queryset.filter(price__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(price__lte=max_price)
+        if prescription_required is not None:
+            queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
+        if in_stock == 'true':
+            queryset = queryset.filter(stock_quantity__gt=0)
+        if rating:
+            queryset = queryset.annotate(
+                avg_rating=Avg('reviews__rating')
+            ).filter(avg_rating__gte=rating)
+
+        return queryset
+
+    def retrieve(self, request, *args, **kwargs):
+        """Track product views when retrieving product details"""
+        instance = self.get_object()
+
+        # Track view history for authenticated users
+        if request.user.is_authenticated:
+            ProductViewHistory.objects.create(
+                user=request.user,
+                product=instance
+            )
+
+        return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'])
+    def featured(self, request):
+        """Get featured products"""
+        featured_products = self.get_queryset().filter(
+            stock_quantity__gt=0
+        ).order_by('-created_at')[:10]
+
+        serializer = self.get_serializer(featured_products, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def trending(self, request):
+        """Get trending products based on views and orders"""
+        trending_products = self.get_queryset().annotate(
+            view_count=Count('productviewhistory'),
+            review_count=Count('reviews')
+        ).filter(
+            stock_quantity__gt=0
+        ).order_by('-view_count', '-review_count')[:10]
+
+        serializer = self.get_serializer(trending_products, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def recommendations(self, request):
+        """Get personalized recommendations for authenticated users"""
+        if not request.user.is_authenticated:
+            # Return popular products for anonymous users
+            popular_products = self.get_queryset().annotate(
+                avg_rating=Avg('reviews__rating')
+            ).filter(
+                stock_quantity__gt=0,
+                avg_rating__gte=4.0
+            ).order_by('-avg_rating')[:10]
+
+            serializer = self.get_serializer(popular_products, many=True)
+            return Response(serializer.data)
+
+        # Get user's view history and preferences
+        viewed_products = ProductViewHistory.objects.filter(
+            user=request.user
+        ).values_list('product__category', flat=True).distinct()
+
+        # Recommend products from viewed categories
+        recommended_products = self.get_queryset().filter(
+            category__in=viewed_products,
+            stock_quantity__gt=0
+        ).exclude(
+            id__in=ProductViewHistory.objects.filter(
+                user=request.user
+            ).values_list('product_id', flat=True)
+        ).order_by('?')[:10]  # Random order
+
+        serializer = self.get_serializer(recommended_products, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def search_suggestions(self, request):
+        """Get search suggestions based on query"""
+        query = request.query_params.get('q', '')
+        if not query:
+            return Response([])
+
+        suggestions = Product.objects.filter(
+            Q(name__icontains=query) |
+            Q(generic_name__name__icontains=query) |
+            Q(manufacturer__icontains=query)
+        ).values_list('name', flat=True)[:10]
+
+        return Response(list(suggestions))
+
+
+class ProductReviewViewSet(viewsets.ModelViewSet):
+    """Product reviews management"""
+    queryset = ProductReview.objects.select_related('user', 'product').all()
+    serializer_class = ProductReviewSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        product_id = self.request.query_params.get('product')
+
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+
+        return queryset.order_by('-created_at')
+
+    @action(detail=True, methods=['post'])
+    def mark_helpful(self, request, pk=None):
+        """Mark a review as helpful"""
+        review = self.get_object()
+        review.helpful_count = F('helpful_count') + 1
+        review.save()
+        review.refresh_from_db()
+
+        serializer = self.get_serializer(review)
+        return Response(serializer.data)
+
+
+class WishlistViewSet(viewsets.ModelViewSet):
+    """User wishlist management"""
+    serializer_class = WishlistSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Wishlist.objects.filter(
+            user=self.request.user
+        ).select_related('product').order_by('-created_at')
+
+    @action(detail=False, methods=['post'])
+    def toggle(self, request):
+        """Toggle product in wishlist"""
+        product_id = request.data.get('product_id')
+        if not product_id:
+            return Response(
+                {'error': 'Product ID is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {'error': 'Product not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        wishlist_item, created = Wishlist.objects.get_or_create(
+            user=request.user,
+            product=product
+        )
+
+        if not created:
+            wishlist_item.delete()
+            return Response({'message': 'Removed from wishlist', 'in_wishlist': False})
+        else:
+            serializer = self.get_serializer(wishlist_item)
+            return Response({
+                'message': 'Added to wishlist',
+                'in_wishlist': True,
+                'data': serializer.data
+            })

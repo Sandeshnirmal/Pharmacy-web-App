@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -22,10 +23,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u='
 
+# Google AI API Key for OCR
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyA8JFwu5DpLSKBfTTk2K3dUW61y32gZeoo')
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -39,23 +43,100 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'rest_framework',
+    'rest_framework.authtoken',  # Add for token authentication
     'rest_framework_simplejwt',
+    'django_filters',
     'product',
     'orders',
     'prescriptions',
     'usermanagement',
+    'inventory',
+    'authentication',  # Authentication app for mobile API
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Configuration for Admin Dashboard and Mobile App
+CORS_ALLOW_ALL_ORIGINS = True  # For development only
+
+# Allowed origins for production (comment out CORS_ALLOW_ALL_ORIGINS for production)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",    # React development server
+    "http://localhost:5173",    # Vite development server
+    "http://localhost:5174",    # Vite development server (alternative port)
+    "http://localhost:5175",    # Vite development server (alternative port)
+    "http://127.0.0.1:3000",    # React development server
+    "http://127.0.0.1:5173",    # Vite development server
+    "http://127.0.0.1:5174",    # Vite development server
+    "http://127.0.0.1:5175",    # Vite development server
+    "http://localhost:8080",    # Mobile app development
+    "http://127.0.0.1:8080", 
+    "http://192.168.77.6:8000",      # Mobile app development
+]
+
+# Allow credentials for authentication
+CORS_ALLOW_CREDENTIALS = True
+
+# Allowed headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'cache-control',
+    'pragma',
+    'x-forwarded-for',
+    'x-forwarded-proto',
+]
+
+# Allowed methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# Expose headers to frontend
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'x-csrftoken',
+]
+
+# Preflight cache time
+CORS_PREFLIGHT_MAX_AGE = 86400
+
+# Additional CORS settings for mobile app compatibility
+CORS_ALLOW_PRIVATE_NETWORK = True
+
+# Security settings for CORS
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None
+
+# CSRF settings for mobile app compatibility
+CSRF_TRUSTED_ORIGINS = [
+    'http://192.168.77.6:8000',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
+
+# Disable CSRF for API endpoints (since we disabled the middleware)
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+CSRF_USE_SESSIONS = False
+
 AUTH_USER_MODEL = 'usermanagement.User'
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', # Must be very high, preferably before CommonMiddleware
-    'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Must be first
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Disabled for API endpoints
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -137,12 +218,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.TokenAuthentication',  # Add for mobile app
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication', # Keep for Django Admin/Browsable API
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.AllowAny', # A common default for API endpoints
-    )
+        'rest_framework.permissions.AllowAny', # Allow unauthenticated access for registration
+    ),
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
 }
 
 
