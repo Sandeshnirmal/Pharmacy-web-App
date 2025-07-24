@@ -1,66 +1,62 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense } from 'react';
 import Layout from './components/Layout';
+import LoadingSpinner from './components/LoadingSpinner';
+import ErrorBoundary from './components/ErrorBoundary';
+import { getPublicRoutes, getProtectedRoutes } from './routes';
 
-// Core Pages
-import DashboardMainContent from './pages/Dashboard.jsx'
-import Medicine from './pages/MedicinesListPage.jsx';
-import GenericsTable from './pages/GenericsTable.jsx';
-import InventoryManagement from './pages/InventoryManagement.jsx';
+// Helper function to render route element with lazy loading
+const renderRouteElement = (route) => {
+  const Component = route.element;
 
-// Prescription Management
-import PrescriptionUploadsTable from './pages/PrescriptionUploadsTable.jsx';
-import PrescriptionReview from './pages/PrescriptionReview.jsx';
-import PendingPrescriptionsTable from './pages/PendingPrescriptionsTable.jsx';
-import AITestPage from './pages/AITestPage.jsx';
+  if (route.lazy) {
+    return (
+      <Suspense fallback={<LoadingSpinner message={`Loading ${route.title}...`} />}>
+        <Component />
+      </Suspense>
+    );
+  }
 
-// Order Management
-import OrderDetails from './pages/OrderDetails.jsx';
-import OrdersTable from './pages/OrdersTable.jsx';
-
-// User Management
-import Login from './pages/Login.jsx';
-import UserManagement from './pages/UserManagement.jsx';
-import CustomerManagement from './pages/CustomerManagement.jsx';
-
-// Reports
-import Reports from './pages/Reports.jsx';
+  return <Component />;
+};
 
 function App() {
+  const publicRoutes = getPublicRoutes();
+  const protectedRoutes = getProtectedRoutes();
+
   return (
-    <Router>
-      <Routes>
-        {/* Login Route - Outside Layout (No Sidebar) */}
-        <Route path="/Login" element={<Login />} />
+    <ErrorBoundary>
+      <Router>
+        <Routes>
+          {/* Public Routes - Outside Layout (No Sidebar) */}
+          {publicRoutes.map((route) => (
+            <Route
+              key={route.path}
+              path={route.path}
+              element={renderRouteElement(route)}
+            />
+          ))}
 
-        {/* Protected Routes - Inside Layout (With Sidebar) */}
-        <Route element={<Layout />}>
-          {/* Core Pages */}
-          <Route path="/" element={<DashboardMainContent />} />
-          <Route path="/Dashboard" element={<DashboardMainContent />} />
-          <Route path="/Medicines" element={<Medicine />} />
-          <Route path="/Generics" element={<GenericsTable />} />
-          <Route path="/Inventory" element={<InventoryManagement />} />
+          {/* Redirect root to dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* Prescription Management */}
-          <Route path="/Prescription" element={<PrescriptionUploadsTable />} />
-          <Route path="/Pending_Prescriptions" element={<PendingPrescriptionsTable />} />
-          <Route path="/Prescription_Review/:prescriptionId" element={<PrescriptionReview />} />
-          <Route path="/AI_Test" element={<AITestPage />} />
+          {/* Protected Routes - Inside Layout (With Sidebar) */}
+          <Route element={<Layout />}>
+            {protectedRoutes.map((route) => (
+              <Route
+                key={route.path}
+                path={route.path}
+                element={renderRouteElement(route)}
+              />
+            ))}
 
-          {/* Order Management */}
-          <Route path="/Orders" element={<OrdersTable />} />
-          <Route path="/Orders/OrderDetails" element={<OrderDetails />} />
-
-          {/* User Management */}
-          <Route path="/Users" element={<UserManagement />} />
-          <Route path="/Customers" element={<CustomerManagement />} />
-
-          {/* Reports */}
-          <Route path="/Reports" element={<Reports />} />
-        </Route>
-      </Routes>
-    </Router>
-  )
+            {/* Catch-all route for 404 */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Route>
+        </Routes>
+      </Router>
+    </ErrorBoundary>
+  );
 }
 
 export default App

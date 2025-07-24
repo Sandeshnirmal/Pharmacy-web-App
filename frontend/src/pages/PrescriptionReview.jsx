@@ -1,9 +1,20 @@
 // PrescriptionReview.jsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Download,
+  Search
+} from 'lucide-react';
 import axiosInstance from '../api/axiosInstance';
 import OCRReprocessButton from '../components/OCRReprocessButton';
 import OCRResultsDisplay from '../components/OCRResultsDisplay';
+import PrescriptionStatusBadge from '../components/prescription/PrescriptionStatusBadge';
+import ConfidenceIndicator, { CircularConfidenceIndicator } from '../components/prescription/ConfidenceIndicator';
+import PrescriptionWorkflowVisualization from '../components/prescription/PrescriptionWorkflowVisualization';
 
 const PrescriptionReview = () => {
   const { prescriptionId } = useParams();
@@ -205,79 +216,175 @@ const PrescriptionReview = () => {
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-semibold text-gray-800">Prescription Review</h1>
-          <p className="text-sm text-gray-600">
-            Prescription ID: {prescription?.id} | Status: {prescription?.verification_status}
-          </p>
-        </div>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search for products"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          />
-          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-          </svg>
+    <div className="min-h-screen bg-gray-50">
+      {/* Enhanced Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate('/prescriptions')}
+                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft size={20} />
+                <span>Back to Prescriptions</span>
+              </button>
+              <div className="h-6 border-l border-gray-300"></div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Prescription Review #{prescription?.id}
+                </h1>
+                <div className="flex items-center space-x-4 mt-1">
+                  <PrescriptionStatusBadge
+                    status={prescription?.verification_status}
+                    size="sm"
+                  />
+                  <span className="text-sm text-gray-500">
+                    Uploaded {prescription?.upload_date ? new Date(prescription.upload_date).toLocaleDateString() : 'Unknown'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 pr-4 py-2 w-64 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
+              </div>
+
+              <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                <Download size={16} />
+                <span>Export</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* OCR Results Summary - Prominent Display */}
-      {prescription && prescriptionDetails.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-blue-900">
-              📋 OCR Extraction Results
-            </h2>
-            <div className="flex items-center space-x-4">
-              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                {prescriptionDetails.length} medicines extracted
-              </span>
-              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                {prescription.ai_confidence_score * 100}% confidence
-              </span>
-            </div>
-          </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {prescriptionDetails.map((detail, index) => (
-              <div key={detail.id} className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-blue-600">Medicine {index + 1}</span>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${detail.ai_confidence_score > 0.8 ? 'bg-green-100 text-green-800' :
-                      detail.ai_confidence_score > 0.5 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                    }`}>
-                    {Math.round(detail.ai_confidence_score * 100)}%
-                  </span>
-                </div>
-                <h3 className="font-semibold text-gray-900 mb-1">
-                  {detail.ai_extracted_medicine_name || 'Unknown'}
-                </h3>
-                <p className="text-sm text-gray-600 mb-1">
-                  {detail.ai_extracted_dosage || 'No dosage'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {detail.ai_extracted_instructions || 'No instructions'}
-                </p>
-                {detail.mapped_product && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-xs text-green-600 font-medium">
-                      ✅ Mapped to: {detail.mapped_product_name || 'Product'}
+        {/* Workflow Visualization */}
+        <PrescriptionWorkflowVisualization
+          currentStatus={prescription?.verification_status}
+          hasOrder={!!prescription?.order}
+          isDelivered={false}
+        />
+
+        {/* Enhanced OCR Results Summary */}
+        {prescription && prescriptionDetails.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0">
+                    <CircularConfidenceIndicator
+                      confidence={prescription.ai_confidence_score || 0}
+                      size={48}
+                    />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      AI Extraction Results
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      {prescriptionDetails.length} medicines detected with {Math.round((prescription.ai_confidence_score || 0) * 100)}% average confidence
                     </p>
                   </div>
-                )}
+                </div>
+
+                <div className="flex items-center space-x-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {prescriptionDetails.filter(d => d.mapped_product).length}
+                    </div>
+                    <div className="text-xs text-gray-500">Mapped</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {prescriptionDetails.filter(d => !d.mapped_product).length}
+                    </div>
+                    <div className="text-xs text-gray-500">Pending</div>
+                  </div>
+                </div>
               </div>
-            ))}
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {prescriptionDetails.map((detail, index) => (
+                  <div
+                    key={detail.id}
+                    className={`
+                      rounded-lg p-4 border-2 transition-all duration-200 hover:shadow-md
+                      ${detail.mapped_product
+                        ? 'border-green-200 bg-green-50'
+                        : 'border-orange-200 bg-orange-50'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-gray-700">
+                        Medicine {index + 1}
+                      </span>
+                      <ConfidenceIndicator
+                        confidence={detail.ai_confidence_score || 0}
+                        size="sm"
+                        showIcon={false}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <h3 className="font-semibold text-gray-900 text-sm">
+                          {detail.ai_extracted_medicine_name || 'Unknown Medicine'}
+                        </h3>
+                        <p className="text-xs text-gray-600">
+                          {detail.ai_extracted_dosage || 'No dosage specified'}
+                        </p>
+                      </div>
+
+                      {detail.ai_extracted_instructions && (
+                        <p className="text-xs text-gray-500 bg-white bg-opacity-50 p-2 rounded">
+                          {detail.ai_extracted_instructions}
+                        </p>
+                      )}
+
+                      {detail.mapped_product ? (
+                        <div className="flex items-center space-x-2 pt-2 border-t border-green-200">
+                          <CheckCircle size={14} className="text-green-600" />
+                          <span className="text-xs text-green-700 font-medium">
+                            Mapped to product
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between pt-2 border-t border-orange-200">
+                          <div className="flex items-center space-x-2">
+                            <AlertCircle size={14} className="text-orange-600" />
+                            <span className="text-xs text-orange-700 font-medium">
+                              Needs mapping
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => openProductModal(detail.id)}
+                            className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700"
+                          >
+                            Map
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Prescription Image Section (spanning 2 columns on large screens) */}
@@ -471,33 +578,70 @@ const PrescriptionReview = () => {
         />
       </div>
 
-      {/* Action Buttons at the bottom */}
-      <div className="flex justify-end space-x-4">
-        <button
-          onClick={handleReject}
-          className="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-6 rounded-md shadow-md
-                     transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-50"
-        >
-          Reject
-        </button>
-        <button
-          onClick={handleClarify}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-6 rounded-md shadow-md
-                     transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
-        >
-          Clarify
-        </button>
-        <button
-          onClick={handleVerify}
-          className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-md shadow-md
-                     transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-        >
-          Verify
-        </button>
-      </div>
+        {/* Enhanced Action Buttons */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Review Actions</h3>
+              <p className="text-sm text-gray-600">
+                Choose an action to complete the prescription review
+              </p>
+            </div>
 
-      {/* Product Mapping Modal */}
-      {showProductModal && (
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleReject}
+                className="flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              >
+                <XCircle size={18} />
+                <span>Reject</span>
+              </button>
+
+              <button
+                onClick={handleClarify}
+                className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                <AlertCircle size={18} />
+                <span>Request Clarification</span>
+              </button>
+
+              <button
+                onClick={handleVerify}
+                className="flex items-center space-x-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+              >
+                <CheckCircle size={18} />
+                <span>Verify & Approve</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Action Descriptions */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+              <h4 className="font-medium text-red-900 mb-2">Reject Prescription</h4>
+              <p className="text-sm text-red-700">
+                Mark prescription as rejected if medicines cannot be identified or prescription is invalid.
+              </p>
+            </div>
+
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-medium text-blue-900 mb-2">Request Clarification</h4>
+              <p className="text-sm text-blue-700">
+                Ask customer for additional information or clearer prescription image.
+              </p>
+            </div>
+
+            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+              <h4 className="font-medium text-green-900 mb-2">Verify & Approve</h4>
+              <p className="text-sm text-green-700">
+                Approve prescription for order creation. All medicines should be properly mapped.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Product Mapping Modal */}
+        {showProductModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
@@ -567,6 +711,7 @@ const PrescriptionReview = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
