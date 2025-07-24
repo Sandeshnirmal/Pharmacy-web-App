@@ -88,8 +88,9 @@ def login_user(request):
             token, created = Token.objects.get_or_create(user=user)
 
             return Response({
-                'access': token.key,
-                'refresh': token.key,  # For compatibility with mobile app
+                'token': token.key,  # Primary token for mobile app
+                'access': token.key,  # For compatibility
+                'refresh': token.key,  # For compatibility
                 'user': {
                     'id': user.id,
                     'email': user.email,

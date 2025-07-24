@@ -70,6 +70,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",    # Mobile app development
     "http://127.0.0.1:8080", 
     "http://192.168.77.6:8000",      # Mobile app development
+    "http://192.168.129.6:8001",     # Current Linux machine IP
+    "http://192.168.129.6:5174",     # Frontend development server
+    "http://192.168.129.6:3000",     # Alternative frontend port
 ]
 
 # Allow credentials for authentication
@@ -122,6 +125,9 @@ CSRF_TRUSTED_ORIGINS = [
     'http://192.168.77.6:8000',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
+    'http://192.168.129.6:8001',
+    'http://192.168.129.6:5174',
+    'http://192.168.129.6:3000',
 ]
 
 # Disable CSRF for API endpoints (since we disabled the middleware)
