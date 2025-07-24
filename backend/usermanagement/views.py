@@ -14,6 +14,7 @@ from .models import User, Address
 from .serializers import UserSerializer, AddressSerializer, RegisterSerializer, UserCreateSerializer
 from rest_framework.decorators import action
 from django.db.models import Q
+from django.utils import timezone
 
 # --- ViewSets for CRUD operations (require authentication for most actions) ---
 class UserViewSet(viewsets.ModelViewSet):
@@ -83,48 +84,114 @@ class RegisterView(APIView):
     permission_classes = [AllowAny] # Anyone can register
     # No authentication_classes needed here as it's a public endpoint
 
+    def get(self, request):
+        return Response({
+            'message': 'Registration endpoint is ready',
+            'methods': ['POST'],
+            'required_fields': ['first_name', 'last_name', 'email', 'password'],
+            'optional_fields': ['phone_number']
+        }, status=status.HTTP_200_OK)
+
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
-            
-            # Generate JWT tokens for the newly registered user
-            refresh = TokenObtainPairSerializer.get_token(user)
-            access_token = str(refresh.access_token)
+            try:
+                user = serializer.save()
 
-            return Response({
-                'access': access_token,
-                'refresh': str(refresh),
-                'user': UserSerializer(user).data # Return serialized user data
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                # Generate JWT tokens for the newly registered user
+                refresh = TokenObtainPairSerializer.get_token(user)
+                access_token = str(refresh.access_token)
+
+                return Response({
+                    'access': access_token,
+                    'refresh': str(refresh),
+                    'user': {
+                        'id': user.id,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'role': user.role,
+                        'phone_number': user.phone_number,
+                        'is_active': user.is_active
+                    },
+                    'message': 'Registration successful'
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response({
+                    'error': 'Registration failed',
+                    'message': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Return detailed validation errors
+        return Response({
+            'error': 'Validation failed',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 class LoginView(APIView):
     permission_classes = [AllowAny] # Anyone can attempt to login
     # No authentication_classes needed here as it's a public endpoint
+    def get(self, request):
+        return Response({
+            'message': 'Login endpoint is ready',
+            'methods': ['POST'],
+            'required_fields': ['email', 'password']
+        }, status=status.HTTP_200_OK)
 
     def post(self, request):
-        # Assuming your USERNAME_FIELD is 'email'
+        # Get credentials from request
         email = request.data.get('email')
         password = request.data.get('password')
+
+        # Validate required fields
+        if not email or not password:
+            return Response({
+                'error': 'Email and password are required',
+                'details': {
+                    'email': 'This field is required' if not email else None,
+                    'password': 'This field is required' if not password else None
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         # Use authenticate with the email as the 'username' argument
         user = authenticate(username=email, password=password)
 
         if user:
+            # Check if user is active
+            if not user.is_active:
+                return Response({
+                    'error': 'Account is deactivated',
+                    'message': 'Your account has been deactivated. Please contact support.'
+                }, status=status.HTTP_403_FORBIDDEN)
+
             # Generate JWT tokens upon successful authentication
             refresh = TokenObtainPairSerializer.get_token(user)
             access_token = str(refresh.access_token)
 
+            # Update last login
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login'])
+
             return Response({
                 'access': access_token,
                 'refresh': str(refresh),
-                # Optionally return basic user info if needed here
-                'user_id': user.id,
-                'email': user.email,
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'role': user.role,
+                    'is_staff': user.is_staff,
+                    'phone_number': user.phone_number,
+                    'profile_picture_url': user.profile_picture_url
+                },
+                'message': 'Login successful'
             }, status=status.HTTP_200_OK)
         else:
-            return Response({'error': 'Invalid Credentials'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'error': 'Invalid credentials',
+                'message': 'The email or password you entered is incorrect.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
 # --- Protected Views (require an authenticated JWT) ---
 
