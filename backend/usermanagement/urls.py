@@ -5,6 +5,9 @@ from .views import (
     EnhancedProfileView, ChangePasswordView, UserActivityView,
     UserDashboardView
 )
+from .enhanced_views import (
+    UserViewSet as EnhancedUserViewSet, UserRoleViewSet, DashboardViewSet as EnhancedDashboardViewSet
+)
 from . import views
 from rest_framework import routers
 
@@ -12,8 +15,15 @@ router = routers.DefaultRouter()
 router.register(r'users', views.UserViewSet)
 router.register(r'addresses', views.AddressViewSet)
 
+# Enhanced API router
+enhanced_router = routers.DefaultRouter()
+enhanced_router.register(r'enhanced-users', EnhancedUserViewSet, basename='enhanced-user')
+enhanced_router.register(r'roles', UserRoleViewSet, basename='user-role')
+enhanced_router.register(r'enhanced-dashboard', EnhancedDashboardViewSet, basename='enhanced-dashboard')
+
 urlpatterns = [
     path('', include(router.urls)),
+    path('', include(enhanced_router.urls)),
 
     # Authentication endpoints
     path('register/', RegisterView.as_view(), name='register'),

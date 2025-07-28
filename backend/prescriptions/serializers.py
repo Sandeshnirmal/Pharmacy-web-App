@@ -55,13 +55,13 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_total_medicines(self, obj):
-        return obj.details.count()
+        return obj.prescription_medicines.count()
 
     def get_verified_medicines(self, obj):
-        return obj.details.filter(is_valid_for_order=True).count()
+        return obj.prescription_medicines.filter(is_valid_for_order=True).count()
 
     def get_suggested_medicines(self, obj):
-        return obj.details.filter(suggested_products__isnull=False).count()
+        return obj.prescription_medicines.filter(suggested_products__isnull=False).count()
 
     def get_processing_status(self, obj):
         if obj.verification_status == 'AI_Processing':

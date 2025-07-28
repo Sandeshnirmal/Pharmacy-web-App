@@ -1,12 +1,17 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PrescriptionViewSet, PrescriptionDetailViewSet
+from .enhanced_views import EnhancedPrescriptionViewSet, PrescriptionMedicineViewSet
 from . import mobile_api
 # test_views removed - using only mobile_api now
 
 router = DefaultRouter()
 router.register(r'prescriptions', PrescriptionViewSet)
 router.register(r'prescription-details', PrescriptionDetailViewSet)
+
+# Enhanced API endpoints
+router.register(r'enhanced-prescriptions', EnhancedPrescriptionViewSet, basename='enhanced-prescription')
+router.register(r'medicines', PrescriptionMedicineViewSet, basename='prescription-medicine')
 
 urlpatterns = [
     path('', include(router.urls)),

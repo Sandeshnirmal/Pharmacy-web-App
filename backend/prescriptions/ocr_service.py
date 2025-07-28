@@ -1,9 +1,10 @@
 """
-Intelligent Medical OCR and Medicine Analysis System
-- Extracts medicine names from handwritten/printed prescriptions
-- Maps brand names to generic names and compositions
-- Matches with pharmacy's available inventory
-- Returns exact matching medicines or suggests alternatives
+Composition-Based Prescription OCR System
+- Performs OCR on prescription images to extract medicine names and compositions
+- Matches medicines based on active ingredients/salts, not brand names
+- Provides composition-based suggestions for user manual selection
+- No auto-cart addition - user controlled medicine selection
+- Supports admin approval workflow
 """
 
 import os
@@ -766,8 +767,217 @@ class OCRService:
 
         return 0.3  # Different forms, low compatibility
 
+    def extract_composition_based_medicines(self, image_path: str) -> Dict[str, Any]:
+        """
+        NEW: Composition-based prescription processing for user-controlled workflow
+
+        Steps:
+        1. OCR extraction of medicine names and compositions
+        2. Composition-based matching with local database
+        3. Return suggestions for manual user selection (NO auto-cart addition)
+        4. Prepare data for admin approval workflow
+        """
+        try:
+            # Step 1: OCR Extraction
+            ocr_result = self._extract_text_from_image(image_path)
+            if not ocr_result['success']:
+                return {
+                    'success': False,
+                    'error': 'OCR extraction failed',
+                    'extracted_medicines': [],
+                    'composition_matches': []
+                }
+
+            # Step 2: Parse extracted medicines with composition focus
+            extracted_medicines = self._parse_medicines_with_composition(ocr_result['extracted_text'])
+
+            # Step 3: Find composition-based matches
+            composition_matches = []
+            for medicine in extracted_medicines:
+                matches = self._find_composition_matches(medicine)
+                composition_matches.append({
+                    'extracted_medicine': medicine,
+                    'composition_matches': matches,
+                    'user_selected': False,  # User must manually select
+                    'admin_approved': False  # Requires admin approval
+                })
+
+            return {
+                'success': True,
+                'ocr_confidence': ocr_result.get('confidence', 0.8),
+                'extracted_text': ocr_result['extracted_text'],
+                'extracted_medicines': extracted_medicines,
+                'composition_matches': composition_matches,
+                'total_medicines_found': len(extracted_medicines),
+                'requires_manual_selection': True,
+                'requires_admin_approval': True
+            }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Composition-based processing failed: {str(e)}',
+                'extracted_medicines': [],
+                'composition_matches': []
+            }
+
+    def _parse_medicines_with_composition(self, extracted_text: str) -> List[Dict[str, Any]]:
+        """
+        Parse extracted text focusing on composition and salt extraction
+        """
+        medicines = []
+        lines = extracted_text.split('\n')
+
+        for i, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line or len(line) < 3:
+                continue
+
+            # Extract medicine information with composition focus
+            medicine_info = self._extract_medicine_composition_info(line)
+            if medicine_info:
+                medicine_info['line_number'] = i
+                medicine_info['original_text'] = line
+                medicines.append(medicine_info)
+
+        return medicines
+
+    def _extract_medicine_composition_info(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Extract medicine name, composition/salt, and dosage from text line
+        """
+        # Clean the text
+        text = re.sub(r'^\d+\.?\s*', '', text)  # Remove numbering
+        text = text.strip()
+
+        if len(text) < 2:
+            return None
+
+        # Extract dosage/strength
+        strength_pattern = r'(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|%|iu|units?)\b'
+        strength_matches = re.findall(strength_pattern, text, re.IGNORECASE)
+        strength = f"{strength_matches[0][0]}{strength_matches[0][1]}" if strength_matches else ""
+
+        # Extract medicine name (before strength or special characters)
+        medicine_name = re.split(r'\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|%|iu|units?)', text, 1)[0].strip()
+        medicine_name = re.split(r'[-–—]', medicine_name)[0].strip()
+
+        # Try to identify composition from brand name
+        composition = self._identify_composition_from_name(medicine_name)
+
+        # Extract frequency and duration if present
+        frequency = self._extract_frequency(text)
+        duration = self._extract_duration(text)
+
+        return {
+            'medicine_name': medicine_name,
+            'composition': composition,
+            'strength': strength,
+            'frequency': frequency,
+            'duration': duration,
+            'form': self._extract_form(text)
+        }
+
+    def _identify_composition_from_name(self, medicine_name: str) -> str:
+        """
+        Identify active ingredient/composition from medicine brand name
+        """
+        name_lower = medicine_name.lower().strip()
+
+        # Check brand-to-generic mapping
+        for brand, info in self.brand_to_generic_mapping.items():
+            if brand in name_lower or name_lower.startswith(brand):
+                return info['composition']
+
+        # If not found in mapping, return the name itself (might be generic)
+        return medicine_name
+
+    def _find_composition_matches(self, medicine_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Find medicines in database that match the composition/salt
+        """
+        composition = medicine_info.get('composition', '')
+        strength = medicine_info.get('strength', '')
+        form = medicine_info.get('form', '')
+
+        matches = []
+
+        # Query database for composition matches
+        products = Product.objects.filter(is_active=True)
+
+        for product in products:
+            match_score = self._calculate_composition_match_score(
+                medicine_info, product
+            )
+
+            if match_score > 0.3:  # Only include reasonable matches
+                matches.append({
+                    'product_id': str(product.id),
+                    'product_name': product.name,
+                    'composition': self._get_product_composition(product),
+                    'strength': product.strength,
+                    'form': product.form,
+                    'manufacturer': product.manufacturer,
+                    'price': float(product.price),
+                    'mrp': float(product.mrp),
+                    'stock_available': product.stock_quantity > 0,
+                    'stock_quantity': product.stock_quantity,
+                    'match_score': match_score,
+                    'match_type': self._get_match_type(match_score),
+                    'is_prescription_required': product.is_prescription_required
+                })
+
+        # Sort by match score (highest first)
+        matches.sort(key=lambda x: x['match_score'], reverse=True)
+
+        return matches[:10]  # Return top 10 matches
+
+    def _calculate_composition_match_score(self, medicine_info: Dict[str, Any], product) -> float:
+        """
+        Calculate match score based on composition similarity
+        """
+        extracted_composition = medicine_info.get('composition', '').lower()
+        product_composition = self._get_product_composition(product).lower()
+
+        # Composition similarity (most important)
+        comp_similarity = self._calculate_composition_similarity(
+            extracted_composition, product_composition
+        )
+
+        # Strength similarity
+        extracted_strength = medicine_info.get('strength', '').lower()
+        product_strength = (product.strength or '').lower()
+        strength_similarity = 1.0 if extracted_strength == product_strength else 0.5
+
+        # Form compatibility
+        extracted_form = medicine_info.get('form', '').lower()
+        product_form = (product.form or '').lower()
+        form_compatibility = self._check_form_compatibility(extracted_form, product_form)
+
+        # Calculate weighted score
+        total_score = (
+            comp_similarity * 0.6 +      # Composition is most important
+            strength_similarity * 0.3 +   # Strength is important
+            form_compatibility * 0.1       # Form is least important
+        )
+
+        return min(1.0, total_score)
+
+    def _get_match_type(self, score: float) -> str:
+        """
+        Categorize match type based on score
+        """
+        if score >= 0.9:
+            return 'exact_match'
+        elif score >= 0.7:
+            return 'high_similarity'
+        elif score >= 0.5:
+            return 'moderate_similarity'
+        else:
+            return 'low_similarity'
+
     def process_prescription_image(self, image_path: str) -> Dict[str, Any]:
         """
         Legacy method for backward compatibility
         """
-        return self.analyze_prescription_medicines_by_composition(image_path)
+        return self.extract_composition_based_medicines(image_path)

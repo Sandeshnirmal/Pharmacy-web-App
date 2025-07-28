@@ -1,0 +1,822 @@
+# Enhanced Prescription Views with Intelligent Workflow
+# Multi-step verification process: Verified → Need Clarification → Rejected
+
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.contrib.auth import get_user_model
+from django.db.models import Q, Count, F
+from django.utils import timezone
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+from datetime import timedelta
+import uuid
+import os
+
+from .models import (
+    Prescription, PrescriptionMedicine, PrescriptionWorkflowLog,
+    PrescriptionDetail  # Legacy alias
+)
+from .serializers import (
+    PrescriptionSerializer, PrescriptionDetailSerializer
+)
+from .ocr_service import OCRService
+from usermanagement.models import UserRole
+from product.models import Product
+
+User = get_user_model()
+
+# ============================================================================
+# CUSTOM PERMISSIONS FOR ROLE-BASED ACCESS
+# ============================================================================
+
+class IsPharmacistOrAdmin(permissions.BasePermission):
+    """Permission for pharmacist and admin users"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ['admin', 'pharmacist']
+
+class IsVerifierOrAbove(permissions.BasePermission):
+    """Permission for verifier, pharmacist, and admin users"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ['admin', 'pharmacist', 'verifier']
+
+# ============================================================================
+# INTELLIGENT PRESCRIPTION WORKFLOW VIEWSET
+# ============================================================================
+
+class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
+    """Enhanced prescription management with intelligent workflow"""
+    queryset = Prescription.objects.all()
+    serializer_class = PrescriptionSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        """Filter prescriptions based on user role and permissions"""
+        user = self.request.user
+        queryset = Prescription.objects.all()
+        
+        # Customers see only their prescriptions
+        if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
+            queryset = queryset.filter(user=user)
+        
+        # Apply filters
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        verification_status = self.request.query_params.get('verification_status')
+        if verification_status:
+            queryset = queryset.filter(verification_status=verification_status)
+        
+        # Date range filter
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            queryset = queryset.filter(upload_date__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(upload_date__date__lte=date_to)
+        
+        # Search functionality
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(prescription_number__icontains=search) |
+                Q(patient_name__icontains=search) |
+                Q(doctor_name__icontains=search)
+            )
+        
+        return queryset.order_by('-upload_date')
+    
+    def perform_create(self, serializer):
+        """Create prescription with workflow logging"""
+        prescription = serializer.save()
+        
+        # Log workflow action
+        PrescriptionWorkflowLog.objects.create(
+            prescription=prescription,
+            from_status='',
+            to_status='uploaded',
+            action_taken='Prescription uploaded',
+            performed_by=self.request.user if self.request.user.is_authenticated else None,
+            system_generated=False
+        )
+        
+        # Trigger AI processing if image is provided
+        if prescription.image_file:
+            self.trigger_ai_processing(prescription)
+    
+    def trigger_ai_processing(self, prescription):
+        """Trigger AI processing for prescription"""
+        # Update prescription status
+        prescription.status = 'ai_processing'
+        prescription.save()
+        
+        # Update prescription status
+        prescription.status = 'ai_processing'
+        prescription.save()
+        
+        # Log workflow change
+        PrescriptionWorkflowLog.objects.create(
+            prescription=prescription,
+            from_status='uploaded',
+            to_status='ai_processing',
+            action_taken='AI processing started',
+            performed_by=self.request.user if self.request.user.is_authenticated else None,
+            system_generated=True
+        )
+        
+        # TODO: Integrate with actual AI service
+        # For now, simulate AI processing
+        self.simulate_ai_processing(prescription)
+
+    def simulate_ai_processing(self, prescription):
+        """Simulate AI processing (replace with actual AI integration)"""
+        import time
+        import random
+
+        # Simulate processing time
+        processing_time = random.uniform(2.0, 5.0)
+
+        # Simulate AI results
+        confidence_score = random.uniform(0.7, 0.95)
+        medicines_detected = random.randint(1, 3)
+        
+        # Update prescription
+        prescription.status = 'ai_mapped'
+        prescription.ai_processed = True
+        prescription.ai_confidence_score = confidence_score
+        prescription.ai_processing_time = processing_time
+        prescription.ocr_text = ai_log.extracted_text
+        prescription.save()
+        
+        # Create sample prescription medicines
+        for i in range(medicines_detected):
+            PrescriptionMedicine.objects.create(
+                prescription=prescription,
+                line_number=i + 1,
+                extracted_medicine_name=f"Medicine {i + 1}",
+                extracted_dosage="500mg",
+                extracted_frequency="Twice daily",
+                extracted_duration="7 days",
+                ai_confidence_score=random.uniform(0.6, 0.9)
+            )
+        
+        # Update status to pending verification
+        prescription.status = 'pending_verification'
+        prescription.save()
+        
+        # Log workflow changes
+        PrescriptionWorkflowLog.objects.create(
+            prescription=prescription,
+            from_status='ai_processing',
+            to_status='ai_mapped',
+            action_taken='AI processing completed',
+            performed_by=self.request.user if self.request.user.is_authenticated else None,
+            system_generated=True
+        )
+        
+        PrescriptionWorkflowLog.objects.create(
+            prescription=prescription,
+            from_status='ai_mapped',
+            to_status='pending_verification',
+            action_taken='Ready for verification',
+            performed_by=self.request.user if self.request.user.is_authenticated else None,
+            system_generated=True
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def verify(self, request, pk=None):
+        """Verify prescription (Verified/Need Clarification/Rejected)"""
+        prescription = self.get_object()
+        
+        # Check verification status - use verification_status field primarily
+        current_status = prescription.verification_status
+        if current_status not in ['pending_verification', 'Pending_Review', 'AI_Processed']:
+            return Response(
+                {'error': f'Prescription is not in pending verification status. Current status: {current_status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        verification_action = request.data.get('action')  # 'verified', 'need_clarification', 'rejected'
+        notes = request.data.get('notes', '')
+        rejection_reason = request.data.get('rejection_reason', '')
+        
+        if verification_action not in ['verified', 'need_clarification', 'rejected']:
+            return Response(
+                {'error': 'Invalid verification action'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update prescription - update both status fields for compatibility
+        old_status = prescription.status if hasattr(prescription, 'status') else prescription.verification_status
+        if hasattr(prescription, 'status'):
+            prescription.status = verification_action
+        prescription.verification_status = verification_action.title().replace('_', '_') if verification_action == 'need_clarification' else verification_action.title()
+        prescription.verified_by_admin = request.user if request.user.is_authenticated else None
+        prescription.verification_date = timezone.now()
+        
+        if verification_action == 'verified':
+            prescription.verification_notes = notes
+        elif verification_action == 'need_clarification':
+            prescription.clarification_notes = notes
+        elif verification_action == 'rejected':
+            if not rejection_reason:
+                return Response(
+                    {'error': 'Rejection reason is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            prescription.rejection_reason = rejection_reason
+        
+        prescription.save()
+        
+        # Log workflow action
+        PrescriptionWorkflowLog.objects.create(
+            prescription=prescription,
+            from_status=old_status,
+            to_status=verification_action,
+            action_taken=f'Prescription {verification_action}',
+            notes=notes or rejection_reason,
+            performed_by=request.user if request.user.is_authenticated else None,
+            system_generated=False
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'Prescription {verification_action} successfully',
+            'status': verification_action,
+            'prescription_id': prescription.id,
+            'can_create_order': verification_action == 'verified'
+        })
+    
+    @action(detail=True, methods=['get'])
+    def workflow_history(self, request, pk=None):
+        """Get prescription workflow history"""
+        prescription = self.get_object()
+        logs = prescription.workflow_logs.all()
+        serializer = PrescriptionWorkflowLogSerializer(logs, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def ai_processing_logs(self, request, pk=None):
+        """Get AI processing logs for prescription"""
+        prescription = self.get_object()
+        logs = prescription.ai_processing_logs.all()
+        serializer = AIProcessingLogSerializer(logs, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], permission_classes=[IsVerifierOrAbove])
+    def verification_queue(self, request):
+        """Get prescriptions pending verification"""
+        prescriptions = Prescription.objects.filter(
+            status='pending_verification'
+        ).order_by('-upload_date')
+
+        queue_data = []
+        for prescription in prescriptions:
+            # Calculate priority score
+            from datetime import datetime
+            age_hours = (datetime.now(timezone.utc) - prescription.upload_date).total_seconds() / 3600
+            priority_score = min(age_hours * 2, 100)  # Max 100 points for age
+
+            if prescription.ai_confidence_score:
+                priority_score += (1 - prescription.ai_confidence_score) * 50
+
+            medicines_count = prescription.prescription_medicines.count()
+            priority_score += medicines_count * 5
+
+            queue_data.append({
+                'id': prescription.id,
+                'prescription_number': prescription.prescription_number,
+                'patient_name': prescription.patient_name,
+                'doctor_name': prescription.doctor_name,
+                'status': prescription.status,
+                'ai_confidence_score': prescription.ai_confidence_score,
+                'upload_date': prescription.upload_date,
+                'medicines_count': medicines_count,
+                'priority_score': round(priority_score, 2)
+            })
+
+        # Sort by priority score (descending)
+        queue_data.sort(key=lambda x: x['priority_score'], reverse=True)
+
+        return Response(queue_data)
+    
+    @action(detail=False, methods=['get'], permission_classes=[IsPharmacistOrAdmin])
+    def analytics(self, request):
+        """Get prescription analytics"""
+        # Calculate analytics
+        total_prescriptions = Prescription.objects.count()
+        pending_verification = Prescription.objects.filter(status='pending_verification').count()
+        
+        today = timezone.now().date()
+        verified_today = Prescription.objects.filter(
+            verification_date__date=today,
+            status='verified'
+        ).count()
+        
+        rejected_today = Prescription.objects.filter(
+            verification_date__date=today,
+            status='rejected'
+        ).count()
+        
+        need_clarification = Prescription.objects.filter(status='need_clarification').count()
+        
+        # Calculate average processing time
+        completed_prescriptions = Prescription.objects.filter(
+            verification_date__isnull=False
+        )
+        
+        total_time = 0
+        count = 0
+        for prescription in completed_prescriptions:
+            if prescription.upload_date and prescription.verification_date:
+                delta = prescription.verification_date - prescription.upload_date
+                total_time += delta.total_seconds() / 3600
+                count += 1
+        
+        average_processing_time = round(total_time / count, 2) if count > 0 else 0
+        
+        # Calculate AI accuracy rate
+        ai_processed = Prescription.objects.filter(ai_processed=True)
+        accurate_predictions = ai_processed.filter(ai_confidence_score__gte=0.8).count()
+        ai_accuracy_rate = round((accurate_predictions / ai_processed.count()) * 100, 2) if ai_processed.count() > 0 else 0
+        
+        # Get top medicines
+        top_medicines = PrescriptionMedicine.objects.filter(
+            verification_status='approved'
+        ).values('verified_medicine__name').annotate(
+            count=Count('id')
+        ).order_by('-count')[:10]
+        
+        data = {
+            'total_prescriptions': total_prescriptions,
+            'pending_verification': pending_verification,
+            'verified_today': verified_today,
+            'rejected_today': rejected_today,
+            'need_clarification': need_clarification,
+            'average_processing_time': average_processing_time,
+            'ai_accuracy_rate': ai_accuracy_rate,
+            'top_medicines': list(top_medicines)
+        }
+        
+        return Response({
+            'total_prescriptions': total_prescriptions,
+            'pending_verification': pending_verification,
+            'verified_today': verified_today,
+            'rejected_today': rejected_today,
+            'need_clarification': need_clarification,
+            'average_processing_time': average_processing_time,
+            'ai_accuracy_rate': ai_accuracy_rate
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])
+    def create_order(self, request, pk=None):
+        """Create order from verified prescription only"""
+        prescription = self.get_object()
+
+        # Only allow order creation for verified prescriptions
+        if prescription.status != 'verified':
+            return Response({
+                'error': 'Orders can only be created from verified prescriptions',
+                'current_status': prescription.status,
+                'required_status': 'verified'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if all medicines are verified and mapped
+        unverified_medicines = prescription.prescription_medicines.filter(
+            verification_status__in=['pending', 'need_clarification', 'rejected']
+        )
+
+        if unverified_medicines.exists():
+            return Response({
+                'error': 'All medicines must be verified before creating order',
+                'unverified_count': unverified_medicines.count(),
+                'unverified_medicines': [
+                    {
+                        'id': med.id,
+                        'name': med.extracted_medicine_name,
+                        'status': med.verification_status
+                    }
+                    for med in unverified_medicines
+                ]
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get order data from request
+        order_data = request.data
+
+        try:
+            from orders.models import Order, OrderItem
+            from django.db import transaction
+
+            with transaction.atomic():
+                # Create order
+                order = Order.objects.create(
+                    user=prescription.user,
+                    address_id=order_data.get('address_id'),
+                    total_amount=order_data.get('total_amount', 0),
+                    payment_method=order_data.get('payment_method', 'COD'),
+                    payment_status='Pending',
+                    order_status='Pending',
+                    is_prescription_order=True,
+                    prescription=prescription,
+                    notes=f'Order created from prescription {prescription.prescription_number}'
+                )
+
+                # Create order items from verified medicines
+                verified_medicines = prescription.prescription_medicines.filter(
+                    verification_status='verified',
+                    verified_medicine__isnull=False
+                )
+
+                total_amount = 0
+                for medicine in verified_medicines:
+                    quantity = medicine.quantity_prescribed or 1
+                    unit_price = medicine.verified_medicine.price
+
+                    OrderItem.objects.create(
+                        order=order,
+                        product=medicine.verified_medicine,
+                        quantity=quantity,
+                        unit_price=unit_price,
+                        unit_price_at_order=unit_price,
+                        prescription_detail=medicine
+                    )
+
+                    total_amount += quantity * unit_price
+
+                # Update order total
+                order.total_amount = total_amount
+                order.save()
+
+                # Update prescription status
+                prescription.status = 'dispensed'
+                prescription.save()
+
+                # Log workflow action
+                PrescriptionWorkflowLog.objects.create(
+                    prescription=prescription,
+                    from_status='verified',
+                    to_status='dispensed',
+                    action_taken='Order created from prescription',
+                    notes=f'Order #{order.id} created',
+                    performed_by=request.user if request.user.is_authenticated else None,
+                    system_generated=False
+                )
+
+                return Response({
+                    'success': True,
+                    'message': 'Order created successfully',
+                    'order_id': order.id,
+                    'total_amount': float(order.total_amount),
+                    'items_count': order.items.count()
+                })
+
+        except Exception as e:
+            return Response({
+                'error': f'Failed to create order: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ============================================================================
+# PRESCRIPTION MEDICINE MANAGEMENT VIEWSET
+# ============================================================================
+
+class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing prescription medicines with AI mapping"""
+    queryset = PrescriptionMedicine.objects.all()
+    serializer_class = PrescriptionDetailSerializer  # Use existing serializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        """Filter prescription medicines based on user permissions"""
+        user = self.request.user
+        queryset = PrescriptionMedicine.objects.all()
+
+        # Customers see only their prescription medicines
+        if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
+            queryset = queryset.filter(prescription__user=user)
+
+        # Filter by prescription
+        prescription_id = self.request.query_params.get('prescription')
+        if prescription_id:
+            queryset = queryset.filter(prescription_id=prescription_id)
+
+        # Filter by verification status
+        verification_status = self.request.query_params.get('verification_status')
+        if verification_status:
+            queryset = queryset.filter(verification_status=verification_status)
+
+        return queryset.order_by('prescription__upload_date', 'line_number')
+
+    @action(detail=True, methods=['post'], permission_classes=[IsVerifierOrAbove])
+    def verify_medicine(self, request, pk=None):
+        """Verify individual prescription medicine"""
+        medicine = self.get_object()
+
+        verification_status = request.data.get('verification_status')
+        if verification_status not in ['verified', 'need_clarification', 'rejected']:
+            return Response(
+                {'error': 'Invalid verification status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Update medicine verification
+        medicine.verification_status = verification_status
+        medicine.pharmacist_comment = request.data.get('pharmacist_comment', '')
+        medicine.save()
+
+        # Log the verification action
+        PrescriptionWorkflowLog.objects.create(
+            prescription=medicine.prescription,
+            from_status='pending',
+            to_status=verification_status,
+            action_taken=f'Medicine {medicine.extracted_medicine_name} {verification_status}',
+            notes=request.data.get('pharmacist_comment', ''),
+            performed_by=request.user if request.user.is_authenticated else None,
+            system_generated=False
+        )
+
+        return Response({
+            'success': True,
+            'message': f'Medicine {verification_status} successfully'
+        })
+
+    @action(detail=True, methods=['post'])
+    def suggest_alternatives(self, request, pk=None):
+        """Get alternative medicine suggestions"""
+        medicine = self.get_object()
+
+        # Simple algorithm to find alternatives based on generic name
+        from product.models import Product
+
+        alternatives = []
+        if medicine.mapped_product:
+            # Find products with same generic name
+            similar_products = Product.objects.filter(
+                generic_name=medicine.mapped_product.generic_name,
+                is_active=True
+            ).exclude(id=medicine.mapped_product.id)[:5]
+
+            alternatives = [
+                {
+                    'id': product.id,
+                    'name': product.name,
+                    'manufacturer': product.manufacturer,
+                    'price': product.price
+                }
+                for product in similar_products
+            ]
+
+        return Response({
+            'alternatives': alternatives,
+            'count': len(alternatives)
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def remap_medicine(self, request, pk=None):
+        """Remap prescription medicine to a different product"""
+        medicine = self.get_object()
+
+        new_product_id = request.data.get('product_id')
+        if not new_product_id:
+            return Response({
+                'error': 'Product ID is required for remapping'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from product.models import Product
+            new_product = Product.objects.get(id=new_product_id, is_active=True)
+
+            # Update the medicine mapping
+            old_product = medicine.verified_medicine
+            medicine.verified_medicine = new_product
+            medicine.mapped_product = new_product  # Legacy field
+            medicine.verified_medicine_name = new_product.name
+            medicine.verification_status = 'verified'
+            medicine.pharmacist_comment = request.data.get('comment', f'Remapped from {old_product.name if old_product else "unknown"} to {new_product.name}')
+            medicine.verified_by = request.user if request.user.is_authenticated else None
+            medicine.save()
+
+            # Log the remapping action
+            PrescriptionWorkflowLog.objects.create(
+                prescription=medicine.prescription,
+                from_status='pending',
+                to_status='remapped',
+                action_taken=f'Medicine remapped: {medicine.extracted_medicine_name}',
+                notes=f'Remapped to {new_product.name}',
+                performed_by=request.user if request.user.is_authenticated else None,
+                system_generated=False
+            )
+
+            return Response({
+                'success': True,
+                'message': f'Medicine successfully remapped to {new_product.name}',
+                'medicine_id': medicine.id,
+                'new_product': {
+                    'id': new_product.id,
+                    'name': new_product.name,
+                    'manufacturer': new_product.manufacturer,
+                    'price': float(new_product.price)
+                }
+            })
+
+        except Product.DoesNotExist:
+            return Response({
+                'error': 'Product not found or inactive'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to remap medicine: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def mobile_composition_prescription_upload(self, request):
+        """
+        MOBILE APP API: Composition-based prescription processing for mobile customers
+
+        This endpoint is called by the mobile application when customers upload prescriptions.
+        Process prescription image with composition-based matching:
+        1. OCR extraction of medicine names and compositions
+        2. Match based on active ingredients/salts
+        3. Return suggestions for manual user selection in mobile app
+        4. No auto-cart addition - user controlled in mobile app
+        5. Creates prescription record for admin dashboard approval workflow
+        """
+        try:
+            # Validate request
+            if 'prescription_image' not in request.FILES:
+                return Response({
+                    'success': False,
+                    'error': 'Prescription image is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            prescription_image = request.FILES['prescription_image']
+
+            # Validate image file
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
+            file_extension = os.path.splitext(prescription_image.name)[1].lower()
+            if file_extension not in allowed_extensions:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid file format. Allowed: JPG, JPEG, PNG, PDF'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Save uploaded image temporarily
+            file_path = default_storage.save(
+                f'temp_prescriptions/{prescription_image.name}',
+                ContentFile(prescription_image.read())
+            )
+            full_path = default_storage.path(file_path)
+
+            try:
+                # Initialize OCR service
+                ocr_service = OCRService()
+
+                # Process prescription with composition-based matching
+                result = ocr_service.extract_composition_based_medicines(full_path)
+
+                if result['success']:
+                    # Prepare response for frontend
+                    response_data = {
+                        'success': True,
+                        'message': 'Prescription processed successfully',
+                        'ocr_confidence': result.get('ocr_confidence', 0.8),
+                        'extracted_text': result.get('extracted_text', ''),
+                        'total_medicines_extracted': result.get('total_medicines_found', 0),
+                        'extracted_medicines': result.get('extracted_medicines', []),
+                        'composition_matches': result.get('composition_matches', []),
+                        'workflow_info': {
+                            'requires_manual_selection': True,
+                            'requires_admin_approval': True,
+                            'auto_cart_addition': False,
+                            'next_step': 'User must manually select medicines from suggestions'
+                        },
+                        'instructions': {
+                            'step_1': 'Review extracted medicines and their compositions',
+                            'step_2': 'Manually select medicines from composition-based matches',
+                            'step_3': 'Add selected medicines to cart',
+                            'step_4': 'Upload original prescription during checkout',
+                            'step_5': 'Order will be sent to admin for approval'
+                        }
+                    }
+
+                    # Add match statistics
+                    total_matches = sum(len(match['composition_matches']) for match in result.get('composition_matches', []))
+                    response_data['match_statistics'] = {
+                        'total_composition_matches': total_matches,
+                        'exact_matches': sum(1 for match in result.get('composition_matches', [])
+                                           for comp_match in match['composition_matches']
+                                           if comp_match.get('match_type') == 'exact_match'),
+                        'high_similarity_matches': sum(1 for match in result.get('composition_matches', [])
+                                                     for comp_match in match['composition_matches']
+                                                     if comp_match.get('match_type') == 'high_similarity'),
+                        'average_match_score': sum(comp_match.get('match_score', 0)
+                                                 for match in result.get('composition_matches', [])
+                                                 for comp_match in match['composition_matches']) / max(total_matches, 1)
+                    }
+
+                    return Response(response_data, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        'success': False,
+                        'error': result.get('error', 'Failed to process prescription'),
+                        'extracted_medicines': [],
+                        'composition_matches': []
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            finally:
+                # Clean up temporary file
+                if default_storage.exists(file_path):
+                    default_storage.delete(file_path)
+
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Prescription processing failed: {str(e)}',
+                'extracted_medicines': [],
+                'composition_matches': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def add_medicine_to_prescription(self, request):
+        """Add a new medicine to an existing prescription"""
+        prescription_id = request.data.get('prescription_id')
+        product_id = request.data.get('product_id')
+
+        if not prescription_id or not product_id:
+            return Response({
+                'error': 'Both prescription_id and product_id are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from product.models import Product
+
+            prescription = Prescription.objects.get(id=prescription_id)
+            product = Product.objects.get(id=product_id, is_active=True)
+
+            # Check if prescription can be modified
+            if prescription.status in ['dispensed', 'completed']:
+                return Response({
+                    'error': 'Cannot add medicines to dispensed or completed prescriptions'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create new prescription medicine
+            medicine = PrescriptionMedicine.objects.create(
+                prescription=prescription,
+                line_number=prescription.prescription_medicines.count() + 1,
+                extracted_medicine_name=product.name,
+                extracted_dosage=request.data.get('dosage', ''),
+                extracted_frequency=request.data.get('frequency', ''),
+                extracted_duration=request.data.get('duration', ''),
+                extracted_quantity=request.data.get('quantity', '1'),
+                extracted_instructions=request.data.get('instructions', ''),
+                verified_medicine=product,
+                mapped_product=product,  # Legacy field
+                verified_medicine_name=product.name,
+                verification_status='verified',
+                quantity_prescribed=int(request.data.get('quantity', 1)),
+                pharmacist_comment=f'Medicine added by {request.user.get_full_name() if request.user.is_authenticated else "System"}',
+                verified_by=request.user if request.user.is_authenticated else None,
+                ai_confidence_score=1.0,  # Manual addition has 100% confidence
+                is_valid_for_order=True
+            )
+
+            # Log the addition
+            PrescriptionWorkflowLog.objects.create(
+                prescription=prescription,
+                from_status=prescription.status,
+                to_status=prescription.status,
+                action_taken=f'Medicine added: {product.name}',
+                notes=f'Added by pharmacist/verifier',
+                performed_by=request.user if request.user.is_authenticated else None,
+                system_generated=False
+            )
+
+            return Response({
+                'success': True,
+                'message': f'Medicine {product.name} added to prescription successfully',
+                'medicine_id': medicine.id,
+                'prescription_id': prescription.id,
+                'medicine': {
+                    'id': medicine.id,
+                    'name': product.name,
+                    'dosage': medicine.extracted_dosage,
+                    'frequency': medicine.extracted_frequency,
+                    'duration': medicine.extracted_duration,
+                    'quantity': medicine.quantity_prescribed,
+                    'price': float(product.price)
+                }
+            })
+
+        except Prescription.DoesNotExist:
+            return Response({
+                'error': 'Prescription not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Product.DoesNotExist:
+            return Response({
+                'error': 'Product not found or inactive'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to add medicine: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
