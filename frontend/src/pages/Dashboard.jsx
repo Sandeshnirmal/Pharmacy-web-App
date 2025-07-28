@@ -111,10 +111,15 @@ function DashboardMainContent() {
       title: 'Total Orders',
       value: dashboardData.stats.totalOrders.toLocaleString(),
       icon: (
-        <svg fill="currentColor" viewBox="0 0 20 20">
-          <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+         // Your provided SVG code goes here directly
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="21" r="1" />
+          <circle cx="20" cy="21" r="1" />
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
         </svg>
       ),
+
+      
       color: 'bg-blue-500',
       link: '/Orders',
       trend: 12 // Example trend data
@@ -185,15 +190,7 @@ function DashboardMainContent() {
   return (
     <main className="flex-1 p-4 sm:p-6 md:p-8 bg-gray-50">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900">Pharmacy Admin Dashboard</h1>
-        <p className="text-gray-600">Manage your mobile pharmacy app - Monitor orders, prescriptions, and inventory from customer mobile app</p>
-        <div className="mt-2 text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded inline-block">
-          Admin Panel for Mobile E-Commerce Pharmacy
-        </div>
-      </div>
-
-      {/* Header with Last Updated */}
+      
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-semibold text-gray-900">Pharmacy Admin Dashboard</h1>

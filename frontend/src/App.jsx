@@ -1,61 +1,71 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Suspense } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
-import LoadingSpinner from './components/LoadingSpinner';
-import ErrorBoundary from './components/ErrorBoundary';
-import { getPublicRoutes, getProtectedRoutes } from './routes';
 
-// Helper function to render route element with lazy loading
-const renderRouteElement = (route) => {
-  const Component = route.element;
+// Core Pages
+import DashboardMainContent from './pages/Dashboard.jsx'
+import Medicine from './pages/MedicinesListPage.jsx';
+import GenericsTable from './pages/GenericsTable.jsx';
+import InventoryManagement from './pages/InventoryManagement.jsx';
 
-  if (route.lazy) {
-    return (
-      <Suspense fallback={<LoadingSpinner message={`Loading ${route.title}...`} />}>
-        <Component />
-      </Suspense>
-    );
-  }
+// Prescription Management
+import PrescriptionUploadsTable from './pages/PrescriptionUploadsTable.jsx';
+import PrescriptionReview from './pages/PrescriptionReview.jsx';
+import PendingPrescriptionsTable from './pages/PendingPrescriptionsTable.jsx';
+import AITestPage from './pages/AITestPage.jsx';
 
-  return <Component />;
-};
+// Order Management
+import OrderDetails from './pages/OrderDetails.jsx';
+import OrdersTable from './pages/OrdersTable.jsx';
+
+// User Management
+import Login from './pages/Login.jsx';
+import UserManagement from './pages/UserManagement.jsx';
+import CustomerManagement from './pages/CustomerManagement.jsx';
+
+// Reports
+import SalesReportsAnalysisPage from "./pages/Report.jsx";
 
 function App() {
-  const publicRoutes = getPublicRoutes();
-  const protectedRoutes = getProtectedRoutes();
-
   return (
-    <ErrorBoundary>
-      <Router>
-        <Routes>
-          {/* Public Routes - Outside Layout (No Sidebar) */}
-          {publicRoutes.map((route) => (
-            <Route
-              key={route.path}
-              path={route.path}
-              element={renderRouteElement(route)}
-            />
-          ))}
+    <Router>
+      <Routes>
+        {/* Login Route - Outside Layout (No Sidebar) */}
+        <Route path="/Login" element={<Login />} />
 
-          {/* Redirect root to dashboard */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        {/* Protected Routes - Inside Layout (With Sidebar) */}
+        <Route element={<Layout />}>
+          {/* Core Pages */}
+          <Route path="/" element={<DashboardMainContent />} />
+          <Route path="/Dashboard" element={<DashboardMainContent />} />
+          <Route path="/Medicines" element={<Medicine />} />
+          <Route path="/Generics" element={<GenericsTable />} />
+          <Route path="/Inventory" element={<InventoryManagement />} />
 
-          {/* Protected Routes - Inside Layout (With Sidebar) */}
-          <Route element={<Layout />}>
-            {protectedRoutes.map((route) => (
-              <Route
-                key={route.path}
-                path={route.path}
-                element={renderRouteElement(route)}
-              />
-            ))}
+          {/* Prescription Management */}
+          <Route path="/Prescription" element={<PrescriptionUploadsTable />} />
+          <Route
+            path="/Pending_Prescriptions"
+            element={<PendingPrescriptionsTable />}
+          />
+          <Route
+            path="/Prescription_Review/:prescriptionId"
+            element={<PrescriptionReview />}
+          />
+          <Route path="/AI_Test" element={<AITestPage />} />
 
-            {/* Catch-all route for 404 */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Route>
-        </Routes>
-      </Router>
-    </ErrorBoundary>
+          {/* Order Management */}
+          <Route path="/Orders" element={<OrdersTable />} />
+          <Route path="/Orders/OrderDetails" element={<OrderDetails />} />
+
+          {/* User Management */}
+          <Route path="/Users" element={<UserManagement />} />
+          <Route path="/Customers" element={<CustomerManagement />} />
+
+          {/* Reports */}
+          <Route path="/Reports" element={<SalesReportsAnalysisPage />} />
+        </Route>
+      </Routes>
+    </Router>
   );
 }
 

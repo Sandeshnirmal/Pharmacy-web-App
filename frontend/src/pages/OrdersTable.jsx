@@ -130,8 +130,8 @@ const OrdersTable = () => {
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch = !searchTerm ||
-      order.user?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.user?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.user_name?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      // order.user_name?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.id.toString().includes(searchTerm);
 
     const matchesStatus = statusFilter === 'all' || order.order_status === statusFilter;
@@ -292,9 +292,9 @@ const OrdersTable = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div>
                       <div className="font-medium text-gray-900">
-                        {order.user?.first_name} {order.user?.last_name}
+                        {order.user_name} 
                       </div>
-                      <div className="text-gray-500">{order.user?.email}</div>
+                      <div className="text-gray-500">{order.user_email}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
