@@ -40,7 +40,7 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # Renamed for consistency
     unit_price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
-    prescription_detail = models.ForeignKey('prescriptions.PrescriptionDetail', on_delete=models.SET_NULL, null=True, blank=True,related_name='orders')
+    prescription_detail = models.ForeignKey('prescriptions.PrescriptionMedicine', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, blank=True,related_name='orders')
 
     @property

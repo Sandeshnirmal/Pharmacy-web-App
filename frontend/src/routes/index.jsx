@@ -43,13 +43,13 @@ export const routes = [
     title: 'Dashboard',
     icon: 'LayoutDashboard'
   },
-  // {
-  //   path: '/medicines',
-  //   element: MedicinesListPage,
-  //   title: 'Medicines',
-  //   icon: 'Pill',
-  //   lazy: true
-  // },
+  {
+    path: '/medicines',
+    element: MedicinesListPage,
+    title: 'Medicines',
+    icon: 'Pill',
+    lazy: true
+  },
   {
     path: '/generics',
     element: GenericsTable,

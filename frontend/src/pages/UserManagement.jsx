@@ -1,4 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Users,
+  UserPlus,
+  Search,
+  Filter,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Shield,
+  ShieldOff,
+  Eye,
+  RefreshCw,
+  Download,
+  UserCheck,
+  UserX,
+  Activity
+} from 'lucide-react';
 import axiosInstance from '../api/axiosInstance';
 
 const UserManagement = () => {
@@ -7,32 +24,73 @@ const UserManagement = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    total_users: 0,
+    active_users: 0,
+    customers: 0,
+    staff: 0
+  });
   const [newUser, setNewUser] = useState({
     first_name: '',
     last_name: '',
     email: '',
     phone_number: '',
+    password: '',
     role: 'customer',
     is_active: true
   });
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+    fetchStats();
+  }, [roleFilter, statusFilter]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await axiosInstance.get('user/users/');
+      const params = new URLSearchParams();
+
+      if (roleFilter !== 'all') {
+        params.append('role', roleFilter);
+      }
+
+      if (statusFilter !== 'all') {
+        params.append('active', statusFilter === 'active');
+      }
+
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+
+      const response = await axiosInstance.get(`user/users/?${params}`);
       setUsers(response.data.results || response.data);
+      setError(null);
     } catch (err) {
       setError('Failed to fetch users');
       console.error('Error fetching users:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await axiosInstance.get('user/users/stats/');
+      setStats(response.data);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchUsers(), fetchStats()]);
+    setRefreshing(false);
   };
 
   const handleCreateUser = async (e) => {
@@ -45,25 +103,53 @@ const UserManagement = () => {
         last_name: '',
         email: '',
         phone_number: '',
+        password: '',
         role: 'customer',
         is_active: true
       });
-      await fetchUsers();
+      await Promise.all([fetchUsers(), fetchStats()]);
+      setError(null);
     } catch (err) {
       console.error('Error creating user:', err);
-      setError('Failed to create user');
+      setError('Failed to create user: ' + (err.response?.data?.message || err.message));
     }
   };
 
-  const handleToggleUserStatus = async (userId, currentStatus) => {
+  const handleToggleUserStatus = async (userId) => {
     try {
-      await axiosInstance.patch(`user/users/${userId}/`, {
-        is_active: !currentStatus
-      });
-      await fetchUsers();
+      await axiosInstance.post(`user/users/${userId}/toggle_active/`);
+      await Promise.all([fetchUsers(), fetchStats()]);
+      setError(null);
     } catch (err) {
       console.error('Error updating user status:', err);
-      setError('Failed to update user status');
+      setError('Failed to update user status: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleEditUser = async (e) => {
+    e.preventDefault();
+    try {
+      await axiosInstance.patch(`user/users/${selectedUser.id}/`, selectedUser);
+      setShowEditModal(false);
+      setSelectedUser(null);
+      await Promise.all([fetchUsers(), fetchStats()]);
+      setError(null);
+    } catch (err) {
+      setError('Failed to update user: ' + (err.response?.data?.message || err.message));
+      console.error('Error updating user:', err);
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      try {
+        await axiosInstance.delete(`user/users/${userId}/`);
+        await Promise.all([fetchUsers(), fetchStats()]);
+        setError(null);
+      } catch (err) {
+        setError('Failed to delete user: ' + (err.response?.data?.message || err.message));
+        console.error('Error deleting user:', err);
+      }
     }
   };
 
@@ -97,56 +183,145 @@ const UserManagement = () => {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-gray-200 h-32 rounded-lg"></div>
+            ))}
+          </div>
+          <div className="bg-gray-200 h-96 rounded-lg"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-800">User Management</h1>
-          <p className="text-sm text-gray-600">Manage system users and their permissions</p>
+          <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+          <p className="text-gray-600">Manage system users, roles, and permissions</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition duration-150"
-        >
-          Add New User
-        </button>
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <UserPlus size={16} />
+            <span>Add User</span>
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex space-x-4 mb-6">
-        <div className="relative flex-1">
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          />
-          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-          </svg>
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Users</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.total_users}</p>
+            </div>
+            <div className="bg-blue-100 p-3 rounded-lg">
+              <Users size={24} className="text-blue-600" />
+            </div>
+          </div>
         </div>
-        
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-        >
-          <option value="all">All Roles</option>
-          <option value="admin">Admin</option>
-          <option value="pharmacist">Pharmacist</option>
-          <option value="customer">Customer</option>
-          <option value="staff">Staff</option>
-        </select>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active Users</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.active_users}</p>
+            </div>
+            <div className="bg-green-100 p-3 rounded-lg">
+              <UserCheck size={24} className="text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Customers</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.customers}</p>
+            </div>
+            <div className="bg-purple-100 p-3 rounded-lg">
+              <Activity size={24} className="text-purple-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Staff</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.staff}</p>
+            </div>
+            <div className="bg-orange-100 p-3 rounded-lg">
+              <Shield size={24} className="text-orange-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Enhanced Filters */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+          <div className="flex items-center space-x-4">
+            <div className="relative">
+              <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name, email, or phone..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 w-80 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Filter size={16} className="text-gray-400" />
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All Roles</option>
+                <option value="admin">Admin</option>
+                <option value="pharmacist">Pharmacist</option>
+                <option value="customer">Customer</option>
+                <option value="staff">Staff</option>
+              </select>
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+
+            <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+              <Download size={16} />
+              <span>Export</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Error Display */}

@@ -5,7 +5,7 @@ import { Alert } from 'react-native';
 
 // API Configuration
 const API_CONFIG = {
-  BASE_URL: 'http://127.0.0.1:8000', // Django backend URL
+  BASE_URL: 'http://127.0.0.1:8001', // Django backend URL (updated port)
   TIMEOUT: 10000,
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000,
@@ -117,14 +117,17 @@ class ApiService {
   // Authentication APIs
   async login(email, password) {
     try {
-      const response = await apiClient.post('/api/token/', {
+      const response = await apiClient.post('/user/login/', {
         email,
         password,
       });
-      
-      const { access, refresh } = response.data;
+
+      const { access, refresh, user } = response.data;
       await TokenManager.setTokens(access, refresh);
-      
+
+      // Store user data
+      await AsyncStorage.setItem('user_data', JSON.stringify(user));
+
       return {
         success: true,
         data: response.data,
@@ -132,7 +135,7 @@ class ApiService {
     } catch (error) {
       return {
         success: false,
-        error: error.response?.data?.detail || 'Login failed',
+        error: error.response?.data?.error || error.response?.data?.message || 'Login failed',
       };
     }
   }
@@ -155,12 +158,24 @@ class ApiService {
   async logout() {
     try {
       await TokenManager.clearTokens();
+      await AsyncStorage.removeItem('user_data');
       return { success: true };
     } catch (error) {
       return {
         success: false,
         error: 'Logout failed',
       };
+    }
+  }
+
+  // Get current user data
+  async getCurrentUser() {
+    try {
+      const userData = await AsyncStorage.getItem('user_data');
+      return userData ? JSON.parse(userData) : null;
+    } catch (error) {
+      console.error('Error getting user data:', error);
+      return null;
     }
   }
 

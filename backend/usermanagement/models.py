@@ -1,6 +1,38 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin # PermissionsMixin is important for is_superuser/is_staff
 from django.utils import timezone
+import uuid
+
+# ============================================================================
+# USER ROLE MANAGEMENT SYSTEM
+# ============================================================================
+
+class UserRole(models.Model):
+    """Enhanced user role classification system"""
+    ROLE_CHOICES = [
+        ('admin', 'Admin'),
+        ('doctor', 'Doctor'),
+        ('pharmacist', 'Pharmacist'),
+        ('verifier', 'Verifier'),
+        ('staff', 'Staff'),
+        ('customer', 'Customer'),
+    ]
+
+    name = models.CharField(max_length=50, choices=ROLE_CHOICES, unique=True)
+    display_name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    permissions = models.JSONField(default=dict)  # Store role-specific permissions
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'user_roles'
+        verbose_name = 'User Role'
+        verbose_name_plural = 'User Roles'
+
+    def __str__(self):
+        return self.display_name
 
 
 
@@ -27,10 +59,15 @@ class CustomUserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
+    """Enhanced user model with role-based classification"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('O', 'Other')]
     ROLE_CHOICES = [
         ('admin', 'Admin'),
+        ('doctor', 'Doctor'),
         ('pharmacist', 'Pharmacist'),
+        ('verifier', 'Verifier'),
         ('staff', 'Staff'),
         ('customer', 'Customer'),
     ]
@@ -39,14 +76,34 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15, unique=True, blank=True, null=True)
-    # The 'password_hash' field you had previously should be REMOVED.
-    # AbstractBaseUser handles the 'password' field internally.
+
+    # Enhanced user fields
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
+
+    # Role management - keeping both for backward compatibility
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
+    user_role = models.ForeignKey(UserRole, on_delete=models.PROTECT, related_name='users', null=True, blank=True)
+
+    # Professional credentials (for doctors/pharmacists)
+    license_number = models.CharField(max_length=100, blank=True)
+    verification_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('verified', 'Verified'),
+            ('rejected', 'Rejected'),
+        ],
+        default='pending'
+    )
+
+    # Profile information
+    profile_picture_url = models.URLField(blank=True, null=True)
+    profile_image = models.ImageField(upload_to='profiles/', blank=True, null=True)
+
+    # System fields
     date_joined = models.DateTimeField(auto_now_add=True)
     registration_date = models.DateTimeField(auto_now_add=True)
-    profile_picture_url = models.URLField(blank=True, null=True)
     is_active = models.BooleanField(default=True) # <--- REQUIRED by AbstractBaseUser
     is_staff = models.BooleanField(default=False) # <--- REQUIRED by PermissionsMixin
     is_superuser = models.BooleanField(default=False) # <--- REQUIRED by PermissionsMixin
