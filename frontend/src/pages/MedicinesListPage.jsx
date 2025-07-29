@@ -1,215 +1,254 @@
 import { useState, useEffect } from 'react';
-import axiosInstance from '../api/axiosInstance';
+import { productAPI, apiUtils } from '../api/apiService';
+import EnhancedMedicineForm from '../components/EnhancedMedicineForm';
 
 const Medicines = () => {
   const [medicines, setMedicines] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    generic_name_id: '',
-    strength: '',
-    form: '',
-    manufacturer: 'MedCorp',
-    price: '',
-    mrp: '',
-    hsn_code: '',
-    category_id: '',
-    packaging_unit: '',
-    pack_size: '',
-    image_url: '',
-    description: '',
-    is_prescription_required: false,
-  });
-
-  const [categories, setCategories] = useState([]);
-  const [generics, setGenerics] = useState([]);
+  const [editingMedicine, setEditingMedicine] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all');
 
   useEffect(() => {
     fetchMedicines();
-    fetchCategories();
-    fetchGenerics();
   }, []);
 
   const fetchMedicines = async () => {
     try {
-      const res = await axiosInstance.get('product/products/');
-      setMedicines(Array.isArray(res.data) ? res.data : []);
+      setLoading(true);
+      setError(null);
+      const response = await productAPI.getProducts();
+      setMedicines(Array.isArray(response.data) ? response.data : response.data.results || []);
     } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
       console.error('Error fetching medicines:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchCategories = async () => {
+  const handleAddMedicine = () => {
+    setEditingMedicine(null);
+    setShowModal(true);
+  };
+
+  const handleEditMedicine = (medicine) => {
+    setEditingMedicine(medicine);
+    setShowModal(true);
+  };
+
+  const handleDeleteMedicine = async (medicineId) => {
+    if (!window.confirm('Are you sure you want to delete this medicine?')) return;
     try {
-      const res = await axiosInstance.get('product/categories/');
-      setCategories(res.data);
+      await productAPI.deleteProduct(medicineId);
+      setMedicines(prev => prev.filter(m => m.id !== medicineId));
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      const errorInfo = apiUtils.handleError(error);
+      alert(`Error deleting medicine: ${errorInfo.message}`);
     }
   };
 
-  const fetchGenerics = async () => {
-    try {
-      const res = await axiosInstance.get('product/generic-names/');
-      setGenerics(res.data);
-    } catch (error) {
-      console.error('Error fetching generics:', error);
+  const handleSaveMedicine = (savedMedicine) => {
+    if (editingMedicine) {
+      setMedicines(prev => prev.map(m => m.id === savedMedicine.id ? savedMedicine : m));
+    } else {
+      setMedicines(prev => [...prev, savedMedicine]);
     }
+    setShowModal(false);
+    setEditingMedicine(null);
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+  const handleCancelForm = () => {
+    setShowModal(false);
+    setEditingMedicine(null);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const filteredMedicines = medicines.filter(medicine => {
+    const matchesSearch = medicine.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      medicine.brand_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      medicine.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const payload = {
-      ...formData,
-      price: parseFloat(formData.price || 0),
-      mrp: parseFloat(formData.mrp || 0),
-      category_id: parseInt(formData.category_id),
-      generic_name_id: parseInt(formData.generic_name_id),
-    };
+    const matchesFilter =
+      filterType === 'all' ||
+      (filterType === 'active' && medicine.is_active) ||
+      (filterType === 'inactive' && !medicine.is_active) ||
+      (filterType === 'prescription' && medicine.prescription_type === 'prescription') ||
+      (filterType === 'otc' && medicine.prescription_type === 'otc');
 
-    try {
-      await axiosInstance.post('product/products/', payload);
-      fetchMedicines();
-      setShowModal(false);
-      setFormData({
-        name: '',
-        generic_name_id: '',
-        strength: '',
-        form: '',
-        manufacturer: 'MedCorp',
-        price: '',
-        mrp: '',
-        hsn_code: '',
-        category_id: '',
-        packaging_unit: '',
-        pack_size: '',
-        image_url: '',
-        description: '',
-        is_prescription_required: false,
-      });
-    } catch (error) {
-      console.error('Error submitting medicine:', error.response?.data || error.message);
-    }
-  };
-
-  const onAddMedicineClick = () => setShowModal(true);
+    return matchesSearch && matchesFilter;
+  });
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Medicines</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Medicines Management</h1>
         <button
-          onClick={onAddMedicineClick}
-          className="px-4 py-2 bg-gray-800 text-white font-medium rounded hover:bg-gray-700"
+          onClick={handleAddMedicine}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           Add Medicine
         </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 p-6 rounded-lg overflow-x-auto">
-        <table className="min-w-full leading-normal">
-          <thead>
-            <tr className="bg-gray-50 text-gray-700 text-sm uppercase font-medium">
-              <th className="px-5 py-3">Image</th>
-              <th className="px-5 py-3">Name</th>
-              <th className="px-5 py-3">Brand</th>
-              <th className="px-5 py-3">Type</th>
-              <th className="px-5 py-3">Strength</th>
-              <th className="px-5 py-3">Price</th>
-              <th className="px-5 py-3">Stock</th>
-              <th className="px-5 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {medicines.map((med, index) => (
-              <tr key={med.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border-b`}>
-                <td className="px-5 py-4">
-                  <img
-                    src={med.image_url}
-                    alt={med.name}
-                    className="w-10 h-10 rounded-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = 'https://placehold.co/40x40/e0e0e0/888?text=N/A';
-                    }}
-                  />
-                </td>
-                <td className="px-5 py-4">{med.name}</td>
-                <td className="px-5 py-4">{med.manufacturer}</td>
-                <td className="px-5 py-4">{med.form}</td>
-                <td className="px-5 py-4">{med.strength}</td>
-                <td className="px-5 py-4">${med.price}</td>
-                <td className="px-5 py-4">{med.stock || 0}</td>
-                <td className="px-5 py-4">
-                  <button className="text-blue-600 mr-3">Edit</button>
-                  <button className="text-red-600">Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Search and Filter */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <input
+          type="text"
+          placeholder="Search medicines..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="sm:w-48 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Medicines</option>
+          <option value="active">Active Only</option>
+          <option value="inactive">Inactive Only</option>
+          <option value="prescription">Prescription Required</option>
+          <option value="otc">Over The Counter</option>
+        </select>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+          {error}
+          <button onClick={fetchMedicines} className="ml-2 text-red-800 underline hover:no-underline">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading ? (
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-gray-600">Loading medicines...</span>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medicine</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type & Strength</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredMedicines.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                      {searchTerm || filterType !== 'all'
+                        ? 'No medicines found matching your criteria.'
+                        : 'No medicines available. Add your first medicine to get started.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredMedicines.map((medicine) => (
+                    <tr key={medicine.id} className="hover:bg-gray-50">
+                      {/* Medicine info */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-12 w-12">
+                            <img
+                              className="h-12 w-12 rounded-lg object-cover"
+                              src={medicine.image_url || 'https://placehold.co/48x48/e0e0e0/888?text=Med'}
+                              alt={medicine.name}
+                              onError={(e) => {
+                                e.target.src = 'https://placehold.co/48x48/e0e0e0/888?text=Med';
+                              }}
+                            />
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{medicine.name}</div>
+                            <div className="text-sm text-gray-500">
+                              {medicine.brand_name && `${medicine.brand_name} • `}
+                              {medicine.manufacturer}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Type & Strength */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {medicine.medicine_type?.charAt(0).toUpperCase() + medicine.medicine_type?.slice(1)}
+                        </div>
+                        <div className="text-sm text-gray-500">{medicine.strength || medicine.dosage_form}</div>
+                      </td>
+
+                      {/* Pricing */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">₹{medicine.price}</div>
+                        <div className="text-sm text-gray-500">MRP: ₹{medicine.mrp}</div>
+                      </td>
+
+                      {/* Stock */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{medicine.stock_quantity || 0}</div>
+                        <div className={`text-sm ${
+                          (medicine.stock_quantity || 0) <= (medicine.min_stock_level || 0)
+                            ? 'text-red-500'
+                            : 'text-gray-500'
+                        }`}>
+                          Min: {medicine.min_stock_level || 0}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col space-y-1">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            medicine.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {medicine.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            medicine.prescription_type === 'prescription' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {medicine.prescription_type === 'prescription' ? 'Rx' : 'OTC'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button onClick={() => handleEditMedicine(medicine)} className="text-indigo-600 hover:text-indigo-900 mr-3">
+                          Edit
+                        </button>
+                        <button onClick={() => handleDeleteMedicine(medicine.id)} className="text-red-600 hover:text-red-900">
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Modal Form */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-2xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-xl font-semibold mb-4">Add New Medicine</h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-              <input type="text" name="name" placeholder="Name" className="border px-2 py-1" onChange={handleChange} required />
-
-              <select name="generic_name_id" className="border px-2 py-1" onChange={handleChange} required>
-                <option value="">Select Generic</option>
-                {generics.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-
-              <input type="text" name="strength" placeholder="Strength" className="border px-2 py-1" onChange={handleChange} />
-              <input type="text" name="form" placeholder="Form" className="border px-2 py-1" onChange={handleChange} />
-              <input type="text" name="manufacturer" placeholder="Manufacturer" className="border px-2 py-1" onChange={handleChange} />
-              <input type="number" name="price" placeholder="Price" className="border px-2 py-1" onChange={handleChange} />
-              <input type="number" name="mrp" placeholder="MRP" className="border px-2 py-1" onChange={handleChange} />
-              <input type="text" name="hsn_code" placeholder="HSN Code" className="border px-2 py-1" onChange={handleChange} />
-
-              <select name="category_id" className="border px-2 py-1" onChange={handleChange} required>
-                <option value="">Select Category</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-
-              <input type="text" name="packaging_unit" placeholder="Packaging Unit" className="border px-2 py-1" onChange={handleChange} />
-              <input type="text" name="pack_size" placeholder="Pack Size" className="border px-2 py-1" onChange={handleChange} />
-              <input type="url" name="image_url" placeholder="Image URL" className="border px-2 py-1" onChange={handleChange} />
-
-              <div className="col-span-2">
-                <textarea name="description" placeholder="Description" className="w-full border px-2 py-1" onChange={handleChange}></textarea>
-              </div>
-
-              <div className="col-span-2 flex items-center space-x-2">
-                <input type="checkbox" name="is_prescription_required" onChange={handleChange} />
-                <label>Prescription Required</label>
-              </div>
-
-              <div className="col-span-2 flex justify-end mt-4 space-x-2">
-                <button type="button" onClick={() => setShowModal(false)} className="bg-gray-300 px-4 py-2 rounded">Cancel</button>
-                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EnhancedMedicineForm
+          medicine={editingMedicine}
+          onSave={handleSaveMedicine}
+          onCancel={handleCancelForm}
+          isEdit={!!editingMedicine}
+        />
       )}
     </div>
   );

@@ -24,7 +24,7 @@ const UserManagement = lazy(() => import('../pages/UserManagement'));
 const CustomerManagement = lazy(() => import('../pages/CustomerManagement'));
 
 // Reports - Lazy loaded
-const Reports = lazy(() => import('../pages/Reports'));
+const ReportsAnalytics = lazy(() => import('../pages/ReportsAnalytics'));
 
 // Route configuration
 export const routes = [
@@ -122,8 +122,8 @@ export const routes = [
   },
   {
     path: '/reports',
-    element: Reports,
-    title: 'Reports',
+    element: ReportsAnalytics,
+    title: 'Reports & Analytics',
     icon: 'BarChart3',
     lazy: true
   }

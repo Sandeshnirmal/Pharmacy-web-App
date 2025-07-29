@@ -56,10 +56,10 @@ const InventoryManagement = () => {
     try {
       setLoading(true);
       const [productsRes, batchesRes, categoriesRes, genericNamesRes] = await Promise.all([
-        axiosInstance.get('product/products/'),
+        axiosInstance.get('product/enhanced-products/'),
         axiosInstance.get('inventory/batches/'),
-        axiosInstance.get('product/categories/'),
-        axiosInstance.get('product/generic-names/')
+        axiosInstance.get('product/legacy/categories/'),
+        axiosInstance.get('product/legacy/generic-names/')
       ]);
 
       setProducts(productsRes.data.results || productsRes.data);
@@ -100,7 +100,7 @@ const InventoryManagement = () => {
   const handleAddProduct = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post('product/products/', newProduct);
+      await axiosInstance.post('product/enhanced-products/', newProduct);
       setShowProductModal(false);
       setNewProduct({
         name: '',
@@ -128,7 +128,7 @@ const InventoryManagement = () => {
   const handleAddCategory = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post('product/categories/', newCategory);
+      await axiosInstance.post('product/legacy/categories/', newCategory);
       setShowCategoryModal(false);
       setNewCategory({
         name: '',

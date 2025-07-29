@@ -38,7 +38,7 @@ const PrescriptionUploadsTable = () => {
         params.append('search', searchTerm);
       }
 
-      const response = await axiosInstance.get(`prescription/prescriptions/?${params}`);
+      const response = await axiosInstance.get(`prescription/enhanced-prescriptions/?${params}`);
       setPrescriptions(response.data.results || response.data);
       setError(null);
     } catch (err) {

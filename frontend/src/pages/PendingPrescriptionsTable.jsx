@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axiosInstance from '../api/axiosInstance';
+import { prescriptionService, prescriptionUtils } from '../api/prescriptionService';
 
 const PendingPrescriptionsTable = () => {
   const navigate = useNavigate();
@@ -48,13 +48,18 @@ const PendingPrescriptionsTable = () => {
         params.append('search', searchTerm);
       }
 
-      const response = await axiosInstance.get(`prescription/prescriptions/?${params}`);
-      const data = response.data;
-      
-      setPrescriptions(data.results || data);
-      setTotalPages(Math.ceil((data.count || data.length) / itemsPerPage));
+      const result = await prescriptionService.getPrescriptions(Object.fromEntries(params));
+
+      if (result.success) {
+        setPrescriptions(result.data);
+        setTotalPages(Math.ceil((result.count || 0) / itemsPerPage));
+        setError(null);
+      } else {
+        setError(result.error);
+        setPrescriptions([]);
+      }
     } catch (err) {
-      setError('Failed to fetch prescriptions');
+      setError('Failed to fetch prescriptions. Please try again.');
       console.error('Error fetching prescriptions:', err);
     } finally {
       setLoading(false);
@@ -65,12 +70,14 @@ const PendingPrescriptionsTable = () => {
     navigate(`/Prescription_Review/${prescriptionId}`);
   };
 
-  const handleQuickStatusUpdate = async (prescriptionId, newStatus) => {
+  const handleQuickStatusUpdate = async (prescriptionId, action) => {
     try {
-      await axiosInstance.patch(`prescription/prescriptions/${prescriptionId}/`, {
-        verification_status: newStatus
-      });
-      await fetchPrescriptions(); // Refresh the list
+      const result = await prescriptionService.verifyPrescription(prescriptionId, action);
+      if (result.success) {
+        await fetchPrescriptions(); // Refresh the list
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
       console.error('Error updating prescription status:', err);
       setError('Failed to update prescription status');
@@ -128,12 +135,12 @@ const PendingPrescriptionsTable = () => {
       'Rejected': { bg: 'bg-red-100', text: 'text-red-800', label: 'Rejected', icon: '❌' }
     };
 
-    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status, icon: '❓' };
+    const displayName = prescriptionUtils.getStatusDisplayName(status);
+    const colorClass = prescriptionUtils.getStatusColor(status);
 
     return (
-      <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${config.bg} ${config.text}`}>
-        <span className="mr-1">{config.icon}</span>
-        {config.label}
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+        {displayName}
       </span>
     );
   };
@@ -390,7 +397,7 @@ const PendingPrescriptionsTable = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {getStatusBadge(prescription.verification_status)}
+                    {getStatusBadge(prescription.status || prescription.verification_status)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {prescription.order ? `#${prescription.order}` : 'N/A'}
@@ -403,16 +410,16 @@ const PendingPrescriptionsTable = () => {
                       Review
                     </button>
                     
-                    {prescription.verification_status === 'Pending_Review' && (
+                    {prescription.status === 'pending_verification' && (
                       <>
                         <button
-                          onClick={() => handleQuickStatusUpdate(prescription.id, 'Verified')}
+                          onClick={() => handleQuickStatusUpdate(prescription.id, 'verified')}
                           className="text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-md transition duration-150"
                         >
                           Quick Verify
                         </button>
                         <button
-                          onClick={() => handleQuickStatusUpdate(prescription.id, 'Rejected')}
+                          onClick={() => handleQuickStatusUpdate(prescription.id, 'rejected')}
                           className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition duration-150"
                         >
                           Reject

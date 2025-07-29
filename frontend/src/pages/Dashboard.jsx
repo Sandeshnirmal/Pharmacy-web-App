@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axiosInstance from '../api/axiosInstance';
 import ModernStatsCard from '../components/ModernStatsCard';
 import useRealTimeData from '../hooks/useRealTimeData';
+import APITestPanel from '../components/APITestPanel';
 
 function DashboardMainContent() {
   const [dashboardData, setDashboardData] = useState({
@@ -33,9 +34,9 @@ function DashboardMainContent() {
       // Fetch all required data in parallel
       const [ordersRes, prescriptionsRes, usersRes, productsRes] = await Promise.all([
         axiosInstance.get('order/orders/'),
-        axiosInstance.get('prescription/prescriptions/'),
+        axiosInstance.get('prescription/enhanced-prescriptions/'),
         axiosInstance.get('user/users/'),
-        axiosInstance.get('product/products/')
+        axiosInstance.get('product/enhanced-products/')
       ]);
 
       const orders = ordersRes.data.results || ordersRes.data;
@@ -227,6 +228,9 @@ function DashboardMainContent() {
           />
         ))}
       </div>
+
+      {/* API Integration Tests */}
+      <APITestPanel />
 
       {/* Recent Activity Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

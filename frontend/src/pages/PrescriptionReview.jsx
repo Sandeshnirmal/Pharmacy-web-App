@@ -1,5 +1,5 @@
-// PrescriptionReview.jsx
-import { useState, useEffect } from 'react';
+// PrescriptionReview.jsx - Enhanced with order creation from verified prescriptions only
+import { useState, useEffect, useCallback } from 'react'; // Added useCallback for memoization
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -13,8 +13,10 @@ import axiosInstance from '../api/axiosInstance';
 import OCRReprocessButton from '../components/OCRReprocessButton';
 import OCRResultsDisplay from '../components/OCRResultsDisplay';
 import PrescriptionStatusBadge from '../components/prescription/PrescriptionStatusBadge';
-import ConfidenceIndicator, { CircularConfidenceIndicator } from '../components/prescription/ConfidenceIndicator';
+import { CircularConfidenceIndicator } from '../components/prescription/ConfidenceIndicator'; // Only import CircularConfidenceIndicator
 import PrescriptionWorkflowVisualization from '../components/prescription/PrescriptionWorkflowVisualization';
+import EnhancedMedicineForm from '../components/EnhancedMedicineForm';
+
 
 const PrescriptionReview = () => {
   const { prescriptionId } = useParams();
@@ -29,29 +31,28 @@ const PrescriptionReview = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [showProductModal, setShowProductModal] = useState(false);
+  const [showProductMappingModal, setShowProductMappingModal] = useState(false); // Renamed for clarity
   const [currentDetailId, setCurrentDetailId] = useState(null);
+  const [showMedicineFormModal, setShowMedicineFormModal] = useState(false); // Renamed for clarity
+  const [editingMedicine, setEditingMedicine] = useState(null);
 
-  // Fetch prescription data on component mount
-  useEffect(() => {
-    if (prescriptionId) {
-      fetchPrescriptionData();
-    }
-  }, [prescriptionId]);
+  const handleClose = () => {
+    navigate('/prescriptions');
+  };
 
-  // Fetch products after prescription details are loaded
-  useEffect(() => {
-    if (prescriptionDetails.length > 0) {
-      fetchProducts();
-    }
-  }, [prescriptionDetails]);
+  // No explicit usage of handleUpdate, can be removed if not needed for parent component refresh logic outside this component
+  // const handleUpdate = () => {
+  //   console.log('Prescription updated');
+  // };
 
-  const fetchPrescriptionData = async () => {
+  // Fetch prescription data
+  const fetchPrescriptionData = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null); // Clear previous errors
       const [prescriptionRes, detailsRes] = await Promise.all([
-        axiosInstance.get(`prescription/prescriptions/${prescriptionId}/`),
-        axiosInstance.get(`prescription/prescription-details/?prescription=${prescriptionId}`)
+        axiosInstance.get(`prescription/enhanced-prescriptions/${prescriptionId}/`),
+        axiosInstance.get(`prescription/medicines/?prescription=${prescriptionId}`)
       ]);
 
       setPrescription(prescriptionRes.data);
@@ -59,42 +60,55 @@ const PrescriptionReview = () => {
       setPrescriptionDetails(details);
       setNotes(prescriptionRes.data.pharmacist_notes || '');
     } catch (err) {
-      setError('Failed to fetch prescription data');
       console.error('Error fetching prescription:', err);
+      setError('Failed to fetch prescription data. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [prescriptionId]);
 
-  const fetchProducts = async () => {
+  // Fetch products after prescription details are loaded
+  const fetchProducts = useCallback(async () => {
     try {
-      // Only fetch products if we have prescription details to match against
-      if (prescriptionDetails.length > 0) {
-        // Get unique medicine names from OCR results
-        const medicineNames = prescriptionDetails
-          .map(detail => detail.ai_extracted_medicine_name)
-          .filter(name => name && name.trim() !== '')
-          .join(',');
+      const medicineNames = prescriptionDetails
+        .map(detail => detail.ai_extracted_medicine_name)
+        .filter(name => name && name.trim() !== '');
 
-        // Fetch products with search filter based on extracted medicines
-        const response = await axiosInstance.get(`product/products/?search=${encodeURIComponent(medicineNames)}`);
-        setProducts(response.data.results || response.data);
+      let productResponse;
+      if (medicineNames.length > 0) {
+        // Assuming the backend can handle comma-separated search terms or multiple `search` params
+        // For robustness, consider if your backend requires a different format or multiple API calls for each medicine
+        const searchTermParam = encodeURIComponent(medicineNames.join(' ')); // Join with space for broader search or adjust based on API
+        productResponse = await axiosInstance.get(`product/enhanced-products/?search=${searchTermParam}`);
       } else {
-        // If no prescription details yet, fetch a limited set
-        const response = await axiosInstance.get('product/products/?limit=20');
-        setProducts(response.data.results || response.data);
+        // If no specific medicine names, fetch a general limited set of products
+        productResponse = await axiosInstance.get('product/enhanced-products/?limit=20');
       }
+      setProducts(productResponse.data.results || productResponse.data);
     } catch (err) {
       console.error('Error fetching products:', err);
-      // Fallback to limited products
+      // Fallback to limited products if initial search fails
       try {
-        const response = await axiosInstance.get('product/products/?limit=20');
-        setProducts(response.data.results || response.data);
+        const fallbackResponse = await axiosInstance.get('product/enhanced-products/?limit=20');
+        setProducts(fallbackResponse.data.results || fallbackResponse.data);
       } catch (fallbackErr) {
-        console.error('Fallback fetch also failed:', fallbackErr);
+        console.error('Fallback product fetch also failed:', fallbackErr);
+        setError('Failed to load products. Please try again later.');
       }
     }
-  };
+  }, [prescriptionDetails]); // Dependency on prescriptionDetails
+
+  // Initial data fetch
+  useEffect(() => {
+    if (prescriptionId) {
+      fetchPrescriptionData();
+    }
+  }, [prescriptionId, fetchPrescriptionData]); // Added fetchPrescriptionData to dependencies
+
+  // Fetch products when prescriptionDetails are updated
+  useEffect(() => {
+    fetchProducts();
+  }, [prescriptionDetails, fetchProducts]); // Added fetchProducts to dependencies
 
   // Handler functions with API integration
   const handleMapProduct = async (detailId, productId) => {
@@ -103,39 +117,63 @@ const PrescriptionReview = () => {
         mapped_product: productId,
         mapping_status: 'Mapped'
       });
-      await fetchPrescriptionData();
-      setShowProductModal(false);
+      await fetchPrescriptionData(); // Refresh data to reflect mapping
+      setShowProductMappingModal(false);
+      setSelectedProduct(null); // Clear selected product after mapping
+      setSearchTerm(''); // Clear search term after mapping
     } catch (err) {
       console.error('Error mapping product:', err);
-      setError('Failed to map product');
+      setError('Failed to map product. Please try again.');
     }
   };
 
   const openProductModal = (detailId) => {
     setCurrentDetailId(detailId);
-    setShowProductModal(true);
+    setShowProductMappingModal(true);
   };
 
-  const handleAddMissingItem = async () => {
+  const handleAddMissingItem = () => {
+    setEditingMedicine(null); // Ensure no medicine is being edited (it's a new add)
+    setShowMedicineFormModal(true);
+  };
+
+  const handleEditMedicine = (medicineDetail) => {
+    setEditingMedicine(medicineDetail);
+    setShowMedicineFormModal(true);
+  };
+
+  const handleSaveMedicine = async (medicineData) => {
     try {
-      const newDetail = {
-        prescription: prescriptionId,
-        line_number: prescriptionDetails.length + 1,
-        recognized_text_raw: 'Manually added item',
-        mapping_status: 'Pending',
-        is_valid_for_order: false
-      };
-      await axiosInstance.post('prescription/prescription-details/', newDetail);
-      await fetchPrescriptionData();
+      if (editingMedicine) {
+        // Update existing medicine detail
+        await axiosInstance.patch(`prescription/prescription-details/${editingMedicine.id}/`, medicineData);
+      } else {
+        // Add new medicine detail to the prescription
+        await axiosInstance.post(`prescription/prescription-details/`, {
+          ...medicineData,
+          prescription: prescriptionId, // Associate with current prescription
+          mapping_status: 'Pending', // New items typically need mapping
+          ai_confidence_score: 0, // Manual additions have no AI confidence
+        });
+      }
+      setShowMedicineFormModal(false);
+      setEditingMedicine(null);
+      await fetchPrescriptionData(); // Refresh data
     } catch (err) {
-      console.error('Error adding missing item:', err);
-      setError('Failed to add missing item');
+      console.error('Error saving medicine:', err);
+      setError('Failed to save medicine. Please try again.');
     }
+  };
+
+  const handleCancelForm = () => {
+    setShowMedicineFormModal(false);
+    setEditingMedicine(null);
   };
 
   const handleSuggestSubstitute = (detailId) => {
     // This would typically open a modal or navigate to a substitute selection page
     console.log('Suggest substitute for detail:', detailId);
+    setError('Substitute functionality not yet implemented.'); // Example feedback
   };
 
   const handleReject = async () => {
@@ -144,10 +182,10 @@ const PrescriptionReview = () => {
         verification_status: 'Rejected',
         rejection_reason: notes || 'Prescription rejected during review'
       });
-      navigate('/prescriptions'); // Navigate back to prescriptions list
+      navigate('/prescriptions');
     } catch (err) {
       console.error('Error rejecting prescription:', err);
-      setError('Failed to reject prescription');
+      setError('Failed to reject prescription. Please try again.');
     }
   };
 
@@ -160,32 +198,45 @@ const PrescriptionReview = () => {
       navigate('/prescriptions');
     } catch (err) {
       console.error('Error requesting clarification:', err);
-      setError('Failed to request clarification');
+      setError('Failed to request clarification. Please try again.');
     }
   };
 
   const handleVerify = async () => {
+    // Check if all prescription details are mapped before verifying
+    const unmappedItems = prescriptionDetails.filter(d => !d.mapped_product);
+    if (unmappedItems.length > 0) {
+      setError('All prescription items must be mapped to products before verification.');
+      return;
+    }
+
     try {
-      await axiosInstance.patch(`prescription/prescriptions/${prescriptionId}/`, {
-        verification_status: 'Verified',
-        pharmacist_notes: notes,
-        verification_date: new Date().toISOString()
+      // 1. Update prescription status to 'Verified'
+      await axiosInstance.post(`prescription/enhanced-prescriptions/${prescriptionId}/verify/`, {
+        action: 'verified',
+        notes: notes
       });
-      navigate('/prescriptions');
+
+      // 2. Create the order based on the verified prescription details
+      // This assumes an API endpoint for creating orders from a prescription ID
+      const orderCreationPayload = {
+        prescription: prescriptionId,
+        // Potentially include other order details like delivery address, payment method etc.
+        // For simplicity, we'll just send the prescription ID.
+      };
+      const orderResponse = await axiosInstance.post(`order/orders/create_from_prescription/`, orderCreationPayload);
+      console.log('Order created successfully:', orderResponse.data);
+
+      navigate('/prescriptions'); // Navigate back to prescriptions list or to order details
     } catch (err) {
-      console.error('Error verifying prescription:', err);
-      setError('Failed to verify prescription');
+      console.error('Error verifying prescription or creating order:', err);
+      setError(`Failed to verify prescription or create order. Error: ${err.response?.data?.detail || err.message}`);
     }
   };
 
   const handleOCRReprocessComplete = (ocrResult) => {
-    // Refresh prescription data after OCR reprocessing
-    fetchPrescriptionData();
-
-    // Show success message
-    setError(null);
-
-    // You could also show a success toast here
+    fetchPrescriptionData(); // Refresh prescription data after OCR reprocessing
+    setError(null); // Clear any previous errors if reprocessing was successful
     console.log('OCR Reprocessing completed:', ocrResult);
   };
 
@@ -199,17 +250,6 @@ const PrescriptionReview = () => {
       <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{error}</span>
         </div>
       </div>
     );
@@ -268,6 +308,13 @@ const PrescriptionReview = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
 
         {/* Workflow Visualization */}
         <PrescriptionWorkflowVisualization
@@ -332,11 +379,15 @@ const PrescriptionReview = () => {
                       <span className="text-sm font-medium text-gray-700">
                         Medicine {index + 1}
                       </span>
-                      <ConfidenceIndicator
+                      {/* Using inline ConfidenceIndicator, ensure it's imported or defined */}
+                      {/* <ConfidenceIndicator
                         confidence={detail.ai_confidence_score || 0}
                         size="sm"
                         showIcon={false}
-                      />
+                      /> */}
+                      <span className="text-xs text-gray-500">
+                        Confidence: {Math.round((detail.ai_confidence_score || 0) * 100)}%
+                      </span>
                     </div>
 
                     <div className="space-y-2">
@@ -544,9 +595,15 @@ const PrescriptionReview = () => {
                     </button>
                     <button
                       onClick={() => openProductModal(detail.id)}
-                      className="text-green-600 hover:text-green-900"
+                      className="text-green-600 hover:text-green-900 mr-2"
                     >
                       Map
+                    </button>
+                    <button
+                      onClick={() => handleEditMedicine(detail)}
+                      className="text-purple-600 hover:text-purple-900"
+                    >
+                      Edit
                     </button>
                   </td>
                 </tr>
@@ -641,11 +698,12 @@ const PrescriptionReview = () => {
         </div>
 
         {/* Product Mapping Modal */}
-        {showProductModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Map Product</h3>
+        {showProductMappingModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center"
+             role="dialog" aria-modal="true" aria-labelledby="product-map-modal-title">
+          <div className="relative p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white max-h-[90vh] flex flex-col">
+            <div className="mt-3 flex-grow flex flex-col">
+              <h3 className="text-lg font-medium text-gray-900 mb-2" id="product-map-modal-title">Map Product</h3>
               <p className="text-sm text-gray-600 mb-4">
                 Products filtered based on OCR extracted medicines. Search to find more.
               </p>
@@ -658,34 +716,42 @@ const PrescriptionReview = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label="Search products"
                 />
               </div>
 
               {/* Product list */}
-              <div className="max-h-96 overflow-y-auto">
-                {filteredProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    className={`p-3 border rounded-md mb-2 cursor-pointer hover:bg-gray-50 ${selectedProduct?.id === product.id ? 'bg-blue-50 border-blue-300' : 'border-gray-200'
-                      }`}
-                    onClick={() => setSelectedProduct(product)}
-                  >
-                    <div className="font-medium text-gray-900">{product.name}</div>
-                    <div className="text-sm text-gray-500">
-                      {product.generic_name?.name} - {product.strength} - {product.form}
+              <div className="flex-grow overflow-y-auto custom-scrollbar"> {/* Added custom-scrollbar for better UX */}
+                {filteredProducts.length > 0 ? (
+                  filteredProducts.map((product) => (
+                    <div
+                      key={product.id}
+                      className={`p-3 border rounded-md mb-2 cursor-pointer hover:bg-gray-50 ${selectedProduct?.id === product.id ? 'bg-blue-50 border-blue-300' : 'border-gray-200'
+                        }`}
+                      onClick={() => setSelectedProduct(product)}
+                      role="option"
+                      aria-selected={selectedProduct?.id === product.id}
+                      tabIndex="0" // Make selectable by keyboard
+                    >
+                      <div className="font-medium text-gray-900">{product.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {product.generic_name?.name} - {product.strength} - {product.form}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Manufacturer: {product.manufacturer} | Price: ₹{product.price}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                      Manufacturer: {product.manufacturer} | Price: ₹{product.price}
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="text-center text-gray-500 py-8">No products found for your search.</div>
+                )}
               </div>
 
               {/* Modal actions */}
-              <div className="flex justify-end space-x-3 mt-6">
+              <div className="flex justify-end space-x-3 mt-6 flex-shrink-0">
                 <button
                   onClick={() => {
-                    setShowProductModal(false);
+                    setShowProductMappingModal(false);
                     setSelectedProduct(null);
                     setSearchTerm('');
                   }}
@@ -697,8 +763,6 @@ const PrescriptionReview = () => {
                   onClick={() => {
                     if (selectedProduct && currentDetailId) {
                       handleMapProduct(currentDetailId, selectedProduct.id);
-                      setSelectedProduct(null);
-                      setSearchTerm('');
                     }
                   }}
                   disabled={!selectedProduct}
@@ -710,6 +774,16 @@ const PrescriptionReview = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Enhanced Medicine Form Modal */}
+      {showMedicineFormModal && (
+        <EnhancedMedicineForm
+          medicine={editingMedicine}
+          onSave={handleSaveMedicine}
+          onCancel={handleCancelForm}
+          isEdit={!!editingMedicine}
+        />
       )}
       </div>
     </div>
