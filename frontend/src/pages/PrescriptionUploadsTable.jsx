@@ -413,7 +413,7 @@ const PrescriptionUploadsTable = () => {
                     <div className="flex items-center space-x-2">
                       {/* Link to prescription review page */}
                       <Link
-                        to={`/prescription-review/${prescription.id}`}
+                        to={`/Prescription_Review/${prescription.id}`}
                         className="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-150"
                       >
                         <Eye size={14} className="mr-1" />
@@ -453,8 +453,6 @@ const PrescriptionUploadsTable = () => {
           </div>
         )}
       </div>
-
-      
     </div>
   );
 };

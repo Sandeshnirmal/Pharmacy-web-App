@@ -55,12 +55,14 @@ const InventoryManagement = () => {
   const fetchInventoryData = async () => {
     try {
       setLoading(true);
-      const [productsRes, batchesRes, categoriesRes, genericNamesRes] = await Promise.all([
-        axiosInstance.get('product/products/'),
-        axiosInstance.get('inventory/batches/'),
-        axiosInstance.get('product/categories/'),
-        axiosInstance.get('product/generic-names/')
-      ]);
+      const [productsRes, batchesRes, categoriesRes, genericNamesRes] =
+        await Promise.all([
+          axiosInstance.get("/api/products/enhanced-products/"),
+          axiosInstance.get("/api/products/legacy/batches/"),
+          axiosInstance.get("/inventory/stock-movements/"),
+          axiosInstance.get("api/products/compositions/"),
+          axiosInstance.get("/inventory/stock-alerts/"),
+        ]);
 
       setProducts(productsRes.data.results || productsRes.data);
       setBatches(batchesRes.data.results || batchesRes.data);
@@ -77,9 +79,9 @@ const InventoryManagement = () => {
   const handleAddBatch = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post('inventory/batches/', {
+      await axiosInstance.post("/api/products/legacy/batches/", {
         ...newBatch,
-        product: selectedProduct.id
+        product: selectedProduct.id,
       });
       setShowBatchModal(false);
       setNewBatch({

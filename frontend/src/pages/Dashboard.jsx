@@ -31,12 +31,13 @@ function DashboardMainContent() {
       setLoading(true);
 
       // Fetch all required data in parallel
-      const [ordersRes, prescriptionsRes, usersRes, productsRes] = await Promise.all([
-        axiosInstance.get('order/orders/'),
-        axiosInstance.get('prescription/prescriptions/'),
-        axiosInstance.get('user/users/'),
-        axiosInstance.get('product/products/')
-      ]);
+      const [ordersRes, prescriptionsRes, usersRes, productsRes] =
+        await Promise.all([
+          axiosInstance.get("order/orders/"),
+          axiosInstance.get("prescription/prescriptions/"),
+          axiosInstance.get("user/users/"),
+          axiosInstance.get("/api/products/enhanced-products/"),
+        ]);
 
       const orders = ordersRes.data.results || ordersRes.data;
       const prescriptions = prescriptionsRes.data.results || prescriptionsRes.data;
