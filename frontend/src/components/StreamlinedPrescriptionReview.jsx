@@ -403,7 +403,7 @@ const StreamlinedPrescriptionReview = ({ prescriptionId, onClose, onUpdate }) =>
         </div>
 
         {/* Composition-Based Workflow Info */}
-        {prescription?.ai_processed && (
+        {prescription && (
           <div className="bg-blue-50 border-b px-6 py-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-blue-800">
@@ -411,10 +411,7 @@ const StreamlinedPrescriptionReview = ({ prescriptionId, onClose, onUpdate }) =>
               </h3>
               <div className="flex items-center space-x-4 text-sm">
                 <span className="text-blue-700">
-                  <span className="font-medium">AI Confidence:</span> {Math.round((prescription?.ai_confidence_score || 0) * 100)}%
-                </span>
-                <span className="text-blue-700">
-                  <span className="font-medium">Processing Time:</span> {(prescription?.ai_processing_time || 0).toFixed(1)}s
+                  <span className="font-medium">Status:</span> {prescription?.status || 'Processing'}
                 </span>
               </div>
             </div>
@@ -577,7 +574,7 @@ const StreamlinedPrescriptionReview = ({ prescriptionId, onClose, onUpdate }) =>
           </div>
 
           {/* Composition-Based Approval Workflow */}
-          {prescription?.ai_processed && (
+          {prescription && (
             <div className="mt-6">
               <CompositionBasedApprovalWorkflow
                 prescription={prescription}

@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Activity, 
-  TrendingUp, 
-  Clock, 
-  CheckCircle, 
+import {
+  Activity,
+  TrendingUp,
+  Clock,
+  CheckCircle,
   AlertTriangle,
   Users,
   FileText,
-  Bot,
   RefreshCw
 } from 'lucide-react';
 import axiosInstance from '../../api/axiosInstance';
 import PrescriptionStatusBadge from './PrescriptionStatusBadge';
-import ConfidenceIndicator from './ConfidenceIndicator';
 import PriorityIndicator from './PriorityIndicator';
 
 const EnhancedPrescriptionDashboard = () => {
@@ -22,7 +20,6 @@ const EnhancedPrescriptionDashboard = () => {
     pending: 0,
     verified: 0,
     rejected: 0,
-    avgConfidence: 0,
     avgProcessingTime: 0
   });
   const [recentPrescriptions, setRecentPrescriptions] = useState([]);
@@ -47,7 +44,6 @@ const EnhancedPrescriptionDashboard = () => {
         pending: 0,
         verified: 0,
         rejected: 0,
-        avgConfidence: 0.75,
         avgProcessingTime: 2.5
       });
     } catch (error) {
@@ -89,11 +85,11 @@ const EnhancedPrescriptionDashboard = () => {
       changeType: 'positive'
     },
     {
-      title: 'AI Accuracy',
-      value: `${Math.round(stats.avgConfidence * 100)}%`,
-      icon: Bot,
+      title: 'Avg Processing Time',
+      value: `${stats.avgProcessingTime}h`,
+      icon: Clock,
       color: 'purple',
-      change: '+2%',
+      change: '-15%',
       changeType: 'positive'
     }
   ];
@@ -219,20 +215,7 @@ const EnhancedPrescriptionDashboard = () => {
           </div>
         </Link>
 
-        <Link
-          to="/ai-test"
-          className="bg-white p-6 rounded-lg border border-gray-200 hover:shadow-md transition-shadow"
-        >
-          <div className="flex items-center space-x-4">
-            <div className="bg-purple-100 p-3 rounded-lg">
-              <Bot size={24} className="text-purple-600" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">AI Testing</h3>
-              <p className="text-gray-600">Test OCR processing</p>
-            </div>
-          </div>
-        </Link>
+
       </div>
 
       {/* Recent Prescriptions */}
@@ -263,7 +246,7 @@ const EnhancedPrescriptionDashboard = () => {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  AI Confidence
+                  Upload Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Priority
@@ -295,11 +278,8 @@ const EnhancedPrescriptionDashboard = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <PrescriptionStatusBadge status={prescription.verification_status} />
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <ConfidenceIndicator 
-                      confidence={prescription.ai_confidence_score || 0}
-                      size="sm"
-                    />
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {new Date(prescription.upload_date).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <PriorityIndicator uploadDate={prescription.upload_date} />

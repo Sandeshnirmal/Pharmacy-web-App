@@ -101,7 +101,7 @@ const SidebarNavbar = () => {
           <SidebarItem label="Prescriptions" to="/Prescription" />
           <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" />
           <SidebarItem label="🧬 Composition Processor" to="/Composition_Prescription" />
-          {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
+
           <SidebarItem label="Orders" to="/Orders" />
           <SidebarItem label="Customers" to="/Customers" />
           <SidebarItem label="User Management" to="/Users" />

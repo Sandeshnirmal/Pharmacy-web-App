@@ -11,9 +11,7 @@ import {
 } from 'lucide-react';
 import axiosInstance from '../api/axiosInstance';
 import OCRReprocessButton from '../components/OCRReprocessButton';
-import OCRResultsDisplay from '../components/OCRResultsDisplay';
 import PrescriptionStatusBadge from '../components/prescription/PrescriptionStatusBadge';
-import { CircularConfidenceIndicator } from '../components/prescription/ConfidenceIndicator'; // Only import CircularConfidenceIndicator
 import PrescriptionWorkflowVisualization from '../components/prescription/PrescriptionWorkflowVisualization';
 import EnhancedMedicineForm from '../components/EnhancedMedicineForm';
 
@@ -323,24 +321,18 @@ const PrescriptionReview = () => {
           isDelivered={false}
         />
 
-        {/* Enhanced OCR Results Summary */}
+        {/* Prescription Processing Summary */}
         {prescription && prescriptionDetails.length > 0 && (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="flex-shrink-0">
-                    <CircularConfidenceIndicator
-                      confidence={prescription.ai_confidence_score || 0}
-                      size={48}
-                    />
-                  </div>
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900">
-                      AI Extraction Results
+                      Prescription Processing Results
                     </h2>
                     <p className="text-sm text-gray-600">
-                      {prescriptionDetails.length} medicines detected with {Math.round((prescription.ai_confidence_score || 0) * 100)}% average confidence
+                      {prescriptionDetails.length} medicines detected from prescription
                     </p>
                   </div>
                 </div>
@@ -379,14 +371,8 @@ const PrescriptionReview = () => {
                       <span className="text-sm font-medium text-gray-700">
                         Medicine {index + 1}
                       </span>
-                      {/* Using inline ConfidenceIndicator, ensure it's imported or defined */}
-                      {/* <ConfidenceIndicator
-                        confidence={detail.ai_confidence_score || 0}
-                        size="sm"
-                        showIcon={false}
-                      /> */}
                       <span className="text-xs text-gray-500">
-                        Confidence: {Math.round((detail.ai_confidence_score || 0) * 100)}%
+                        Status: {detail.mapping_status || 'Pending'}
                       </span>
                     </div>
 
@@ -508,18 +494,11 @@ const PrescriptionReview = () => {
 
       </div>
 
-      {/* OCR Results Display Section */}
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-xl font-medium text-gray-700 mb-4">OCR Processing Results</h2>
-        <OCRResultsDisplay
-          prescription={prescription}
-          prescriptionDetails={prescriptionDetails}
-        />
-      </div>
 
-      {/* AI Extracted Information Section */}
+
+      {/* Prescription Information Section */}
       <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-xl font-medium text-gray-700 mb-4">AI Extracted Information</h2>
+        <h2 className="text-xl font-medium text-gray-700 mb-4">Prescription Information</h2>
 
         {/* Patient Information Box */}
         <div className="mb-6 p-4 border border-gray-200 rounded-md bg-gray-50">
@@ -543,7 +522,7 @@ const PrescriptionReview = () => {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dosage</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Instructions</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AI Confidence</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mapping Status</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -562,21 +541,6 @@ const PrescriptionReview = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs">
                     {detail.verified_instructions || detail.ai_extracted_instructions || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {detail.ai_confidence_score ? (
-                      <div className="flex items-center">
-                        <div className="w-20 bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${detail.ai_confidence_score * 100}%` }}
-                          ></div>
-                        </div>
-                        <span className="ml-2 text-xs font-medium">{Math.round(detail.ai_confidence_score * 100)}%</span>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">N/A</span>
-                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <span className={`px-2 py-1 text-xs rounded-full ${detail.mapping_status === 'Mapped' ? 'bg-green-100 text-green-800' :

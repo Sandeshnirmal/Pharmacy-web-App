@@ -380,12 +380,7 @@ class PrescriptionWorkflowService:
             
             avg_processing_time = round(total_time / count, 2) if count > 0 else 0
         
-        # AI accuracy analytics
-        ai_processed = Prescription.objects.filter(ai_processed=True)
-        ai_accuracy_rate = 0
-        if ai_processed.exists():
-            accurate_predictions = ai_processed.filter(ai_confidence_score__gte=0.8).count()
-            ai_accuracy_rate = round((accurate_predictions / ai_processed.count()) * 100, 2)
+
         
         # Top medicines
         top_medicines = PrescriptionMedicine.objects.filter(

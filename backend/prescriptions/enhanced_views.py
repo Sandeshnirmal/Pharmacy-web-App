@@ -257,13 +257,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         serializer = PrescriptionWorkflowLogSerializer(logs, many=True)
         return Response(serializer.data)
     
-    @action(detail=True, methods=['get'])
-    def ai_processing_logs(self, request, pk=None):
-        """Get AI processing logs for prescription"""
-        prescription = self.get_object()
-        logs = prescription.ai_processing_logs.all()
-        serializer = AIProcessingLogSerializer(logs, many=True)
-        return Response(serializer.data)
+
     
     @action(detail=False, methods=['get'], permission_classes=[IsVerifierOrAbove])
     def verification_queue(self, request):
@@ -337,10 +331,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         
         average_processing_time = round(total_time / count, 2) if count > 0 else 0
         
-        # Calculate AI accuracy rate
-        ai_processed = Prescription.objects.filter(ai_processed=True)
-        accurate_predictions = ai_processed.filter(ai_confidence_score__gte=0.8).count()
-        ai_accuracy_rate = round((accurate_predictions / ai_processed.count()) * 100, 2) if ai_processed.count() > 0 else 0
+
         
         # Get top medicines
         top_medicines = PrescriptionMedicine.objects.filter(
@@ -356,18 +347,16 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
             'rejected_today': rejected_today,
             'need_clarification': need_clarification,
             'average_processing_time': average_processing_time,
-            'ai_accuracy_rate': ai_accuracy_rate,
             'top_medicines': list(top_medicines)
         }
-        
+
         return Response({
             'total_prescriptions': total_prescriptions,
             'pending_verification': pending_verification,
             'verified_today': verified_today,
             'rejected_today': rejected_today,
             'need_clarification': need_clarification,
-            'average_processing_time': average_processing_time,
-            'ai_accuracy_rate': ai_accuracy_rate
+            'average_processing_time': average_processing_time
         })
 
     @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])

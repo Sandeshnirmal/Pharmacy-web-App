@@ -41,7 +41,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             'id', 'prescription_number', 'patient_name', 'patient_age', 'patient_gender',
             'doctor_name', 'doctor_license', 'hospital_clinic', 'prescription_date',
             'status', 'status_display', 'verification_status', 'verification_status_display',
-            'image_url', 'image_file', 'ocr_text', 'ai_confidence_score',
+            'image_url', 'image_file', 'ocr_text',
             'ai_processing_time', 'ai_processed', 'ai_processing_status', 'latest_ai_log',
             'rejection_reason', 'clarification_notes', 'pharmacist_notes', 'verification_notes',
             'user', 'user_name', 'order', 'order_number',
@@ -70,23 +70,19 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         return obj.prescription_medicines.filter(verification_status='approved').count()
     
     def get_ai_processing_status(self, obj):
-        """Get AI processing status"""
-        latest_log = obj.ai_processing_logs.first()
-        if latest_log:
-            return {
-                'success': latest_log.success,
-                'confidence': latest_log.confidence_score,
-                'medicines_detected': latest_log.medicines_detected,
-                'processing_duration': latest_log.processing_duration
-            }
-        return None
-    
+        """Get processing status"""
+        return {
+            'processed': obj.ai_processed,
+            'status': obj.status,
+            'medicines_detected': obj.prescription_medicines.count()
+        }
+
     def get_latest_ai_log(self, obj):
-        """Get latest AI processing log"""
-        latest_log = obj.ai_processing_logs.first()
-        if latest_log:
-            return AIProcessingLogSerializer(latest_log).data
-        return None
+        """Get latest processing log"""
+        return {
+            'processed': obj.ai_processed,
+            'processing_time': obj.ai_processing_time
+        }
 
 class PrescriptionCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating prescriptions"""

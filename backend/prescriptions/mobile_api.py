@@ -139,9 +139,8 @@ def get_prescription_status(request, prescription_id):
         return Response({
             'prescription_id': prescription.id,
             'status': prescription.verification_status,
-            'ai_processed': prescription.ai_processed,
+            'processed': prescription.ai_processed,
             'is_ready': is_ready,  # This is what the mobile app is looking for!
-            'confidence_score': prescription.ai_confidence_score,
             'processing_time': prescription.ai_processing_time,
             'medicines_count': prescription.details.count(),
             'upload_date': prescription.upload_date,
@@ -223,7 +222,6 @@ def get_medicine_suggestions(request, prescription_id):
         return Response({
             'prescription_id': prescription.id,
             'status': 'completed',
-            'ai_confidence': prescription.ai_confidence_score,
             'summary': {
                 'total_medicines': len(suggestions),
                 'available_medicines': available_medicines,
@@ -495,7 +493,6 @@ def get_prescription_products(request, prescription_id):
                     'in_stock': detail.mapped_product.stock_quantity > 0,
                     'is_prescription_required': detail.mapped_product.is_prescription_required,
                     'extracted_medicine': detail.ai_extracted_medicine_name,
-                    'confidence_score': detail.ai_confidence_score,
                     'prescription_detail_id': detail.id
                 })
 
@@ -514,7 +511,6 @@ def get_prescription_products(request, prescription_id):
                         'in_stock': suggested_product.stock_quantity > 0,
                         'is_prescription_required': suggested_product.is_prescription_required,
                         'extracted_medicine': detail.ai_extracted_medicine_name,
-                        'confidence_score': detail.ai_confidence_score,
                         'prescription_detail_id': detail.id,
                         'is_suggested': True
                     })
@@ -532,6 +528,67 @@ def get_prescription_products(request, prescription_id):
             'success': False,
             'error': 'Prescription not found'
         }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_prescription_medicines(request):
+    """
+    Mobile API: Search for medicines based on prescription history and general search
+    """
+    from product.models import Product
+
+    try:
+        search_query = request.GET.get('q', '').strip()
+        limit = int(request.GET.get('limit', 20))
+
+        if not search_query:
+            return Response({
+                'success': False,
+                'error': 'Search query is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Search products by name, generic name, manufacturer
+        products = Product.objects.filter(
+            Q(name__icontains=search_query) |
+            Q(generic_name__name__icontains=search_query) |
+            Q(manufacturer__icontains=search_query) |
+            Q(description__icontains=search_query),
+            is_active=True
+        ).select_related('generic_name', 'category')[:limit]
+
+        # Format products for mobile app
+        products_data = []
+        for product in products:
+            products_data.append({
+                'id': product.id,
+                'name': product.name,
+                'manufacturer': product.manufacturer,
+                'price': float(product.price),
+                'mrp': float(product.mrp),
+                'strength': product.strength,
+                'form': product.form,
+                'stock_quantity': product.stock_quantity,
+                'in_stock': product.stock_quantity > 0,
+                'is_prescription_required': product.is_prescription_required,
+                'generic_name': product.generic_name.name if product.generic_name else '',
+                'category': product.category.name if product.category else '',
+                'image_url': product.image_url if product.image_url else 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400',
+                'discount_percentage': round(((product.mrp - product.price) / product.mrp) * 100, 1) if product.mrp > 0 else 0
+            })
+
+        return Response({
+            'success': True,
+            'query': search_query,
+            'total_results': len(products_data),
+            'products': products_data
+        })
+
     except Exception as e:
         return Response({
             'success': False,

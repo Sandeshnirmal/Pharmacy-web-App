@@ -1,27 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
-  Clock, 
-  CheckCircle, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Clock,
+  CheckCircle,
   XCircle,
-  Bot,
   Users,
   Calendar,
   BarChart3
 } from 'lucide-react';
 import axiosInstance from '../../api/axiosInstance';
-import ConfidenceIndicator from './ConfidenceIndicator';
 
 const PrescriptionAnalyticsDashboard = () => {
   const [analytics, setAnalytics] = useState({
     totalPrescriptions: 0,
     todayPrescriptions: 0,
     avgProcessingTime: 0,
-    avgConfidence: 0,
     statusBreakdown: {},
-    confidenceDistribution: {},
     processingTrends: [],
     topMedicines: []
   });
@@ -44,18 +40,12 @@ const PrescriptionAnalyticsDashboard = () => {
         totalPrescriptions: 1247,
         todayPrescriptions: 23,
         avgProcessingTime: 2.4,
-        avgConfidence: 0.87,
         statusBreakdown: {
           'Uploaded': 45,
-          'AI_Processed': 12,
+          'Processing': 12,
           'Pending_Review': 67,
           'Verified': 892,
           'Rejected': 231
-        },
-        confidenceDistribution: {
-          'high': 756,
-          'medium': 324,
-          'low': 167
         },
         processingTrends: [
           { date: '2025-01-17', processed: 45, verified: 38, rejected: 7 },
@@ -67,11 +57,11 @@ const PrescriptionAnalyticsDashboard = () => {
           { date: '2025-01-23', processed: 23, verified: 19, rejected: 4 }
         ],
         topMedicines: [
-          { name: 'Paracetamol', count: 156, confidence: 0.94 },
-          { name: 'Azithromycin', count: 89, confidence: 0.91 },
-          { name: 'Omeprazole', count: 67, confidence: 0.88 },
-          { name: 'Metformin', count: 54, confidence: 0.92 },
-          { name: 'Amlodipine', count: 43, confidence: 0.85 }
+          { name: 'Paracetamol', count: 156 },
+          { name: 'Azithromycin', count: 89 },
+          { name: 'Omeprazole', count: 67 },
+          { name: 'Metformin', count: 54 },
+          { name: 'Amlodipine', count: 43 }
         ]
       });
     } finally {
@@ -82,7 +72,7 @@ const PrescriptionAnalyticsDashboard = () => {
   const getStatusColor = (status) => {
     const colors = {
       'Uploaded': 'text-blue-600',
-      'AI_Processed': 'text-purple-600',
+      'Processing': 'text-purple-600',
       'Pending_Review': 'text-yellow-600',
       'Verified': 'text-green-600',
       'Rejected': 'text-red-600'
@@ -119,7 +109,7 @@ const PrescriptionAnalyticsDashboard = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Prescription Analytics</h1>
-          <p className="text-gray-600">Monitor AI performance and processing metrics</p>
+          <p className="text-gray-600">Monitor prescription processing and verification metrics</p>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -189,15 +179,15 @@ const PrescriptionAnalyticsDashboard = () => {
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">AI Accuracy</p>
-              <p className="text-3xl font-bold text-gray-900">{Math.round(analytics.avgConfidence * 100)}%</p>
+              <p className="text-sm font-medium text-gray-600">Verification Rate</p>
+              <p className="text-3xl font-bold text-gray-900">87%</p>
               <div className="flex items-center mt-2">
                 <TrendingUp size={16} className="text-green-500 mr-1" />
                 <span className="text-sm text-green-600">+2.1%</span>
               </div>
             </div>
             <div className="bg-purple-100 p-3 rounded-lg">
-              <Bot size={24} className="text-purple-600" />
+              <CheckCircle size={24} className="text-purple-600" />
             </div>
           </div>
         </div>
@@ -231,36 +221,7 @@ const PrescriptionAnalyticsDashboard = () => {
           </div>
         </div>
 
-        {/* Confidence Distribution */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Confidence Distribution</h3>
-          <div className="space-y-4">
-            {Object.entries(analytics.confidenceDistribution).map(([level, count]) => {
-              const total = Object.values(analytics.confidenceDistribution).reduce((a, b) => a + b, 0);
-              const percentage = ((count / total) * 100).toFixed(1);
-              
-              return (
-                <div key={level} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <ConfidenceIndicator 
-                      confidence={level === 'high' ? 0.9 : level === 'medium' ? 0.7 : 0.4}
-                      size="sm"
-                      showPercentage={false}
-                      showIcon={false}
-                    />
-                    <span className="text-sm font-medium text-gray-700 capitalize">
-                      {level} Confidence
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">{count}</span>
-                    <span className="text-xs text-gray-500">({percentage}%)</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+
       </div>
 
       {/* Top Medicines */}
@@ -274,10 +235,7 @@ const PrescriptionAnalyticsDashboard = () => {
                   Medicine Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Detection Count
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Avg Confidence
+                  Prescription Count
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Trend
@@ -303,13 +261,6 @@ const PrescriptionAnalyticsDashboard = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {medicine.count}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <ConfidenceIndicator 
-                      confidence={medicine.confidence}
-                      size="sm"
-                      showIcon={false}
-                    />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">

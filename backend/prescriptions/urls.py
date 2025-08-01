@@ -26,5 +26,8 @@ urlpatterns = [
     # Admin OCR API endpoints
     path('admin/reprocess-ocr/<int:prescription_id>/', mobile_api.reprocess_prescription_ocr, name='admin_reprocess_ocr'),
 
+    # Mobile search endpoints
+    path('mobile/search/', mobile_api.search_prescription_medicines, name='mobile_search_medicines'),
+
     # Test endpoints removed - use mobile API for all prescription processing
 ]

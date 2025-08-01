@@ -25,11 +25,11 @@ const PrescriptionWorkflowVisualization = ({
       statuses: ['Uploaded']
     },
     {
-      id: 'ai_processing',
-      label: 'AI Processing',
+      id: 'processing',
+      label: 'Processing',
       icon: Bot,
-      description: 'AI extracts medicine information',
-      statuses: ['AI_Processed']
+      description: 'System processes prescription',
+      statuses: ['Processing']
     },
     {
       id: 'review',

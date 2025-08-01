@@ -85,13 +85,7 @@ export const routes = [
     hidden: true, // Don't show in navigation
     lazy: true
   },
-  {
-    path: '/ai-test',
-    element: AITestPage,
-    title: 'AI Test',
-    icon: 'Bot',
-    lazy: true
-  },
+
   {
     path: '/orders',
     element: OrdersTable,
