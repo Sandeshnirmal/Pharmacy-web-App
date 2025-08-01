@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Count, F, Sum
 from django.db import transaction
+# from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
     Composition, Product, ProductComposition, Category, GenericName,
@@ -30,15 +31,18 @@ class CompositionViewSet(viewsets.ModelViewSet):
     """ViewSet for managing medicine compositions with full CRUD operations"""
     queryset = Composition.objects.all()
     serializer_class = CompositionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get_permissions(self):
-        """Set permissions based on action"""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsPharmacistOrAdmin]
+            # permission_classes = [IsPharmacistOrAdmin]
+            permission_classes = [AllowAny]
+
         else:
-            permission_classes = [IsAuthenticated]
+            permission_classes = [AllowAny]
+
         return [permission() for permission in permission_classes]
+
     
     def get_queryset(self):
         """Filter compositions based on parameters"""
@@ -105,7 +109,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         """Set permissions based on action"""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [IsPharmacistOrAdmin]
+            permission_classes = [AllowAny]
         else:
             permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]

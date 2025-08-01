@@ -18,6 +18,7 @@ class CompositionSerializer(serializers.ModelSerializer):
     """Serializer for medicine compositions with full CRUD support"""
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     products_count = serializers.SerializerMethodField()
+
     
     class Meta:
         model = Composition

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import axiosInstance from '../api/axiosInstance';
 
 const GenericsTable = () => {
-  const [activeTab, setActiveTab] = useState('generics');
+  const [activeTab, setActiveTab] = useState('compositions');
   const [genericsData, setGenericsData] = useState([]);
   const [categoriesData, setCategoriesData] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -14,7 +14,7 @@ const GenericsTable = () => {
   }, [activeTab]);
 
   const fetchData = () => {
-    const endpoint = activeTab === 'generics' ? 'generic-names' : 'categories';
+    const endpoint = activeTab === 'compositions' ? 'compositions' : 'categories';
     axiosInstance.get(`product/${endpoint}/`)
       .then(res => {
         if (activeTab === 'generics') {
@@ -37,7 +37,7 @@ const GenericsTable = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const endpoint = activeTab === 'generics' ? 'generic-names' : 'categories';
+    const endpoint = activeTab === 'compositions' ? 'compositions' : 'categories';
     try {
       await axiosInstance.post(`product/${endpoint}/`, formData);
       fetchData();
@@ -52,7 +52,7 @@ const GenericsTable = () => {
       {/* Tabs */}
       <div className="mb-6 flex gap-4 border-b border-gray-200">
         <button
-          className={`pb-2 px-4 font-medium ${activeTab === 'generics' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+          className={`pb-2 px-4 font-medium ${activeTab === 'compositions' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           onClick={() => setActiveTab('generics')}
         >Generics</button>
         <button

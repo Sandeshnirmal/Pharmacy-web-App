@@ -40,9 +40,9 @@ const Login = () => {
       // Store authentication tokens
       if (response.data.access) {
         localStorage.setItem('access_token', response.data.access);
-        localStorage.setItem('refresh_token', response.data.refresh);
+        localStorage.setItem('refresh_token', response.data.refresh);   
         localStorage.setItem('user', JSON.stringify(response.data.user));
-        
+        console.log(response.data.access)
         // Redirect to dashboard
         navigate('/Dashboard');
       }

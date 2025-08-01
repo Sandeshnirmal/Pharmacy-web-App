@@ -11,8 +11,7 @@ import InventoryManagement from './pages/InventoryManagement.jsx';
 import PrescriptionUploadsTable from './pages/PrescriptionUploadsTable.jsx';
 import PrescriptionReview from './pages/PrescriptionReview.jsx';
 import PendingPrescriptionsTable from './pages/PendingPrescriptionsTable.jsx';
-
-import CompositionBasedPrescription from './pages/CompositionBasedPrescription.jsx';
+// import AITestPage from './pages/AITestPage.jsx';
 
 // Order Management
 import OrderDetails from './pages/OrderDetails.jsx';
@@ -24,7 +23,7 @@ import UserManagement from './pages/UserManagement.jsx';
 import CustomerManagement from './pages/CustomerManagement.jsx';
 
 // Reports
-import SalesReportsAnalysisPage from "./pages/ReportsAnalytics.jsx";
+import SalesReportsAnalysisPage from "./pages/Report.jsx";
 
 function App() {
   return (
@@ -52,8 +51,7 @@ function App() {
             path="/Prescription_Review/:prescriptionId"
             element={<PrescriptionReview />}
           />
-
-          <Route path="/Composition_Prescription" element={<CompositionBasedPrescription />} />
+          {/* <Route path="/AI_Test" element={<AITestPage />} /> */}
 
           {/* Order Management */}
           <Route path="/Orders" element={<OrdersTable />} />

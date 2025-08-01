@@ -15,7 +15,7 @@ class Composition(models.Model):
     name = models.CharField(max_length=200, unique=True)
     scientific_name = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
-    category = models.CharField(max_length=100, blank=True)  # e.g., 'analgesic', 'antibiotic'
+    category = models.CharField(max_length=100, blank=True)
     side_effects = models.TextField(blank=True)
     contraindications = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -34,6 +34,7 @@ class Composition(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class GenericName(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -57,12 +58,11 @@ class Category(models.Model):
 class Product(models.Model):
     """Enhanced Medicine database with multiple compositions support"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255)  # Branded name
+    name = models.CharField(max_length=255)
     brand_name = models.CharField(max_length=200, blank=True)
     generic_name = models.ForeignKey(GenericName, on_delete=models.CASCADE)
     manufacturer = models.CharField(max_length=255, default='MedCorp')
 
-    # Medicine classifications
     MEDICINE_TYPES = [
         ('tablet', 'Tablet'),
         ('capsule', 'Capsule'),
@@ -75,7 +75,6 @@ class Product(models.Model):
     ]
     medicine_type = models.CharField(max_length=20, choices=MEDICINE_TYPES, default='tablet')
 
-    # Prescription requirements
     PRESCRIPTION_TYPES = [
         ('otc', 'Over The Counter'),
         ('prescription', 'Prescription Required'),
@@ -83,48 +82,40 @@ class Product(models.Model):
     ]
     prescription_type = models.CharField(max_length=20, choices=PRESCRIPTION_TYPES, default='otc')
 
-    # Legacy fields for backward compatibility
-    strength = models.CharField(max_length=50, blank=True)  # e.g., 500mg
-    form = models.CharField(max_length=50, blank=True)  # Tablet, Syrup, etc.
+    strength = models.CharField(max_length=50, blank=True)
+    form = models.CharField(max_length=50, blank=True)
     is_prescription_required = models.BooleanField(default=False)
 
-    # Pricing and inventory
     price = models.DecimalField(max_digits=10, decimal_places=2)
     mrp = models.DecimalField(max_digits=10, decimal_places=2)
     stock_quantity = models.PositiveIntegerField(default=0)
     min_stock_level = models.PositiveIntegerField(default=10)
 
-    # Medicine details
-    dosage_form = models.CharField(max_length=100, blank=True)  # e.g., "500mg", "10ml"
-    pack_size = models.CharField(max_length=50, blank=True)  # e.g., "10 Tablets", "100ml"
-    packaging_unit = models.CharField(max_length=50, blank=True)  # e.g., Box, Strip
+    dosage_form = models.CharField(max_length=100, blank=True)
+    pack_size = models.CharField(max_length=50, blank=True)
+    packaging_unit = models.CharField(max_length=50, blank=True)
 
-    # Enhanced medicine information
     description = models.TextField(blank=True)
     composition = models.TextField(blank=True, help_text="Legacy composition field")
-    uses = models.TextField(blank=True, help_text="Medical uses and indications")
-    side_effects = models.TextField(blank=True, help_text="Possible side effects")
-    how_to_use = models.TextField(blank=True, help_text="Dosage and administration instructions")
-    precautions = models.TextField(blank=True, help_text="Warnings and precautions")
-    storage = models.TextField(blank=True, help_text="Storage conditions")
+    uses = models.TextField(blank=True)
+    side_effects = models.TextField(blank=True)
+    how_to_use = models.TextField(blank=True)
+    precautions = models.TextField(blank=True)
+    storage = models.TextField(blank=True)
 
-    # Relationships
     compositions = models.ManyToManyField(
         Composition,
         through='ProductComposition',
         related_name='products'
     )
 
-    # Legacy fields
     image_url = models.URLField(blank=True)
     hsn_code = models.CharField(max_length=20, blank=True)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True)
 
-    # Status and metadata
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
 
-    # Audit fields
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='created_products', null=True, blank=True)
@@ -145,13 +136,13 @@ class Product(models.Model):
     def __str__(self):
         return f"{self.name} ({self.manufacturer})"
 
+
 class ProductComposition(models.Model):
-    """Junction table for product-composition relationship with dosage info"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     composition = models.ForeignKey(Composition, on_delete=models.CASCADE)
-    strength = models.CharField(max_length=100)  # e.g., "500mg", "10%"
-    unit = models.CharField(max_length=20, default='mg')  # mg, ml, %, etc.
+    strength = models.CharField(max_length=100)
+    unit = models.CharField(max_length=20, default='mg')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -170,8 +161,8 @@ class Batch(models.Model):
     batch_number = models.CharField(max_length=100)
     manufacturing_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField()
-    quantity = models.PositiveIntegerField(default=0)  # Initial quantity
-    current_quantity = models.PositiveIntegerField()  # Current available quantity
+    quantity = models.PositiveIntegerField(default=0)
+    current_quantity = models.PositiveIntegerField()
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
@@ -239,7 +230,7 @@ class Wishlist(models.Model):
 
 class ProductTag(models.Model):
     name = models.CharField(max_length=50, unique=True)
-    color = models.CharField(max_length=7, default='#007bff')  # Hex color
+    color = models.CharField(max_length=7, default='#007bff')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -268,4 +259,3 @@ class ProductViewHistory(models.Model):
 
     def __str__(self):
         return f"{self.user.username} viewed {self.product.name}"
-

@@ -32,12 +32,13 @@ function DashboardMainContent() {
       setLoading(true);
 
       // Fetch all required data in parallel
-      const [ordersRes, prescriptionsRes, usersRes, productsRes] = await Promise.all([
-        axiosInstance.get('order/orders/'),
-        axiosInstance.get('prescription/enhanced-prescriptions/'),
-        axiosInstance.get('user/users/'),
-        axiosInstance.get('product/enhanced-products/')
-      ]);
+      const [ordersRes, prescriptionsRes, usersRes, productsRes] =
+        await Promise.all([
+          axiosInstance.get("order/orders/"),
+          axiosInstance.get("prescription/prescriptions/"),
+          axiosInstance.get("user/users/"),
+          axiosInstance.get("/api/products/enhanced-products/"),
+        ]);
 
       const orders = ordersRes.data.results || ordersRes.data;
       const prescriptions = prescriptionsRes.data.results || prescriptionsRes.data;
@@ -112,10 +113,15 @@ function DashboardMainContent() {
       title: '🛒 Total Orders',
       value: dashboardData.stats.totalOrders.toLocaleString(),
       icon: (
-        <svg fill="currentColor" viewBox="0 0 20 20">
-          <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+         // Your provided SVG code goes here directly
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="21" r="1" />
+          <circle cx="20" cy="21" r="1" />
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
         </svg>
       ),
+
+      
       color: 'bg-blue-500',
       link: '/Orders',
       trend: 12 // Example trend data
@@ -186,7 +192,8 @@ function DashboardMainContent() {
   return (
     <main className="flex-1 p-4 sm:p-6 md:p-8 bg-gray-50">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      
+      <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">E-Commerce Pharmacy Dashboard</h1>
           <p className="text-gray-600 mt-2">Manage your online pharmacy business - Orders, Products, Customers & Inventory</p>

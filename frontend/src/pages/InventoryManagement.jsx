@@ -55,17 +55,25 @@ const InventoryManagement = () => {
   const fetchInventoryData = async () => {
     try {
       setLoading(true);
-      const [productsRes, batchesRes, categoriesRes, genericNamesRes] = await Promise.all([
-        axiosInstance.get('product/enhanced-products/'),
-        axiosInstance.get('inventory/batches/'),
-        axiosInstance.get('product/legacy/categories/'),
-        axiosInstance.get('product/legacy/generic-names/')
-      ]);
+      const [productsRes, batchesRes, categoriesRes, genericNamesRes] =
+        await Promise.all([
+          axiosInstance.get("/api/products/enhanced-products/"),
+          axiosInstance.get("/api/products/legacy/batches/"),
+          axiosInstance.get("product/legacy/categories/"),
+          axiosInstance.get("api/products/compositions/"),
+          // axiosInstance.get("/inventory/stock-movements/"),
+         
+          // axiosInstance.get("/inventory/stock-alerts/"),
+          
+
+        ]);
 
       setProducts(productsRes.data.results || productsRes.data);
       setBatches(batchesRes.data.results || batchesRes.data);
       setCategories(categoriesRes.data.results || categoriesRes.data);
       setGenericNames(genericNamesRes.data.results || genericNamesRes.data);
+      console.log(categoriesRes.data.results || categoriesRes.data)
+      console.log("asdasd")
     } catch (err) {
       setError('Failed to fetch inventory data');
       console.error('Error fetching inventory:', err);
@@ -77,9 +85,9 @@ const InventoryManagement = () => {
   const handleAddBatch = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post('inventory/batches/', {
+      await axiosInstance.post("/api/products/legacy/batches/", {
         ...newBatch,
-        product: selectedProduct.id
+        product: selectedProduct.id,
       });
       setShowBatchModal(false);
       setNewBatch({
