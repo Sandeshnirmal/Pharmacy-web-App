@@ -154,6 +154,8 @@ class LoginView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Use authenticate with the email as the 'username' argument
+        # Use authenticate with the email as the 'username' argument
+        
         user = authenticate(username=email, password=password)
 
         if user:
