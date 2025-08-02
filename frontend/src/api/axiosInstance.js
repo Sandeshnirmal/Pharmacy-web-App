@@ -4,7 +4,7 @@ import axios from 'axios';
 const axiosInstance = axios.create({
   baseURL: 'http://127.0.0.1:8000/',
   timeout: 10000, // Increased timeout for better reliability
-  withCredentials: true, // Enable credentials for CORS
+  withCredentials: false, // Disable credentials for login endpoint
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',

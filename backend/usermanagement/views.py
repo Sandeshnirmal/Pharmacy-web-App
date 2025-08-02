@@ -153,47 +153,72 @@ class LoginView(APIView):
                 }
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use authenticate with the email as the 'username' argument
-        # Use authenticate with the email as the 'username' argument
-        
-        user = authenticate(username=email, password=password)
-
-        if user:
-            # Check if user is active
-            if not user.is_active:
+        try:
+            # First check if user exists
+            try:
+                user_exists = User.objects.get(email=email)
+                print(f"User found: {user_exists.email}, active: {user_exists.is_active}")
+            except User.DoesNotExist:
                 return Response({
-                    'error': 'Account is deactivated',
-                    'message': 'Your account has been deactivated. Please contact support.'
-                }, status=status.HTTP_403_FORBIDDEN)
+                    'error': 'User not found',
+                    'detail': 'User not found',
+                    'code': 'user_not_found',
+                    'message': 'No account found with this email address.'
+                }, status=status.HTTP_401_UNAUTHORIZED)
 
-            # Generate JWT tokens upon successful authentication
-            refresh = TokenObtainPairSerializer.get_token(user)
-            access_token = str(refresh.access_token)
+            # Use authenticate with the email as the 'username' argument
+            user = authenticate(username=email, password=password)
+            print(f"Authentication result: {user}")
 
-            # Update last login
-            user.last_login = timezone.now()
-            user.save(update_fields=['last_login'])
+            if user:
+                # Check if user is active
+                if not user.is_active:
+                    return Response({
+                        'error': 'Account is deactivated',
+                        'detail': 'Account is deactivated',
+                        'code': 'account_deactivated',
+                        'message': 'Your account has been deactivated. Please contact support.'
+                    }, status=status.HTTP_403_FORBIDDEN)
 
+                # Generate JWT tokens upon successful authentication
+                refresh = TokenObtainPairSerializer.get_token(user)
+                access_token = str(refresh.access_token)
+
+                # Update last login
+                user.last_login = timezone.now()
+                user.save(update_fields=['last_login'])
+
+                return Response({
+                    'access': access_token,
+                    'refresh': str(refresh),
+                    'user': {
+                        'id': str(user.id),  # Convert UUID to string
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'role': user.role,
+                        'is_staff': user.is_staff,
+                        'phone_number': user.phone_number or '',
+                        'profile_picture_url': user.profile_picture_url or ''
+                    },
+                    'message': 'Login successful'
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': 'Invalid credentials',
+                    'detail': 'Invalid credentials',
+                    'code': 'invalid_credentials',
+                    'message': 'The email or password you entered is incorrect.'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+
+        except Exception as e:
+            print(f"Login error: {e}")
             return Response({
-                'access': access_token,
-                'refresh': str(refresh),
-                'user': {
-                    'id': user.id,
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name,
-                    'role': user.role,
-                    'is_staff': user.is_staff,
-                    'phone_number': user.phone_number,
-                    'profile_picture_url': user.profile_picture_url
-                },
-                'message': 'Login successful'
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'error': 'Invalid credentials',
-                'message': 'The email or password you entered is incorrect.'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+                'error': 'Login failed',
+                'detail': str(e),
+                'code': 'login_error',
+                'message': 'An error occurred during login. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # --- Protected Views (require an authenticated JWT) ---
 

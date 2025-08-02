@@ -594,3 +594,68 @@ def search_prescription_medicines(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_prescription_for_order(request):
+    """
+    Simple prescription upload for order verification - NO AI/OCR processing
+
+    This endpoint is used when customers upload prescriptions during checkout.
+    The prescription is stored for manual verification by pharmacy staff.
+    No automatic processing or medicine extraction is performed.
+    """
+    try:
+        # Validate request
+        if 'prescription_image' not in request.FILES:
+            return Response({
+                'success': False,
+                'error': 'Prescription image is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        image_file = request.FILES['prescription_image']
+
+        # Validate file size (max 10MB)
+        if image_file.size > 10 * 1024 * 1024:
+            return Response({
+                'success': False,
+                'error': 'File size too large. Maximum 10MB allowed.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+        if image_file.content_type not in allowed_types:
+            return Response({
+                'success': False,
+                'error': 'Invalid file type. Only JPEG, PNG, and WebP images are allowed.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Save the uploaded file
+        file_name = f"order_prescriptions/{request.user.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}_{image_file.name}"
+        file_path = default_storage.save(file_name, ContentFile(image_file.read()))
+        image_url = default_storage.url(file_path)
+
+        # Create prescription record for manual verification
+        prescription = Prescription.objects.create(
+            user=request.user,
+            image_url=image_url,
+            verification_status='pending_verification',  # Manual verification required
+            upload_date=timezone.now(),
+            ai_processed=False,  # No AI processing
+            notes='Uploaded for order verification - manual review required'
+        )
+
+        return Response({
+            'success': True,
+            'message': 'Prescription uploaded successfully for verification',
+            'prescription_id': prescription.id,
+            'status': 'pending_verification',
+            'note': 'Your prescription has been submitted for manual verification by our pharmacy team.'
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': f'Upload failed: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

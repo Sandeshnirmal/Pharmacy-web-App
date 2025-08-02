@@ -92,13 +92,16 @@ def login_user(request):
                 'access': token.key,  # For compatibility
                 'refresh': token.key,  # For compatibility
                 'user': {
-                    'id': user.id,
+                    'id': str(user.id),  # Convert UUID to string
                     'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
-                    'phone': user.phone_number,  # Use correct field name
+                    'phone': user.phone_number or '',  # Handle None values
+                    'phone_number': user.phone_number or '',  # Alternative field name
                     'role': user.role,
-                    'is_verified': getattr(user, 'is_verified', True),  # Default to True if field doesn't exist
+                    'is_verified': getattr(user, 'is_verified', True),
+                    'is_active': user.is_active,
+                    'date_joined': user.date_joined.isoformat() if user.date_joined else None,
                 }
             }, status=status.HTTP_200_OK)
         else:
@@ -113,6 +116,31 @@ def login_user(request):
     except Exception as e:
         return Response({
             'error': f'Login failed: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_profile(request):
+    """Get current user profile for mobile app"""
+    try:
+        user = request.user
+        return Response({
+            'id': str(user.id),
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'phone': user.phone_number or '',
+            'phone_number': user.phone_number or '',
+            'role': user.role,
+            'is_verified': getattr(user, 'is_verified', True),
+            'is_active': user.is_active,
+            'date_joined': user.date_joined.isoformat() if user.date_joined else None,
+            'last_login': user.last_login.isoformat() if user.last_login else None,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': f'Failed to get user profile: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])

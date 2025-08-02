@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
-import uuid
 
 User = get_user_model()
 
@@ -11,7 +10,6 @@ User = get_user_model()
 
 class Composition(models.Model):
     """Reusable medicine compositions (active ingredients)"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200, unique=True)
     scientific_name = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
@@ -57,7 +55,6 @@ class Category(models.Model):
 
 class Product(models.Model):
     """Enhanced Medicine database with multiple compositions support"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     brand_name = models.CharField(max_length=200, blank=True)
     generic_name = models.ForeignKey(GenericName, on_delete=models.CASCADE)
@@ -138,7 +135,6 @@ class Product(models.Model):
 
 
 class ProductComposition(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     composition = models.ForeignKey(Composition, on_delete=models.CASCADE)
     strength = models.CharField(max_length=100)

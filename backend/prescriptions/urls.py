@@ -29,5 +29,8 @@ urlpatterns = [
     # Mobile search endpoints
     path('mobile/search/', mobile_api.search_prescription_medicines, name='mobile_search_medicines'),
 
+    # Simple prescription upload for order verification (no AI/OCR processing)
+    path('upload-for-order/', mobile_api.upload_prescription_for_order, name='upload_prescription_for_order'),
+
     # Test endpoints removed - use mobile API for all prescription processing
 ]
