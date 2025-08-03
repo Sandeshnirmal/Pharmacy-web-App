@@ -23,10 +23,13 @@ urlpatterns = [
     path('api/users/', include('usermanagement.urls')),
     path('api/products/', include('product.urls')),
     path('api/prescriptions/', include('prescriptions.urls')),
-    path('api/orders/', include('orders.urls')),
+    path('api/order/', include('orders.urls')),
 
     # Mobile App Authentication Endpoints (Token-based)
     path('api/auth/', include('authentication.urls')),
+
+    # Payment Endpoints (Razorpay integration)
+    path('payment/', include('payment.urls')),
 
     # JWT Authentication Endpoints (for web dashboard)
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

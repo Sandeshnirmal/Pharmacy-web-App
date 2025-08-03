@@ -1,17 +1,21 @@
 # Mobile API endpoints for prescription processing
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny,AllowAny
 from rest_framework.response import Response
 from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.db.models import Q
 from .models import Prescription, PrescriptionDetail
 # Removed ai_service - using only OCR service now
 from .ocr_service import OCRService
+import logging
+
+logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def upload_prescription(request):
     """
     Mobile API: Upload prescription image for AI processing
@@ -121,7 +125,7 @@ def upload_prescription(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_prescription_status(request, prescription_id):
     """
     Mobile API: Get prescription processing status
@@ -153,7 +157,7 @@ def get_prescription_status(request, prescription_id):
         }, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_medicine_suggestions(request, prescription_id):
     """
     Mobile API: Get AI-generated medicine suggestions
@@ -245,7 +249,7 @@ def get_medicine_suggestions(request, prescription_id):
         }, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def create_prescription_order(request):
     """
     Mobile API: Create order from prescription medicines
@@ -366,7 +370,7 @@ def create_prescription_order(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def reprocess_prescription_ocr(request, prescription_id):
     """
     Admin API: Reprocess prescription with OCR for better results
@@ -466,7 +470,7 @@ def reprocess_prescription_ocr(request, prescription_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_prescription_products(request, prescription_id):
     """
     Mobile API: Get all products related to a prescription for search/browsing
@@ -536,7 +540,7 @@ def get_prescription_products(request, prescription_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def search_prescription_medicines(request):
     """
     Mobile API: Search for medicines based on prescription history and general search
@@ -597,7 +601,7 @@ def search_prescription_medicines(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def upload_prescription_for_order(request):
     """
     Simple prescription upload for order verification - NO AI/OCR processing
@@ -641,9 +645,10 @@ def upload_prescription_for_order(request):
             user=request.user,
             image_url=image_url,
             verification_status='pending_verification',  # Manual verification required
+            status='pending_verification',
             upload_date=timezone.now(),
             ai_processed=False,  # No AI processing
-            notes='Uploaded for order verification - manual review required'
+            verification_notes='Uploaded for order verification - manual review required'
         )
 
         return Response({
@@ -655,6 +660,113 @@ def upload_prescription_for_order(request):
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
+        return Response({
+            'success': False,
+            'error': f'Upload failed: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_prescription_verification_status(request, prescription_id):
+    """
+    Get prescription verification status for mobile app
+    """
+    try:
+        prescription = Prescription.objects.get(id=prescription_id)
+
+        return Response({
+            'success': True,
+            'prescription_id': str(prescription.id),  # Convert UUID to string
+            'status': prescription.verification_status,
+            'verification_notes': prescription.verification_notes,
+            'image_url': prescription.image_url if prescription.image_url else None,
+            'order_id': prescription.order.id if prescription.order else None,
+            'payment_confirmed': True,  # Assume payment confirmed for paid orders
+            'created_at': prescription.created_at.isoformat() if prescription.created_at else None,
+            'updated_at': prescription.updated_at.isoformat() if prescription.updated_at else None,
+        })
+
+    except Prescription.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Prescription not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f'Get verification status error: {str(e)}')
+        return Response({
+            'success': False,
+            'error': f'Failed to get verification status: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def upload_prescription_for_paid_order(request):
+    """
+    Upload prescription for paid order verification (after payment confirmation)
+    """
+    try:
+        image_data = request.data.get('image')  # base64 image
+        order_id = request.data.get('order_id')
+
+        if not image_data:
+            return Response({
+                'success': False,
+                'error': 'No image data provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Handle base64 image
+        import base64
+        from django.core.files.base import ContentFile
+        from orders.models import Order
+
+        try:
+            # Decode base64 image
+            image_bytes = base64.b64decode(image_data)
+            image_file = ContentFile(image_bytes, name=f'prescription_order_{order_id}.jpg')
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Invalid image data: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get the order object
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Order not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Save the uploaded file
+        file_name = f"paid_order_prescriptions/order_{order_id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+        file_path = default_storage.save(file_name, image_file)
+        image_url = default_storage.url(file_path)
+
+        # Create prescription record for verification using existing model fields
+        prescription = Prescription.objects.create(
+            user=order.user,  # Use order's user
+            image_url=image_url,
+            image_file=image_file,
+            verification_status='Pending_Review',  # Use existing status choices
+            status='pending_verification',         # Use existing status choices
+            ai_processed=False,  # No AI processing for order verification
+            verification_notes=f'Uploaded for paid order #{order_id} verification - manual review required',
+            order=order,  # Link to order
+        )
+
+        return Response({
+            'success': True,
+            'prescription_id': str(prescription.id),  # Convert UUID to string
+            'image_url': image_url,
+            'status': prescription.verification_status,
+            'message': 'Prescription uploaded successfully for verification'
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f'Prescription upload error: {str(e)}')
         return Response({
             'success': False,
             'error': f'Upload failed: {str(e)}'

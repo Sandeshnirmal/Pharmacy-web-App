@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PrescriptionViewSet, PrescriptionDetailViewSet
 from .enhanced_views import EnhancedPrescriptionViewSet, PrescriptionMedicineViewSet
-from . import mobile_api
+from . import mobile_api, medicine_search
 # test_views removed - using only mobile_api now
 
 router = DefaultRouter()
@@ -31,6 +31,15 @@ urlpatterns = [
 
     # Simple prescription upload for order verification (no AI/OCR processing)
     path('upload-for-order/', mobile_api.upload_prescription_for_order, name='upload_prescription_for_order'),
+
+    # Prescription verification endpoints
+    path('verification-status/<str:prescription_id>/', mobile_api.get_prescription_verification_status, name='prescription_verification_status'),
+    path('upload-for-paid-order/', mobile_api.upload_prescription_for_paid_order, name='upload_prescription_for_paid_order'),
+
+    # Intelligent Medicine Search APIs
+    path('search/medicines/', medicine_search.intelligent_medicine_search, name='intelligent_medicine_search'),
+    path('search/composition/', medicine_search.search_by_composition, name='search_by_composition'),
+    path('ocr/analyze/', medicine_search.prescription_ocr_analysis, name='prescription_ocr_analysis'),
 
     # Test endpoints removed - use mobile API for all prescription processing
 ]

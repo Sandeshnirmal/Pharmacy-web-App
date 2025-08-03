@@ -49,3 +49,60 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.product.name if self.product else 'Unknown'} x {self.quantity}"
+
+
+class OrderTracking(models.Model):
+    """Enhanced order tracking with detailed status updates"""
+    TRACKING_STATUS_CHOICES = [
+        ('order_placed', 'Order Placed'),
+        ('payment_confirmed', 'Payment Confirmed'),
+        ('prescription_verified', 'Prescription Verified'),
+        ('order_confirmed', 'Order Confirmed'),
+        ('preparing', 'Preparing Order'),
+        ('quality_check', 'Quality Check'),
+        ('packed', 'Packed'),
+        ('ready_for_pickup', 'Ready for Pickup'),
+        ('out_for_delivery', 'Out for Delivery'),
+        ('delivered', 'Delivered'),
+        ('cancelled', 'Cancelled'),
+        ('returned', 'Returned'),
+    ]
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='tracking_updates')
+    status = models.CharField(max_length=30, choices=TRACKING_STATUS_CHOICES)
+    message = models.TextField()
+    location = models.CharField(max_length=200, blank=True)
+    estimated_delivery = models.DateTimeField(null=True, blank=True)
+    actual_delivery = models.DateTimeField(null=True, blank=True)
+    delivery_person_name = models.CharField(max_length=100, blank=True)
+    delivery_person_phone = models.CharField(max_length=15, blank=True)
+    tracking_number = models.CharField(max_length=50, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Order Tracking'
+        verbose_name_plural = 'Order Tracking Updates'
+
+    def __str__(self):
+        return f"Order {self.order.id} - {self.get_status_display()}"
+
+
+class OrderStatusHistory(models.Model):
+    """Track all status changes for an order"""
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='status_history')
+    old_status = models.CharField(max_length=15, blank=True)
+    new_status = models.CharField(max_length=15)
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    reason = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Order Status History'
+        verbose_name_plural = 'Order Status History'
+
+    def __str__(self):
+        return f"Order {self.order.id}: {self.old_status} → {self.new_status}"

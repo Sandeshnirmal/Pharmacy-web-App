@@ -26,6 +26,10 @@ SECRET_KEY = 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=
 # Google AI API Key for OCR
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyA8JFwu5DpLSKBfTTk2K3dUW61y32gZeoo')
 
+# Razorpay Configuration (Update with your actual keys)
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', 'rzp_test_YOUR_KEY_ID')
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', 'YOUR_KEY_SECRET')
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -52,6 +56,7 @@ INSTALLED_APPS = [
     'usermanagement',
     'inventory',
     'authentication',  # Authentication app for mobile API
+    'payment',  # Payment app for Razorpay integration
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App
