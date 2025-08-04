@@ -27,20 +27,32 @@ const InventoryManagement = () => {
   });
 
   const [newProduct, setNewProduct] = useState({
-    name: '',
-    category_id: '',
-    generic_name_id: '',
-    strength: '',
-    form: '',
-    manufacturer: 'MedCorp',
-    price: '',
-    mrp: '',
+    name: "",
+    category_id: "",
+    generic_name_id: "",
+    strength: "",
+    form: "",
+    manufacturer: "MedCorp",
+    price: "",
+    mrp: "",
     is_prescription_required: false,
-    hsn_code: '30041000',
-    packaging_unit: '',
-    pack_size: '',
-    stock_quantity: '',
-    min_stock_level: '10'
+    hsn_code: "30041000",
+    packaging_unit: "",
+    pack_size: "",
+    stock_quantity: "",
+    min_stock_level: "10",
+    brand_name: "",
+    prescription_type: "otc",
+    dosage_form: "",
+    description: "",
+    // composition: "",
+    uses: "",
+    side_effects: "",
+    how_to_use: "",
+    precautions: "",
+    storage: "",
+    image_url: "",
+
   });
 
   const [newCategory, setNewCategory] = useState({
@@ -108,23 +120,34 @@ const InventoryManagement = () => {
   const handleAddProduct = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post('product/enhanced-products/', newProduct);
+      await axiosInstance.post("api/products/enhanced-products/", newProduct);
       setShowProductModal(false);
       setNewProduct({
-        name: '',
-        category_id: '',
-        generic_name_id: '',
-        strength: '',
-        form: '',
-        manufacturer: 'MedCorp',
-        price: '',
-        mrp: '',
+        name: "",
+        category_id: "",
+        generic_name_id: "",
+        strength: "",
+        form: "",
+        manufacturer: "MedCorp",
+        price: "",
+        mrp: "",
         is_prescription_required: false,
-        hsn_code: '30041000',
-        packaging_unit: '',
-        pack_size: '',
-        stock_quantity: '',
-        min_stock_level: '10'
+        hsn_code: "30041000",
+        packaging_unit: "",
+        pack_size: "",
+        stock_quantity: "",
+        min_stock_level: "10",
+        brand_name: "",
+        prescription_type: "otc",
+        dosage_form: "",
+        description: "",
+        // composition: "",
+        uses: "",
+        side_effects: "",
+        how_to_use: "",
+        precautions: "",
+        storage: "",
+        image_url: "",
       });
       await fetchInventoryData();
     } catch (err) {
@@ -222,8 +245,12 @@ const InventoryManagement = () => {
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-8">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-800 mb-2">Inventory Management</h1>
-            <p className="text-gray-600">Track medicines, stock levels, categories, and expiry dates</p>
+            <h1 className="text-3xl font-semibold text-gray-800 mb-2">
+              Inventory Management
+            </h1>
+            <p className="text-gray-600">
+              Track medicines, stock levels, categories, and expiry dates
+            </p>
             <div className="mt-3 text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded inline-block">
               Pharmacy Stock Control System
             </div>
@@ -256,8 +283,12 @@ const InventoryManagement = () => {
         <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Total Medicines</p>
-              <p className="text-2xl font-semibold text-gray-800">{products.length}</p>
+              <p className="text-gray-600 text-sm font-medium">
+                Total Medicines
+              </p>
+              <p className="text-2xl font-semibold text-gray-800">
+                {products.length}
+              </p>
               <p className="text-gray-500 text-xs mt-1">Active products</p>
             </div>
           </div>
@@ -266,9 +297,15 @@ const InventoryManagement = () => {
         <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Low Stock Alert</p>
+              <p className="text-gray-600 text-sm font-medium">
+                Low Stock Alert
+              </p>
               <p className="text-2xl font-semibold text-gray-800">
-                {products.filter(p => getStockStatus(p).status === 'Low Stock').length}
+                {
+                  products.filter(
+                    (p) => getStockStatus(p).status === "Low Stock"
+                  ).length
+                }
               </p>
               <p className="text-gray-500 text-xs mt-1">Need restocking</p>
             </div>
@@ -280,7 +317,12 @@ const InventoryManagement = () => {
             <div>
               <p className="text-gray-600 text-sm font-medium">Expiring Soon</p>
               <p className="text-2xl font-semibold text-gray-800">
-                {batches.filter(b => getExpiryStatus(b.expiry_date).status === 'Expiring Soon').length}
+                {
+                  batches.filter(
+                    (b) =>
+                      getExpiryStatus(b.expiry_date).status === "Expiring Soon"
+                  ).length
+                }
               </p>
               <p className="text-gray-500 text-xs mt-1">Within 30 days</p>
             </div>
@@ -339,22 +381,40 @@ const InventoryManagement = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                >
                   Medicine Details
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                >
                   Category
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                >
                   Stock Level
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                >
                   Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                >
                   Price
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider"
+                >
                   Actions
                 </th>
               </tr>
@@ -363,51 +423,76 @@ const InventoryManagement = () => {
               {filteredProducts.map((product, index) => {
                 const stockStatus = getStockStatus(product);
                 return (
-                  <tr key={product.id} className={`hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                  <tr
+                    key={product.id}
+                    className={`hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 ${
+                      index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    }`}
+                  >
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-12 w-12">
                           <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
-                            <span className="text-white font-bold text-lg">💊</span>
+                            <span className="text-white font-bold text-lg">
+                              💊
+                            </span>
                           </div>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-semibold text-gray-900">{product.name}</div>
-                          <div className="text-sm text-blue-600 font-medium">{product.generic_name?.name}</div>
+                          <div className="text-sm font-semibold text-gray-900">
+                            {product.name}
+                          </div>
+                          <div className="text-sm text-blue-600 font-medium">
+                            {product.generic_name?.name}
+                          </div>
                           <div className="text-xs text-gray-500 flex items-center mt-1">
-                            <span className="bg-gray-100 px-2 py-1 rounded-full mr-2">{product.strength}</span>
-                            <span className="bg-gray-100 px-2 py-1 rounded-full">{product.form}</span>
+                            <span className="bg-gray-100 px-2 py-1 rounded-full mr-2">
+                              {product.strength}
+                            </span>
+                            <span className="bg-gray-100 px-2 py-1 rounded-full">
+                              {product.form}
+                            </span>
                           </div>
                           {product.is_prescription_required && (
-                            <div className="text-xs text-red-600 font-medium mt-1">🔒 Prescription Required</div>
+                            <div className="text-xs text-red-600 font-medium mt-1">
+                              🔒 Prescription Required
+                            </div>
                           )}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
                       <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
-                        🏷️ {product.category?.name || 'Uncategorized'}
+                        🏷️ {product.category?.name || "Uncategorized"}
                       </span>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="text-lg font-bold text-gray-900">{product.stock_quantity || 0}</div>
+                        <div className="text-lg font-bold text-gray-900">
+                          {product.stock_quantity || 0}
+                        </div>
                         <div className="text-sm text-gray-500 ml-1">units</div>
                       </div>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-2 rounded-full text-sm font-semibold ${stockStatus.color} shadow-sm`}>
-                        {stockStatus.status === 'Out of Stock' && '🔴'}
-                        {stockStatus.status === 'Low Stock' && '🟡'}
-                        {stockStatus.status === 'Medium Stock' && '🔵'}
-                        {stockStatus.status === 'In Stock' && '🟢'}
+                      <span
+                        className={`inline-flex items-center px-3 py-2 rounded-full text-sm font-semibold ${stockStatus.color} shadow-sm`}
+                      >
+                        {stockStatus.status === "Out of Stock" && "🔴"}
+                        {stockStatus.status === "Low Stock" && "🟡"}
+                        {stockStatus.status === "Medium Stock" && "🔵"}
+                        {stockStatus.status === "In Stock" && "🟢"}
                         <span className="ml-1">{stockStatus.status}</span>
                       </span>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
-                      <div className="text-lg font-bold text-green-600">₹{product.price}</div>
+                      <div className="text-lg font-bold text-green-600">
+                        ₹{product.price}
+                      </div>
                       {product.mrp && (
-                        <div className="text-sm text-gray-500 line-through">MRP: ₹{product.mrp}</div>
+                        <div className="text-sm text-gray-500 line-through">
+                          MRP: ₹{product.mrp}
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap text-sm font-medium">
@@ -439,8 +524,12 @@ const InventoryManagement = () => {
         {/* Empty State */}
         {filteredProducts.length === 0 && !loading && (
           <div className="text-center py-12">
-            <h3 className="text-sm font-medium text-gray-900">No products found</h3>
-            <p className="mt-1 text-sm text-gray-500">No products match your current filters.</p>
+            <h3 className="text-sm font-medium text-gray-900">
+              No products found
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              No products match your current filters.
+            </p>
           </div>
         )}
       </div>
@@ -451,23 +540,30 @@ const InventoryManagement = () => {
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Add Stock Batch {selectedProduct && `for ${selectedProduct.name}`}
+                Add Stock Batch{" "}
+                {selectedProduct && `for ${selectedProduct.name}`}
               </h3>
 
               <form onSubmit={handleAddBatch} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Batch Number</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Batch Number
+                  </label>
                   <input
                     type="text"
                     required
                     value={newBatch.batch_number}
-                    onChange={(e) => setNewBatch({...newBatch, batch_number: e.target.value})}
+                    onChange={(e) =>
+                      setNewBatch({ ...newBatch, batch_number: e.target.value })
+                    }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Initial Quantity</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Initial Quantity
+                  </label>
                   <input
                     type="number"
                     required
@@ -477,7 +573,7 @@ const InventoryManagement = () => {
                       setNewBatch({
                         ...newBatch,
                         quantity: value,
-                        current_quantity: value // Auto-set current quantity to match initial quantity
+                        current_quantity: value, // Auto-set current quantity to match initial quantity
                       });
                     }}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-500"
@@ -486,48 +582,70 @@ const InventoryManagement = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Current Available Quantity</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Current Available Quantity
+                  </label>
                   <input
                     type="number"
                     required
                     value={newBatch.current_quantity}
-                    onChange={(e) => setNewBatch({...newBatch, current_quantity: e.target.value})}
+                    onChange={(e) =>
+                      setNewBatch({
+                        ...newBatch,
+                        current_quantity: e.target.value,
+                      })
+                    }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-500"
                     placeholder="Currently available quantity"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Expiry Date</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Expiry Date
+                  </label>
                   <input
                     type="date"
                     required
                     value={newBatch.expiry_date}
-                    onChange={(e) => setNewBatch({...newBatch, expiry_date: e.target.value})}
+                    onChange={(e) =>
+                      setNewBatch({ ...newBatch, expiry_date: e.target.value })
+                    }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-500"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Cost Price
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       required
                       value={newBatch.cost_price}
-                      onChange={(e) => setNewBatch({...newBatch, cost_price: e.target.value})}
+                      onChange={(e) =>
+                        setNewBatch({ ...newBatch, cost_price: e.target.value })
+                      }
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Selling Price</label>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Selling Price
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       required
                       value={newBatch.selling_price}
-                      onChange={(e) => setNewBatch({...newBatch, selling_price: e.target.value})}
+                      onChange={(e) =>
+                        setNewBatch({
+                          ...newBatch,
+                          selling_price: e.target.value,
+                        })
+                      }
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-500"
                     />
                   </div>
@@ -540,12 +658,12 @@ const InventoryManagement = () => {
                       setShowBatchModal(false);
                       setSelectedProduct(null);
                       setNewBatch({
-                        batch_number: '',
-                        quantity: '',
-                        current_quantity: '',
-                        expiry_date: '',
-                        cost_price: '',
-                        selling_price: ''
+                        batch_number: "",
+                        quantity: "",
+                        current_quantity: "",
+                        expiry_date: "",
+                        cost_price: "",
+                        selling_price: "",
                       });
                     }}
                     className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
@@ -567,197 +685,481 @@ const InventoryManagement = () => {
 
       {/* Add Product Modal */}
       {showProductModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-gray-800">💊 Add New Medicine</h2>
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white p-6 rounded-lg w-full max-w-4xl shadow-xl max-h-[95vh]">
+            <div className="flex justify-between items-center pb-4 border-b">
+              <h2 className="text-2xl font-bold text-gray-800">
+                💊 Add New Medicine
+              </h2>
               <button
                 onClick={() => setShowProductModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="text-gray-500 hover:text-gray-700 text-3xl font-light"
               >
-                ×
+                &times;
               </button>
             </div>
 
-            <form onSubmit={handleAddProduct} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
-                  <input
-                    type="text"
-                    value={newProduct.name}
-                    onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., Paracetamol 500mg"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                  <select
-                    value={newProduct.category_id}
-                    onChange={(e) => setNewProduct({...newProduct, category_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    <option value="">Select Category</option>
-                    {categories.map(category => (
-                      <option key={category.id} value={category.id}>{category.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Generic Name *</label>
-                  <select
-                    value={newProduct.generic_name_id}
-                    onChange={(e) => setNewProduct({...newProduct, generic_name_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    <option value="">Select Generic Name</option>
-                    {genericNames.map(generic => (
-                      <option key={generic.id} value={generic.id}>{generic.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Strength *</label>
-                  <input
-                    type="text"
-                    value={newProduct.strength}
-                    onChange={(e) => setNewProduct({...newProduct, strength: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 500mg, 10ml"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Form *</label>
-                  <select
-                    value={newProduct.form}
-                    onChange={(e) => setNewProduct({...newProduct, form: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    <option value="">Select Form</option>
-                    <option value="Tablet">Tablet</option>
-                    <option value="Capsule">Capsule</option>
-                    <option value="Syrup">Syrup</option>
-                    <option value="Injection">Injection</option>
-                    <option value="Cream">Cream</option>
-                    <option value="Ointment">Ointment</option>
-                    <option value="Inhaler">Inhaler</option>
-                    <option value="Drops">Drops</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">MRP (₹) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newProduct.mrp}
-                    onChange={(e) => setNewProduct({...newProduct, mrp: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Packaging Unit *</label>
-                  <input
-                    type="text"
-                    value={newProduct.packaging_unit}
-                    onChange={(e) => setNewProduct({...newProduct, packaging_unit: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., Strip, Box, Bottle"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Pack Size *</label>
-                  <input
-                    type="text"
-                    value={newProduct.pack_size}
-                    onChange={(e) => setNewProduct({...newProduct, pack_size: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 10 Tablets, 100ml"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Initial Stock *</label>
-                  <input
-                    type="number"
-                    value={newProduct.stock_quantity}
-                    onChange={(e) => setNewProduct({...newProduct, stock_quantity: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Min Stock Level</label>
-                  <input
-                    type="number"
-                    value={newProduct.min_stock_level}
-                    onChange={(e) => setNewProduct({...newProduct, min_stock_level: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="10"
-                  />
+            <form
+              onSubmit={handleAddProduct}
+              className="space-y-6 pt-4 overflow-y-auto max-h-[calc(95vh-150px)] pr-4"
+            >
+              {/* --- Section 1: Primary Information --- */}
+              <div className="border-b border-gray-200 pb-6">
+                <h3 className="text-lg font-semibold text-gray-700">
+                  Primary Information
+                </h3>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Medicine Name *
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={newProduct.name}
+                      onChange={(e) =>
+                        setNewProduct({ ...newProduct, name: e.target.value })
+                      }
+                      required
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="e.g., Paracetamol 500mg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Brand Name
+                    </label>
+                    <input
+                      type="text"
+                      name="brand_name"
+                      value={newProduct.brand_name}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          brand_name: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="e.g., Calpol"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Generic Name *
+                    </label>
+                    <select
+                      name="generic_name_id"
+                      value={newProduct.generic_name_id}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          generic_name_id: e.target.value,
+                        })
+                      }
+                      required
+                      className="w-full mt-1 px-3 py-2 border rounded-md bg-white"
+                    >
+                      <option value="" disabled>
+                        Select Generic Name
+                      </option>
+                      {genericNames.map((generic) => (
+                        <option key={generic.id} value={generic.id}>
+                          {generic.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Category *
+                    </label>
+                    <select
+                      name="category_id"
+                      value={newProduct.category_id}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          category_id: e.target.value,
+                        })
+                      }
+                      required
+                      className="w-full mt-1 px-3 py-2 border rounded-md bg-white"
+                    >
+                      <option value="" disabled>
+                        Select Category
+                      </option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="prescription_required"
-                  checked={newProduct.is_prescription_required}
-                  onChange={(e) => setNewProduct({...newProduct, is_prescription_required: e.target.checked})}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="prescription_required" className="ml-2 block text-sm text-gray-700">
-                  🔒 Prescription Required
+              {/* --- Section 2: Product & Pricing Details --- */}
+              <div className="border-b border-gray-200 pb-6">
+                <h3 className="text-lg font-semibold text-gray-700">
+                  Details & Pricing
+                </h3>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Medicine Type
+                    </label>
+                    <select
+                      name="medicine_type"
+                      value={newProduct.medicine_type}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          medicine_type: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md bg-white"
+                    >
+                      <option value="tablet">Tablet</option>
+                      <option value="capsule">Capsule</option>
+                      <option value="syrup">Syrup</option>
+                      <option value="injection">Injection</option>
+                      <option value="cream">Cream</option>
+                      <option value="drops">Drops</option>
+                      <option value="inhaler">Inhaler</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Strength
+                    </label>
+                    <input
+                      type="text"
+                      name="strength"
+                      value={newProduct.strength}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          strength: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="e.g., 500mg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Dosage Form
+                    </label>
+                    <input
+                      type="text"
+                      name="dosage_form"
+                      value={newProduct.dosage_form}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          dosage_form: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="e.g., Tablet"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Pack Size
+                    </label>
+                    <input
+                      type="text"
+                      name="pack_size"
+                      value={newProduct.pack_size}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          pack_size: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="e.g., 10 Tablets"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Price (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="price"
+                      value={newProduct.price}
+                      onChange={(e) =>
+                        setNewProduct({ ...newProduct, price: e.target.value })
+                      }
+                      required
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      MRP (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="mrp"
+                      value={newProduct.mrp}
+                      onChange={(e) =>
+                        setNewProduct({ ...newProduct, mrp: e.target.value })
+                      }
+                      required
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Initial Stock *
+                    </label>
+                    <input
+                      type="number"
+                      name="stock_quantity"
+                      value={newProduct.stock_quantity}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          stock_quantity: e.target.value,
+                        })
+                      }
+                      required
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Min Stock Level
+                    </label>
+                    <input
+                      type="number"
+                      name="min_stock_level"
+                      value={newProduct.min_stock_level}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          min_stock_level: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="10"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* --- Section 3: Compositions --- */}
+              {/* <div className="border-b border-gray-200 pb-6">
+                <label className="block text-lg font-semibold text-gray-700">
+                  Compositions
                 </label>
+                <select
+                  multiple
+                  name="compositions"
+                  value={newProduct.compositions}
+                  onChange={(e) => {
+                    const selectedOptions = Array.from(
+                      e.target.selectedOptions,
+                      (option) => option.value
+                    );
+                    setNewProduct({
+                      ...newProduct,
+                      compositions: selectedOptions,
+                    });
+                  }}
+                  className="w-full mt-2 px-3 py-2 border rounded-md h-32 bg-white"
+                >
+                  {compositions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div> */}
+
+              {/* --- Section 4: Detailed Descriptions --- */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-700">
+                  Detailed Information
+                </h3>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Description
+                    </label>
+                    <textarea
+                      name="description"
+                      value={newProduct.description}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          description: e.target.value,
+                        })
+                      }
+                      rows="3"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="Product description..."
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Uses
+                    </label>
+                    <textarea
+                      name="uses"
+                      value={newProduct.uses}
+                      onChange={(e) =>
+                        setNewProduct({ ...newProduct, uses: e.target.value })
+                      }
+                      rows="3"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="Medical uses..."
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Side Effects
+                    </label>
+                    <textarea
+                      name="side_effects"
+                      value={newProduct.side_effects}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          side_effects: e.target.value,
+                        })
+                      }
+                      rows="3"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="Potential side effects..."
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      How to Use
+                    </label>
+                    <textarea
+                      name="how_to_use"
+                      value={newProduct.how_to_use}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          how_to_use: e.target.value,
+                        })
+                      }
+                      rows="3"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="Instructions..."
+                    ></textarea>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Precautions & Storage
+                    </label>
+                    <div className="flex gap-6">
+                      <textarea
+                        name="precautions"
+                        value={newProduct.precautions}
+                        onChange={(e) =>
+                          setNewProduct({
+                            ...newProduct,
+                            precautions: e.target.value,
+                          })
+                        }
+                        rows="3"
+                        className="w-full mt-1 px-3 py-2 border rounded-md"
+                        placeholder="Warnings and precautions..."
+                      ></textarea>
+                      <textarea
+                        name="storage"
+                        value={newProduct.storage}
+                        onChange={(e) =>
+                          setNewProduct({
+                            ...newProduct,
+                            storage: e.target.value,
+                          })
+                        }
+                        rows="3"
+                        className="w-full mt-1 px-3 py-2 border rounded-md"
+                        placeholder="Storage conditions..."
+                      ></textarea>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowProductModal(false)}
-                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                >
-                  💊 Add Medicine
-                </button>
+              {/* --- Section 5: Other Information --- */}
+              <div className="pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Prescription Type
+                    </label>
+                    <select
+                      name="prescription_type"
+                      value={newProduct.prescription_type}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          prescription_type: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md bg-white"
+                    >
+                      <option value="otc">Over The Counter</option>
+                      <option value="prescription">
+                        Prescription Required
+                      </option>
+                      <option value="controlled">Controlled Substance</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Image URL
+                    </label>
+                    <input
+                      type="url"
+                      name="image_url"
+                      value={newProduct.image_url}
+                      onChange={(e) =>
+                        setNewProduct({
+                          ...newProduct,
+                          image_url: e.target.value,
+                        })
+                      }
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="https://example.com/image.png"
+                    />
+                  </div>
+                </div>
               </div>
             </form>
+
+            <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+              <button
+                type="button"
+                onClick={() => setShowProductModal(false)}
+                className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-product-form"
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                💊 Add Medicine
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -767,7 +1169,9 @@ const InventoryManagement = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-gray-800">🏷️ Add New Category</h2>
+              <h2 className="text-2xl font-bold text-gray-800">
+                🏷️ Add New Category
+              </h2>
               <button
                 onClick={() => setShowCategoryModal(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -778,11 +1182,15 @@ const InventoryManagement = () => {
 
             <form onSubmit={handleAddCategory} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category Name *
+                </label>
                 <input
                   type="text"
                   value={newCategory.name}
-                  onChange={(e) => setNewCategory({...newCategory, name: e.target.value})}
+                  onChange={(e) =>
+                    setNewCategory({ ...newCategory, name: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., Antibiotics, Pain Relief"
                   required
@@ -790,10 +1198,17 @@ const InventoryManagement = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description *
+                </label>
                 <textarea
                   value={newCategory.description}
-                  onChange={(e) => setNewCategory({...newCategory, description: e.target.value})}
+                  onChange={(e) =>
+                    setNewCategory({
+                      ...newCategory,
+                      description: e.target.value,
+                    })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Brief description of the category"
                   rows="3"
@@ -832,7 +1247,9 @@ const InventoryManagement = () => {
 
               {selectedProductBatches.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">No batches found for this product.</p>
+                  <p className="text-gray-500">
+                    No batches found for this product.
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -880,7 +1297,9 @@ const InventoryManagement = () => {
                               ₹{parseFloat(batch.selling_price || 0).toFixed(2)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${expiryStatus.color}`}>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${expiryStatus.color}`}
+                              >
                                 {expiryStatus.status}
                               </span>
                             </td>
