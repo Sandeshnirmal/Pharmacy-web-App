@@ -12,18 +12,18 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # Legacy API endpoints
-    path('user/', include('usermanagement.urls')),
-    path('product/', include('product.urls')),
-    path('prescription/', include('prescriptions.urls')),
-    path('order/', include('orders.urls')),
-    path('inventory/', include('inventory.urls')),
-
-    # Enhanced API endpoints
+    # API endpoints (consistent with working test flow)
     path('api/users/', include('usermanagement.urls')),
     path('api/products/', include('product.urls')),
     path('api/prescriptions/', include('prescriptions.urls')),
     path('api/order/', include('orders.urls')),
+    path('api/inventory/', include('inventory.urls')),
+
+    # Legacy endpoints (for backward compatibility)
+    path('user/', include('usermanagement.urls')),
+    path('product/', include('product.urls')),
+    path('prescription/', include('prescriptions.urls')),
+    path('order/', include('orders.urls')),
 
     # Mobile App Authentication Endpoints (Token-based)
     path('api/auth/', include('authentication.urls')),

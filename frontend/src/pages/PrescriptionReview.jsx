@@ -1,5 +1,5 @@
 // PrescriptionReview.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect ,useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -67,8 +67,8 @@ const PrescriptionReview = () => {
       setLoading(true);
       setError(null); // Clear previous errors
       const [prescriptionRes, detailsRes] = await Promise.all([
-        axiosInstance.get(`prescription/enhanced-prescriptions/${prescriptionId}/`),
-        axiosInstance.get(`prescription/medicines/?prescription=${prescriptionId}`)
+        axiosInstance.get(`/api/prescriptions/enhanced-prescriptions/${prescriptionId}/`),
+        axiosInstance.get(`/api/prescriptions/medicines/?prescription=${prescriptionId}`)
       ]);
       setPrescription(prescriptionRes.data);
       setPrescriptionDetails(detailsRes.data.results || detailsRes.data);
@@ -93,10 +93,10 @@ const PrescriptionReview = () => {
         // Assuming the backend can handle comma-separated search terms or multiple `search` params
         // For robustness, consider if your backend requires a different format or multiple API calls for each medicine
         const searchTermParam = encodeURIComponent(medicineNames.join(' ')); // Join with space for broader search or adjust based on API
-        productResponse = await axiosInstance.get(`product/enhanced-products/?search=${searchTermParam}`);
+        productResponse = await axiosInstance.get(`/api/products/enhanced-products/?search=${searchTermParam}`);
       } else {
         // If no specific medicine names, fetch a general limited set of products
-        productResponse = await axiosInstance.get('product/enhanced-products/?limit=20');
+        productResponse = await axiosInstance.get('/api/products/enhanced-products/?limit=20');
       }
       setProducts(productResponse.data.results || productResponse.data);
     } catch (err) {
@@ -148,7 +148,7 @@ const PrescriptionReview = () => {
     setSearchTerm("");
 
     try {
-      await axiosInstance.patch(`prescription/prescription-details/${detailId}/`, {
+      await axiosInstance.patch(`/api/prescriptions/prescription-details/${detailId}/`, {
         mapped_product: productId,
         mapping_status: 'Mapped'
       });
@@ -181,10 +181,10 @@ const PrescriptionReview = () => {
     try {
       if (editingMedicine) {
         // Update existing medicine detail
-        await axiosInstance.patch(`prescription/prescription-details/${editingMedicine.id}/`, medicineData);
+        await axiosInstance.patch(`/api/prescriptions/prescription-details/${editingMedicine.id}/`, medicineData);
       } else {
         // Add new medicine detail to the prescription
-        await axiosInstance.post(`prescription/prescription-details/`, {
+        await axiosInstance.post(`/api/prescriptions/prescription-details/`, {
           ...medicineData,
           prescription: prescriptionId, // Associate with current prescription
           mapping_status: 'Pending', // New items typically need mapping
@@ -218,7 +218,7 @@ const PrescriptionReview = () => {
 
   const handleAction = async (status, notesPayload = {}) => {
     try {
-      await axiosInstance.patch(`prescription/prescriptions/${prescriptionId}/`, {
+      await axiosInstance.patch(`/api/prescriptions/enhanced-prescriptions/${prescriptionId}/`, {
         verification_status: 'Rejected',
         rejection_reason: notes || 'Prescription rejected during review'
       });
@@ -255,26 +255,27 @@ const PrescriptionReview = () => {
     }
 
     try {
-      // 1. Update prescription status to 'Verified'
-      await axiosInstance.post(`prescription/enhanced-prescriptions/${prescriptionId}/verify/`, {
+      // Update prescription status to 'Verified'
+      await axiosInstance.post(`/api/prescriptions/enhanced-prescriptions/${prescriptionId}/verify/`, {
         action: 'verified',
         notes: notes
       });
 
-      // 2. Create the order based on the verified prescription details
-      // This assumes an API endpoint for creating orders from a prescription ID
-      const orderCreationPayload = {
-        prescription: prescriptionId,
-        // Potentially include other order details like delivery address, payment method etc.
-        // For simplicity, we'll just send the prescription ID.
-      };
-      const orderResponse = await axiosInstance.post(`order/orders/create_from_prescription/`, orderCreationPayload);
-      console.log('Order created successfully:', orderResponse.data);
+      // After verification, check if there's an associated order to confirm
+      if (prescription.order_id) {
+        // Confirm the order now that prescription is verified
+        await axiosInstance.post(`/api/order/confirm-prescription/${prescription.order_id}/`);
+        setError(null);
+        alert('Prescription verified and order confirmed successfully!');
+      } else {
+        setError(null);
+        alert('Prescription verified successfully!');
+      }
 
-      navigate('/prescriptions'); // Navigate back to prescriptions list or to order details
+      navigate('/prescriptions'); // Navigate back to prescriptions list
     } catch (err) {
-      console.error('Error verifying prescription or creating order:', err);
-      setError(`Failed to verify prescription or create order. Error: ${err.response?.data?.detail || err.message}`);
+      console.error('Error verifying prescription:', err);
+      setError(`Failed to verify prescription. Error: ${err.response?.data?.detail || err.message}`);
     }
   };
 

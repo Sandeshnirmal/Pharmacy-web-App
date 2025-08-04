@@ -16,6 +16,7 @@ import PendingPrescriptionsTable from './pages/PendingPrescriptionsTable.jsx';
 // Order Management
 import OrderDetails from './pages/OrderDetails.jsx';
 import OrdersTable from './pages/OrdersTable.jsx';
+import PaymentFirstOrdersDashboard from './pages/PaymentFirstOrdersDashboard.jsx';
 
 // User Management
 import Login from './pages/Login.jsx';
@@ -56,6 +57,7 @@ function App() {
           {/* Order Management */}
           <Route path="/Orders" element={<OrdersTable />} />
           <Route path="/Orders/OrderDetails" element={<OrderDetails />} />
+          <Route path="/Payment-First-Orders" element={<PaymentFirstOrdersDashboard />} />
 
           {/* User Management */}
           <Route path="/Users" element={<UserManagement />} />
