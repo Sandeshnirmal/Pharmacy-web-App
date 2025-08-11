@@ -12,9 +12,10 @@ from orders.models import Order
 
 # Initialize Razorpay client (you'll need to add these to settings)
 razorpay_client = razorpay.Client(auth=(
-    getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_test_YOUR_KEY_ID'),
-    getattr(settings, 'RAZORPAY_KEY_SECRET', 'YOUR_KEY_SECRET')
+    getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_live_46E992FtnTVX2O'),
+    getattr(settings, 'RAZORPAY_KEY_SECRET', '1qR4WgCT2k6K2Ud6r5cCoqtT')
 ))
+
 
 
 @api_view(['POST'])

@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'inventory',
     'authentication',  # Authentication app for mobile API
     'payment',  # Payment app for Razorpay integration
+    'courier',  # Professional courier integration
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App

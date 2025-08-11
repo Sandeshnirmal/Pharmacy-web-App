@@ -211,6 +211,297 @@ def add_tracking_update(request, order_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# ============================================================================
+# ENHANCED ORDER FLOW API VIEWS
+# Payment First → Prescription Upload → Verification → Confirmation → Courier
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_paid_order_for_prescription(request):
+    """
+    Step 1: Create order after successful payment, before prescription verification
+
+    This endpoint creates an order in 'payment_completed' status after successful payment.
+    The order will wait for prescription upload and verification.
+
+    Request Body:
+    {
+        "items": [
+            {"product_id": 1, "quantity": 2},
+            {"product_id": 2, "quantity": 1}
+        ],
+        "delivery_address": {
+            "name": "John Doe",
+            "phone": "+91-9876543210",
+            "address_line_1": "123 Main Street",
+            "address_line_2": "Apartment 4B",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "pincode": "400001",
+            "country": "India"
+        },
+        "payment_data": {
+            "method": "RAZORPAY",
+            "payment_id": "pay_xyz123",
+            "amount": 500.00
+        }
+    }
+
+    Response:
+    {
+        "success": true,
+        "order_id": 123,
+        "order_number": "ORD000123",
+        "status": "payment_completed",
+        "total_amount": 500.00,
+        "message": "Order created successfully. Please upload prescription for verification."
+    }
+    """
+    from .enhanced_order_flow import EnhancedOrderFlow
+
+    try:
+        # Extract and validate request data
+        items = request.data.get('items', [])
+        delivery_address = request.data.get('delivery_address', {})
+        payment_data = request.data.get('payment_data', {})
+
+        # Validate required fields
+        if not items:
+            return Response({
+                'success': False,
+                'error': 'Items are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not delivery_address:
+            return Response({
+                'success': False,
+                'error': 'Delivery address is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not payment_data:
+            return Response({
+                'success': False,
+                'error': 'Payment data is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create paid order
+        result = EnhancedOrderFlow.create_paid_order_for_prescription_review(
+            user=request.user,
+            items=items,
+            delivery_address=delivery_address,
+            payment_data=payment_data
+        )
+
+        if result['success']:
+            order = result['order']
+            return Response({
+                'success': True,
+                'order_id': order.id,
+                'order_number': f'ORD{order.id:06d}',
+                'status': order.order_status,
+                'total_amount': float(order.total_amount),
+                'delivery_address': order.delivery_address,
+                'message': result['message']
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'success': False,
+                'error': result['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValueError as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Error creating paid order: {str(e)}")
+        return Response({
+            'success': False,
+            'error': 'An error occurred while creating the order'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def link_prescription_to_order(request, order_id):
+    """
+    Step 2: Link uploaded prescription to paid order
+    """
+    from .enhanced_order_flow import EnhancedOrderFlow
+
+    try:
+        prescription_id = request.data.get('prescription_id')
+
+        if not prescription_id:
+            return Response({
+                'error': 'Prescription ID is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        result = EnhancedOrderFlow.link_prescription_to_paid_order(
+            order_id=order_id,
+            prescription_id=prescription_id,
+            user=request.user
+        )
+
+        if result['success']:
+            order = result['order']
+            return Response({
+                'success': True,
+                'order_id': order.id,
+                'status': order.order_status,
+                'prescription_id': result['prescription'].id,
+                'message': result['message']
+            })
+        else:
+            return Response({
+                'error': result['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({
+            'error': f'Failed to link prescription: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verify_prescription_and_confirm_order(request, order_id):
+    """
+    Step 3: Admin verifies prescription and confirms order
+    """
+    from .enhanced_order_flow import EnhancedOrderFlow
+
+    try:
+        # Check if user is admin/staff
+        if not request.user.is_staff:
+            return Response({
+                'error': 'Admin access required'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        approved = request.data.get('approved', True)
+        verification_notes = request.data.get('verification_notes', '')
+
+        result = EnhancedOrderFlow.verify_prescription_and_confirm_order(
+            order_id=order_id,
+            admin_user=request.user,
+            verification_notes=verification_notes,
+            approved=approved
+        )
+
+        if result['success']:
+            order = result['order']
+            return Response({
+                'success': True,
+                'order_id': order.id,
+                'status': order.order_status,
+                'approved': result['approved'],
+                'courier_scheduled': result.get('courier_scheduled', False),
+                'tracking_number': getattr(order, 'tracking_number', ''),
+                'message': result['message']
+            })
+        else:
+            return Response({
+                'error': result['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({
+            'error': f'Failed to verify prescription: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_orders_for_prescription_review(request):
+    """
+    Get orders waiting for prescription verification (Admin only)
+    """
+    try:
+        if not request.user.is_staff:
+            return Response({
+                'error': 'Admin access required'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        from .enhanced_order_flow import EnhancedOrderFlow
+
+        orders = EnhancedOrderFlow.get_orders_for_prescription_review()
+
+        orders_data = []
+        for order in orders:
+            orders_data.append({
+                'id': order.id,
+                'order_number': f'ORD{order.id:06d}',
+                'user': {
+                    'id': order.user.id,
+                    'username': order.user.username,
+                    'email': order.user.email
+                },
+                'total_amount': float(order.total_amount),
+                'status': order.order_status,
+                'prescription': {
+                    'id': order.prescription.id if order.prescription else None,
+                    'upload_date': order.prescription.upload_date.isoformat() if order.prescription else None,
+                    'image_url': order.prescription.image_url if order.prescription else None
+                },
+                'created_at': order.created_at.isoformat(),
+                'delivery_address': order.delivery_address
+            })
+
+        return Response({
+            'success': True,
+            'orders': orders_data,
+            'total_orders': len(orders_data)
+        })
+
+    except Exception as e:
+        return Response({
+            'error': f'Failed to fetch orders: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_paid_orders_awaiting_prescription(request):
+    """
+    Get orders that have been paid but are waiting for prescription upload
+    """
+    try:
+        from .enhanced_order_flow import EnhancedOrderFlow
+
+        if request.user.is_staff:
+            # Admin can see all orders
+            orders = EnhancedOrderFlow.get_paid_orders_awaiting_prescription()
+        else:
+            # Users can only see their own orders
+            orders = EnhancedOrderFlow.get_paid_orders_awaiting_prescription().filter(user=request.user)
+
+        orders_data = []
+        for order in orders:
+            orders_data.append({
+                'id': order.id,
+                'order_number': f'ORD{order.id:06d}',
+                'total_amount': float(order.total_amount),
+                'status': order.order_status,
+                'payment_status': order.payment_status,
+                'created_at': order.created_at.isoformat(),
+                'delivery_address': order.delivery_address,
+                'items_count': order.items.count()
+            })
+
+        return Response({
+            'success': True,
+            'orders': orders_data,
+            'total_orders': len(orders_data)
+        })
+
+    except Exception as e:
+        return Response({
+            'error': f'Failed to fetch orders: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_order_status_history(request, order_id):

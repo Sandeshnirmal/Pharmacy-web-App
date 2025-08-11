@@ -8,7 +8,7 @@ from .views import (
 
 # Enhanced imports
 try:
-    from .enhanced_views import CompositionViewSet, ProductViewSet as NewEnhancedProductViewSet
+    from .enhanced_views import CompositionViewSet, ProductViewSet 
     enhanced_available = True
 except ImportError:
     enhanced_available = False
@@ -17,7 +17,7 @@ except ImportError:
 enhanced_router = DefaultRouter()
 if enhanced_available:
     enhanced_router.register(r'compositions', CompositionViewSet, basename='composition')
-    enhanced_router.register(r'enhanced-products', NewEnhancedProductViewSet, basename='new-enhanced-product')
+    enhanced_router.register(r'enhanced-products', ProductViewSet, basename='new-enhanced-product')
 
 # Legacy router
 router = DefaultRouter()

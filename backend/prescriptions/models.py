@@ -274,3 +274,48 @@ class PrescriptionWorkflowLog(models.Model):
 
     def __str__(self):
         return f"{self.prescription.prescription_number or self.prescription.id}: {self.from_status} → {self.to_status}"
+
+
+class PrescriptionScanResult(models.Model):
+    """Model for storing prescription scan results for medicine suggestions"""
+    SCAN_TYPES = [
+        ('composition_search', 'Composition Search'),
+        ('ocr_scan', 'OCR Scan'),
+        ('manual_entry', 'Manual Entry'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    scanned_text = models.TextField()
+    extracted_medicines = models.JSONField(default=list)
+    total_suggestions = models.IntegerField(default=0)
+    scan_type = models.CharField(max_length=20, choices=SCAN_TYPES, default='composition_search')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'prescription_scan_results'
+        verbose_name = 'Prescription Scan Result'
+        verbose_name_plural = 'Prescription Scan Results'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Scan {self.id} - {self.user.username if self.user else 'Anonymous'} ({self.total_suggestions} suggestions)"
+
+
+class MedicineSuggestion(models.Model):
+    """Model for storing individual medicine suggestions from scans"""
+    scan_result = models.ForeignKey(PrescriptionScanResult, on_delete=models.CASCADE, related_name='suggestions')
+    product_id = models.IntegerField()  # Reference to Product model
+    product_name = models.CharField(max_length=255)
+    match_type = models.CharField(max_length=50)  # exact_name, composition, partial_name, etc.
+    confidence_score = models.FloatField(default=0.0)
+    search_term = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'medicine_suggestions'
+        verbose_name = 'Medicine Suggestion'
+        verbose_name_plural = 'Medicine Suggestions'
+        ordering = ['-confidence_score', '-created_at']
+
+    def __str__(self):
+        return f"{self.product_name} (Score: {self.confidence_score})"

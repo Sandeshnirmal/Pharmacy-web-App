@@ -16,6 +16,9 @@ class Composition(models.Model):
     category = models.CharField(max_length=100, blank=True)
     side_effects = models.TextField(blank=True)
     contraindications = models.TextField(blank=True)
+    aliases = models.JSONField(default=list, blank=True)  # Alternative names for better searching
+    therapeutic_class = models.CharField(max_length=100, blank=True)  # Drug class
+    mechanism_of_action = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -103,7 +106,7 @@ class Product(models.Model):
     compositions = models.ManyToManyField(
         Composition,
         through='ProductComposition',
-        related_name='products'
+        related_name='product_list'
     )
 
     image_url = models.URLField(blank=True)
@@ -135,11 +138,14 @@ class Product(models.Model):
 
 
 class ProductComposition(models.Model):
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    composition = models.ForeignKey(Composition, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='product_compositions')
+    composition = models.ForeignKey(Composition, on_delete=models.CASCADE, related_name='composition_products')
     strength = models.CharField(max_length=100)
     unit = models.CharField(max_length=20, default='mg')
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # Percentage in combination
+    is_primary = models.BooleanField(default=False)  # Primary active ingredient
     is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)  # Additional notes about this composition in the product
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny
 from django.db.models import Count, Q
 from .models import Prescription, PrescriptionDetail
 from .serializers import PrescriptionSerializer, PrescriptionDetailSerializer
+from .prescription_scanner import PrescriptionScanner
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
     """
@@ -83,3 +84,168 @@ class PrescriptionDetailViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(prescription_id=prescription_id)
 
         return queryset
+
+
+class PrescriptionScannerViewSet(viewsets.ViewSet):
+    """
+    ViewSet for prescription scanning and medicine suggestions
+
+    Endpoints:
+    - scan_prescription: Scan prescription text and get medicine suggestions
+    - search_medicines: Search medicines by name, composition, or generic name
+    - scan_history: Get user's scan history (requires authentication)
+
+    Note: This is for search-only functionality, not for placing orders
+    """
+    permission_classes = [AllowAny]  # Allow unauthenticated access for medicine search
+
+    @action(detail=False, methods=['post'])
+    def scan_prescription(self, request):
+        """
+        Scan prescription text and suggest medicines from database
+
+        Request Body:
+        {
+            "prescription_text": "Paracetamol 650mg twice daily\\nAugmentin 625mg thrice daily"
+        }
+
+        Response:
+        {
+            "success": true,
+            "extracted_medicines": [...],
+            "suggestions": [...],
+            "total_suggestions": 5,
+            "message": "Found 5 medicine suggestions"
+        }
+
+        Note: Does not create orders or affect admin dashboard
+        """
+        try:
+            prescription_text = request.data.get('prescription_text', '')
+
+            # Validate input
+            if not prescription_text:
+                return Response({
+                    'success': False,
+                    'error': 'Prescription text is required',
+                    'suggestions': [],
+                    'total_suggestions': 0
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if len(prescription_text.strip()) < 5:
+                return Response({
+                    'success': False,
+                    'error': 'Prescription text must be at least 5 characters long',
+                    'suggestions': [],
+                    'total_suggestions': 0
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Initialize scanner
+            scanner = PrescriptionScanner()
+
+            # Get user if authenticated
+            user = request.user if request.user.is_authenticated else None
+
+            # Scan prescription
+            result = scanner.scan_prescription_text(prescription_text, user)
+
+            return Response(result, status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            return Response({
+                'success': False,
+                'error': str(e),
+                'suggestions': [],
+                'total_suggestions': 0
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Error in scan_prescription: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'An error occurred while processing the prescription',
+                'suggestions': [],
+                'total_suggestions': 0
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def search_medicines(self, request):
+        """
+        Search medicines by name or composition
+        """
+        query = request.query_params.get('q', '')
+        search_type = request.query_params.get('type', 'name')  # name, composition, generic
+
+        if not query or len(query.strip()) < 2:
+            return Response({
+                'success': False,
+                'error': 'Search query must be at least 2 characters long',
+                'suggestions': []
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            scanner = PrescriptionScanner()
+
+            # Create mock medicine data for search
+            medicine_data = {
+                'extracted_name': query if search_type == 'name' else '',
+                'composition': query if search_type == 'composition' else '',
+                'strength': '',
+                'original_line': query
+            }
+
+            suggestions = scanner._find_medicine_suggestions(medicine_data)
+
+            return Response({
+                'success': True,
+                'query': query,
+                'search_type': search_type,
+                'suggestions': suggestions,
+                'total_suggestions': len(suggestions)
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Error searching medicines: {str(e)}',
+                'suggestions': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def scan_history(self, request):
+        """
+        Get scan history for authenticated user
+        """
+        if not request.user.is_authenticated:
+            return Response({
+                'success': False,
+                'error': 'Authentication required'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            from .models import PrescriptionScanResult
+
+            scans = PrescriptionScanResult.objects.filter(
+                user=request.user
+            ).order_by('-created_at')[:20]  # Last 20 scans
+
+            scan_data = []
+            for scan in scans:
+                scan_data.append({
+                    'id': scan.id,
+                    'scan_type': scan.scan_type,
+                    'total_suggestions': scan.total_suggestions,
+                    'created_at': scan.created_at,
+                    'extracted_medicines': scan.extracted_medicines
+                })
+
+            return Response({
+                'success': True,
+                'scans': scan_data,
+                'total_scans': len(scan_data)
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Error fetching scan history: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -11,6 +11,10 @@ class Order(models.Model):
     PAYMENT_STATUS = [('Pending', 'Pending'), ('Paid', 'Paid'), ('Refunded', 'Refunded')]
     ORDER_STATUS = [
         ('Pending', 'Pending'),
+        ('payment_completed', 'Payment Completed'),
+        ('prescription_uploaded', 'Prescription Uploaded'),
+        ('verified', 'Verified'),
+        ('prescription_rejected', 'Prescription Rejected'),
         ('Processing', 'Processing'),
         ('Shipped', 'Shipped'),
         ('Delivered', 'Delivered'),
@@ -25,12 +29,14 @@ class Order(models.Model):
     shipping_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS)
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS)
-    order_status = models.CharField(max_length=15, choices=ORDER_STATUS, default='Pending')
+    order_status = models.CharField(max_length=25, choices=ORDER_STATUS, default='Pending')
     is_prescription_order = models.BooleanField(default=False)
     prescription = models.ForeignKey('prescriptions.Prescription', on_delete=models.SET_NULL, null=True, blank=True ,related_name='orders')
     delivery_method = models.CharField(max_length=50, default='Standard Delivery')
     expected_delivery_date = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    delivery_address = models.JSONField(default=dict, blank=True)  # Store delivery address as JSON
+    tracking_number = models.CharField(max_length=100, blank=True)  # Courier tracking number
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
