@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import axiosInstance from '../api/axiosInstance';
+import { userAPI, orderAPI, prescriptionAPI } from '../api/apiService'; // Using centralized API services
 
 const CustomerManagement = () => {
   const [customers, setCustomers] = useState([]);
@@ -18,7 +18,7 @@ const CustomerManagement = () => {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const response = await axiosInstance.get('user/users/?role=customer');
+      const response = await userAPI.getUsers({ role: 'customer' });
       setCustomers(response.data.results || response.data);
     } catch (err) {
       setError('Failed to fetch customers');
@@ -30,7 +30,7 @@ const CustomerManagement = () => {
 
   const handleToggleCustomerStatus = async (customerId, currentStatus) => {
     try {
-      await axiosInstance.patch(`user/users/${customerId}/`, {
+      await userAPI.updateUser(customerId, {
         is_active: !currentStatus
       });
       await fetchCustomers();
@@ -43,8 +43,8 @@ const CustomerManagement = () => {
   const getCustomerStats = async (customerId) => {
     try {
       const [ordersRes, prescriptionsRes] = await Promise.all([
-        axiosInstance.get(`orders/orders/?user=${customerId}`),
-        axiosInstance.get(`prescription/prescriptions/?user=${customerId}`)
+        orderAPI.getOrders({ user: customerId }),
+        prescriptionAPI.getPrescriptions({ user: customerId })
       ]);
       
       return {

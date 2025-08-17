@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Filter, Search, TrendingUp, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
-import axiosInstance from '../api/axiosInstance';
+import { orderAPI } from '../api/apiService'; // Using centralized API service
 import PaymentFirstOrderCard from '../components/orders/PaymentFirstOrderCard';
 
 const PaymentFirstOrdersDashboard = () => {
@@ -29,12 +29,10 @@ const PaymentFirstOrdersDashboard = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      // Fetch orders with prescription type
-      const response = await axiosInstance.get('/api/order/orders/', {
-        params: {
-          order_type: 'prescription',
-          ordering: '-created_at'
-        }
+      // Fetch orders with prescription type using centralized API service
+      const response = await orderAPI.getOrders({
+        order_type: 'prescription',
+        ordering: '-created_at'
       });
       
       const ordersData = response.data.results || response.data;
@@ -88,8 +86,8 @@ const PaymentFirstOrdersDashboard = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      // Update order status
-      await axiosInstance.patch(`/api/order/orders/${orderId}/`, {
+      // Update order status using centralized API service
+      await orderAPI.updateOrder(orderId, {
         status: newStatus
       });
 

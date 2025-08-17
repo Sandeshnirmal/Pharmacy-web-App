@@ -16,7 +16,12 @@ axiosInstance.interceptors.request.use(
   (config) => {
     const accessToken = localStorage.getItem('access_token');
     if (accessToken) {
-      config.headers['Authorization'] = `Bearer ${accessToken}`;
+      // Check if it's a JWT token (longer) or regular token
+      if (accessToken.length > 100) {
+        config.headers['Authorization'] = `Bearer ${accessToken}`;
+      } else {
+        config.headers['Authorization'] = `Token ${accessToken}`;
+      }
     }
     return config;
   },

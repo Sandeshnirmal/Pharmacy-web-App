@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axiosInstance from '../api/axiosInstance';
+import { productAPI } from '../api/apiService'; // Using centralized API service
 
 const InventoryManagement = () => {
   const [products, setProducts] = useState([]);
@@ -69,13 +69,13 @@ const InventoryManagement = () => {
       setLoading(true);
       const [productsRes, batchesRes, categoriesRes, genericNamesRes] =
         await Promise.all([
-          axiosInstance.get("/api/products/enhanced-products/"),
-          axiosInstance.get("/api/products/legacy/batches/"),
-          axiosInstance.get("product/legacy/categories/"),
-          axiosInstance.get("api/products/compositions/"),
-          // axiosInstance.get("/inventory/stock-movements/"),
+          productAPI.getEnhancedProducts(),
+          productAPI.getBatches(),
+          productAPI.getCategories(),
+          productAPI.getCompositions(),
+          // productAPI.getStockMovements(),
          
-          // axiosInstance.get("/inventory/stock-alerts/"),
+          // productAPI.getStockAlerts(),
           
 
         ]);
@@ -97,7 +97,7 @@ const InventoryManagement = () => {
   const handleAddBatch = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post("/api/products/legacy/batches/", {
+      await productAPI.createBatch({
         ...newBatch,
         product: selectedProduct.id,
       });
@@ -120,7 +120,7 @@ const InventoryManagement = () => {
   const handleAddProduct = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post("api/products/enhanced-products/", newProduct);
+      await productAPI.createEnhancedProduct(newProduct);
       setShowProductModal(false);
       setNewProduct({
         name: "",
@@ -159,7 +159,7 @@ const InventoryManagement = () => {
   const handleAddCategory = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post('product/legacy/categories/', newCategory);
+      await productAPI.createCategory(newCategory);
       setShowCategoryModal(false);
       setNewCategory({
         name: '',

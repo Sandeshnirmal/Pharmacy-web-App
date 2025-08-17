@@ -27,8 +27,12 @@ SECRET_KEY = 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyA8JFwu5DpLSKBfTTk2K3dUW61y32gZeoo')
 
 # Razorpay Configuration (Update with your actual keys)
-RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', 'rzp_test_YOUR_KEY_ID')
-RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', 'YOUR_KEY_SECRET')
+RAZORPAY_KEY_ID = 'rzp_test_u32HLv2OyCBfAN'  # Test key
+RAZORPAY_KEY_SECRET = 'Owlg61rwtT7V3RQKoYGKhsUC'  # Test secret
+
+# For production, use environment variables:
+# RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
+# RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -225,6 +229,7 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 
 
 

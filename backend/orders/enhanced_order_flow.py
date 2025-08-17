@@ -29,6 +29,7 @@ class EnhancedOrderFlow:
 
     @staticmethod
     def validate_order_items(items):
+        
         """Validate order items before processing"""
         if not items or not isinstance(items, list):
             raise ValueError("Items must be a non-empty list")
@@ -153,6 +154,8 @@ class EnhancedOrderFlow:
                     reason='Order created after successful payment'
                 )
                 
+                logger.info(f"Paid order created successfully: {order.id} for user {user.id}")
+                
                 return {
                     'success': True,
                     'order': order,
@@ -252,7 +255,7 @@ class EnhancedOrderFlow:
                     order.prescription.verification_notes = verification_notes
                     
                     new_status = 'verified'
-                    reason = f'Prescription verified and approved by {admin_user.username}'
+                    reason = f'Prescription verified and approved by {admin_user.email}'
                     
                     # Trigger courier pickup scheduling
                     courier_result = EnhancedOrderFlow._schedule_courier_pickup(order)
@@ -264,7 +267,7 @@ class EnhancedOrderFlow:
                     order.prescription.rejection_reason = verification_notes
                     
                     new_status = 'prescription_rejected'
-                    reason = f'Prescription rejected by {admin_user.username}: {verification_notes}'
+                    reason = f'Prescription rejected by {admin_user.email}: {verification_notes}'
                     courier_result = {'success': True, 'message': 'No courier needed for rejected order'}
                 
                 order.save()
@@ -327,7 +330,7 @@ class EnhancedOrderFlow:
             }
             
             delivery_address = order.delivery_address if hasattr(order, 'delivery_address') else {
-                'name': order.user.get_full_name() or order.user.username,
+                'name': order.user.get_full_name() or order.user.email,
                 'phone': getattr(order.user, 'phone', '+91-0000000000'),
                 'address_line_1': 'Customer Address',
                 'city': 'Bangalore',

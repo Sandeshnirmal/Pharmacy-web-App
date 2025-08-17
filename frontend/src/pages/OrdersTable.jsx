@@ -1,7 +1,7 @@
 // OrdersTable.jsx
 import { useState, useEffect } from 'react';
 import { Link } from "react-router-dom";
-import axiosInstance from '../api/axiosInstance';
+import { orderAPI } from '../api/apiService';
 
 const OrdersTable = () => {
 
@@ -23,20 +23,20 @@ const OrdersTable = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
+      const params = {
         page: currentPage,
         page_size: itemsPerPage,
-      });
+      };
 
       if (statusFilter !== 'all') {
-        params.append('order_status', statusFilter);
+        params.order_status = statusFilter;
       }
 
       if (searchTerm) {
-        params.append('search', searchTerm);
+        params.search = searchTerm;
       }
 
-      const response = await axiosInstance.get(`order/orders/?${params}`);
+      const response = await orderAPI.getOrders(params);
       const data = response.data;
 
       setOrders(data.results || data);
@@ -51,7 +51,7 @@ const OrdersTable = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      await axiosInstance.patch(`order/orders/${orderId}/`, {
+      await orderAPI.updateOrder(orderId, {
         order_status: newStatus
       });
       await fetchOrders(); // Refresh the list
@@ -64,7 +64,7 @@ const OrdersTable = () => {
   const handleBulkStatusUpdate = async (newStatus) => {
     try {
       const updatePromises = selectedOrders.map(id =>
-        axiosInstance.patch(`order/orders/${id}/`, {
+        orderAPI.updateOrder(id, {
           order_status: newStatus
         })
       );

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axiosInstance from '../api/axiosInstance';
+import { prescriptionAPI } from '../api/apiService'; // Using centralized API service
 
 const OCRReprocessButton = ({ prescriptionId, onReprocessComplete }) => {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -10,9 +10,7 @@ const OCRReprocessButton = ({ prescriptionId, onReprocessComplete }) => {
     setResult(null);
 
     try {
-      const response = await axiosInstance.post(
-        `prescription/admin/reprocess-ocr/${prescriptionId}/`
-      );
+      const response = await prescriptionAPI.reprocessOCR(prescriptionId);
 
       if (response.data.success) {
         setResult({

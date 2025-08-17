@@ -97,7 +97,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     
     def get_composition_summary(self, obj):
         """Get a summary of all compositions"""
-        compositions = obj.productcomposition_set.filter(is_active=True)
+        compositions = obj.product_compositions.filter(is_active=True)
         return [
             f"{comp.composition.name} {comp.strength}{comp.unit}"
             for comp in compositions
@@ -166,7 +166,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     
     def get_composition_summary(self, obj):
         """Get simplified composition summary"""
-        compositions = obj.productcomposition_set.filter(is_active=True)[:3]
+        compositions = obj.product_compositions.filter(is_active=True)[:3]
         return [comp.composition.name for comp in compositions]
     
     def get_stock_status(self, obj):

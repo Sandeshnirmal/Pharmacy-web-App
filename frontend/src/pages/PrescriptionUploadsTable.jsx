@@ -1,6 +1,6 @@
 // PrescriptionUploadsTable.jsx
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
   Filter,
@@ -9,13 +9,14 @@ import {
   Eye,
   MoreHorizontal,
 } from "lucide-react";
-import axiosInstance from "../api/axiosInstance"; // Assumed Axios instance for API calls
+import { prescriptionAPI } from "../api/apiService"; // Using centralized API service
 import PrescriptionStatusBadge from "../components/prescription/PrescriptionStatusBadge";
 import ConfidenceIndicator from "../components/prescription/ConfidenceIndicator";
 import PriorityIndicator from "../components/prescription/PriorityIndicator";
 import EnhancedPrescriptionDashboard from "../components/prescription/EnhancedPrescriptionDashboard"; // Component for dashboard view
 
 const PrescriptionUploadsTable = () => {
+  const navigate = useNavigate(); // Add navigate hook
   // State variables for managing prescriptions data, loading, errors, and UI filters
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true); // Indicates if data is currently being fetched
@@ -38,23 +39,21 @@ const PrescriptionUploadsTable = () => {
       setLoading(true); // Set loading to true before fetching data
       setError(null); // Clear any previous errors
 
-      // Construct URLSearchParams for query parameters (sorting, filtering, searching)
-      const params = new URLSearchParams({
+      // Construct query parameters for the API call
+      const params = {
         ordering: sortOrder === "desc" ? `-${sortBy}` : sortBy, // Add '-' for descending order
-      });
+      };
 
       if (statusFilter !== "all") {
-        params.append("verification_status", statusFilter); // Add status filter if not 'all'
+        params.verification_status = statusFilter; // Add status filter if not 'all'
       }
 
       if (searchTerm) {
-        params.append("search", searchTerm); // Add search term if present
+        params.search = searchTerm; // Add search term if present
       }
 
-      // Make GET request to the prescriptions API endpoint
-      const response = await axiosInstance.get(
-        `prescription/prescriptions/?${params}`
-      );
+      // Use the centralized prescriptionAPI service
+      const response = await prescriptionAPI.getPrescriptions(params);
 
       // Log the response data for debugging
       console.log(

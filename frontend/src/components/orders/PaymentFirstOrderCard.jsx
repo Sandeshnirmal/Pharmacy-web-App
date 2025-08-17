@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, CheckCircle, AlertTriangle, Eye, FileText, CreditCard } from 'lucide-react';
-import axiosInstance from '../../api/axiosInstance';
+import { prescriptionAPI } from '../../api/apiService'; // Using centralized API service
 
 const PaymentFirstOrderCard = ({ order, onStatusUpdate }) => {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -64,7 +64,7 @@ const PaymentFirstOrderCard = ({ order, onStatusUpdate }) => {
     setIsUpdating(true);
     try {
       // Verify the prescription
-      await axiosInstance.post(`/api/prescriptions/verification-status/${order.prescription_id}/`, {
+      await prescriptionAPI.verifyPrescription(order.prescription_id, {
         status: 'verified',
         notes: 'Prescription verified by pharmacist'
       });
@@ -81,7 +81,7 @@ const PaymentFirstOrderCard = ({ order, onStatusUpdate }) => {
   const handleRejectPrescription = async () => {
     setIsUpdating(true);
     try {
-      await axiosInstance.post(`/api/prescriptions/verification-status/${order.prescription_id}/`, {
+      await prescriptionAPI.verifyPrescription(order.prescription_id, {
         status: 'rejected',
         notes: 'Prescription rejected - please resubmit'
       });

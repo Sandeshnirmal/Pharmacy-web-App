@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authAPI } from '../api/apiService';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -33,27 +34,21 @@ const Login = () => {
     try {
       console.log('Attempting login with:', formData.email);
 
-      // Use direct fetch to avoid axios interceptors for login
-      const response = await fetch('http://127.0.0.1:8000/user/login/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password
-        })
+      // Use the API service for authentication
+      const data = await authAPI.login({
+        email: formData.email,
+        password: formData.password
       });
 
-      const data = await response.json();
-      console.log('Login response:', response.status, data);
+      console.log('Login response:', data);
 
-      if (response.ok && data.access) {
+      if (data.token || data.access) {
         // Store authentication tokens
-        localStorage.setItem('access_token', data.access);
-        localStorage.setItem('refresh_token', data.refresh);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('access_token', data.token || data.access);
+        localStorage.setItem('refresh_token', data.token || data.access);
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         console.log('Login successful, redirecting to dashboard');
         // Redirect to dashboard
         navigate('/Dashboard');

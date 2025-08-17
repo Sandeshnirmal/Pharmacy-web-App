@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import axiosInstance from '../api/axiosInstance';
+import { orderAPI } from '../api/apiService'; // Using centralized API service
 
 const OrderDetails = () => {
   const [searchParams] = useSearchParams();
@@ -24,8 +24,8 @@ const OrderDetails = () => {
     try {
       setLoading(true);
       const [orderRes, itemsRes] = await Promise.all([
-        axiosInstance.get(`order/orders/${orderId}/`),
-        axiosInstance.get(`order/order-items/?order=${orderId}`)
+        orderAPI.getOrder(orderId),
+        orderAPI.getOrderItems({ order: orderId })
       ]);
 
       setOrder(orderRes.data);
@@ -41,7 +41,7 @@ const OrderDetails = () => {
   const handleStatusUpdate = async (newStatus) => {
     try {
       setStatusUpdating(true);
-      await axiosInstance.patch(`order/orders/${orderId}/`, {
+      await orderAPI.updateOrder(orderId, {
         order_status: newStatus
       });
       await fetchOrderDetails(); // Refresh data

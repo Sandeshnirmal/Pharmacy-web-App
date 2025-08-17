@@ -7,6 +7,9 @@ from django.db.models import Q, Count, Sum
 from django.utils import timezone
 from .models import Order, OrderItem, OrderTracking, OrderStatusHistory
 from .serializers import OrderSerializer, OrderItemSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by('-order_date')

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import axiosInstance from "../api/axiosInstance";
+import React, { useState, useEffect } from "react";
+import { Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { productAPI } from "../api/apiService"; // Using centralized API service
 
 const GenericsTable = () => {
   // State Management
@@ -14,8 +15,8 @@ const GenericsTable = () => {
   const fetchCategories = () => {
     // If the active tab is 'categories', show the loading spinner for the table.
     if (activeTab === "categories") setIsLoading(true);
-    axiosInstance
-      .get("product/legacy/categories/")
+    productAPI
+      .getCategories()
       .then((res) => {
         setCategoriesData(res.data.results || res.data); // Handle potential pagination
       })
@@ -28,8 +29,8 @@ const GenericsTable = () => {
   // Fetches the list of compositions.
   const fetchCompositions = () => {
     setIsLoading(true);
-    axiosInstance
-      .get("product/compositions/")
+    productAPI
+      .getCompositions()
       .then((res) => {
         setCompositionsData(res.data.results || res.data); // Handle potential pagination
       })
@@ -86,7 +87,7 @@ const GenericsTable = () => {
   // Handles submitting a new category
   const handleCategorySubmit = async () => {
     try {
-      await axiosInstance.post("product/legacy/categories/", formData);
+      await productAPI.createCategory(formData);
       setShowModal(false);
       // Refetch categories. This updates both the dropdown list and the table view.
       fetchCategories();
@@ -106,7 +107,7 @@ const GenericsTable = () => {
       if (payload.category) {
         payload.category = parseInt(payload.category, 10);
       }
-      await axiosInstance.post("product/compositions/", payload);
+      await productAPI.createComposition(payload);
       setShowModal(false);
       // Refetch compositions to update the table.
       fetchCompositions();

@@ -10,7 +10,7 @@ import {
   FileText,
   RefreshCw
 } from 'lucide-react';
-import axiosInstance from '../../api/axiosInstance';
+import { prescriptionAPI } from '../../api/apiService'; // Using centralized API service
 import PrescriptionStatusBadge from './PrescriptionStatusBadge';
 import PriorityIndicator from './PriorityIndicator';
 
@@ -36,8 +36,8 @@ const EnhancedPrescriptionDashboard = () => {
       setLoading(true);
       setError(null); // Clear previous errors
       const [prescriptionsRes, statsRes] = await Promise.all([
-        axiosInstance.get('prescription/prescriptions/?limit=10&ordering=-upload_date'),
-        axiosInstance.get('prescription/prescriptions/stats/')
+        prescriptionAPI.getPrescriptions({ limit: 10, ordering: '-upload_date' }),
+        prescriptionAPI.getAnalytics()
       ]);
 
       setRecentPrescriptions(prescriptionsRes.data.results || prescriptionsRes.data);

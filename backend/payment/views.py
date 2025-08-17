@@ -1,6 +1,7 @@
 import razorpay
 import hmac
 import hashlib
+import logging
 from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -9,14 +10,13 @@ from rest_framework import status
 from .models import Payment
 from orders.models import Order
 
+logger = logging.getLogger(__name__)
 
 # Initialize Razorpay client (you'll need to add these to settings)
 razorpay_client = razorpay.Client(auth=(
     getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_live_46E992FtnTVX2O'),
     getattr(settings, 'RAZORPAY_KEY_SECRET', '1qR4WgCT2k6K2Ud6r5cCoqtT')
 ))
-
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -58,6 +58,8 @@ def create_payment_order(request):
             status='pending'
         )
         
+        logger.info(f"Payment order created: {payment.id} for order {order_id}")
+        
         return Response({
             'id': razorpay_order['id'],
             'amount': razorpay_order['amount'],
@@ -67,6 +69,7 @@ def create_payment_order(request):
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
+        logger.error(f"Failed to create payment order: {str(e)}")
         return Response({
             'error': f'Failed to create payment order: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -95,6 +98,7 @@ def verify_payment(request):
         ).hexdigest()
         
         if generated_signature != signature:
+            logger.warning(f"Invalid payment signature for order {order_id}")
             return Response({
                 'error': 'Invalid payment signature'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -109,23 +113,28 @@ def verify_payment(request):
             
             # Update order status
             order = payment.order
-            order.payment_status = 'paid'
-            order.order_status = 'confirmed'
+            order.payment_status = 'Paid'
+            order.order_status = 'payment_completed'  # Use the correct status
             order.save()
+            
+            logger.info(f"Payment verified successfully for order {order.id}")
             
             return Response({
                 'success': True,
                 'message': 'Payment verified successfully',
                 'payment_id': payment.id,
-                'order_id': order.id
+                'order_id': order.id,
+                'order_status': order.order_status
             }, status=status.HTTP_200_OK)
             
         except Payment.DoesNotExist:
+            logger.error(f"Payment record not found for order {order_id}")
             return Response({
                 'error': 'Payment record not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
     except Exception as e:
+        logger.error(f"Payment verification failed: {str(e)}")
         return Response({
             'error': f'Payment verification failed: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -154,6 +163,7 @@ def get_payment_status(request, payment_id):
             'error': 'Payment not found'
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.error(f"Failed to get payment status: {str(e)}")
         return Response({
             'error': f'Failed to get payment status: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
