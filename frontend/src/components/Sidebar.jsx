@@ -97,9 +97,10 @@ const SidebarNavbar = () => {
           <SidebarItem label="Dashboard" to="/" />
           <SidebarItem label="Products" to="/Medicines" />
           <SidebarItem label="Inventory" to="/Inventory" />
-          <SidebarItem label="Prescriptions" to="/Prescription" />
-          <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" />
-          <SidebarItem label="Orders" to="/Orders" />
+          <SidebarItem label="Prescriptions" to="/prescriptions" />
+          <SidebarItem label="Pending Reviews" to="/pending-prescriptions" />
+          <SidebarItem label="Admin Prescriptions" to="/admin-prescriptions" />
+          <SidebarItem label="Orders" to="/orders" />
           <SidebarItem label="Customers" to="/Customers" />
           <SidebarItem label="User Management" to="/Users" />
         </nav>

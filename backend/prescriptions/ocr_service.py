@@ -17,11 +17,14 @@ import google.generativeai as genai
 from django.conf import settings
 from django.db.models import Q
 from product.models import Product, GenericName
+from backend.settings import GOOGLE_API_KEY
 
 class OCRService:
     def __init__(self):
         # Configure Google Gemini AI
-        self.api_key = getattr(settings, 'GOOGLE_API_KEY', 'AIzaSyA8JFwu5DpLSKBfTTk2K3dUW61y32gZeoo')
+        self.api_key = os.getenv('GOOGLE_API_KEY', GOOGLE_API_KEY) # Use environment variable
+        if not self.api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is not set.")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel("models/gemini-2.0-flash")
 
@@ -87,6 +90,50 @@ class OCRService:
             'duration': ['days', 'weeks', 'months', 'as needed', 'sos', 'prn']
         }
 
+    def process_prescription_image(self, image_path: str) -> Dict[str, Any]:
+        """
+        Main method to process a prescription image end-to-end.
+        """
+        try:
+            # Step 1: Extract medicines from prescription
+            extraction_result = self.extract_text_from_prescription(image_path)
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'OCR extraction failed: {str(e)}',
+                'medicines': [],
+                'processing_summary': {'high_confidence_matches': 0}
+            }
+
+        if not extraction_result['success']:
+            return {
+                'success': False,
+                'error': extraction_result.get('error', 'Unknown OCR error.'),
+                'medicines': [],
+                'processing_summary': {'high_confidence_matches': 0}
+            }
+
+        # Step 2: Analyze and match based on composition
+        analyzed_medicines = self.match_medicines_by_composition(extraction_result['medicines'])
+
+        # Step 3: Compile final result
+        total_medicines_extracted = len(extraction_result['medicines'])
+        high_confidence_matches = sum(1 for m in analyzed_medicines if m.get('match_confidence', 0) >= 0.8)
+
+        final_result = {
+            'success': True,
+            'ocr_confidence': extraction_result['confidence_score'],
+            'total_medicines_found': total_medicines_extracted,
+            'medicines': analyzed_medicines,
+            'processing_summary': {
+                'total_medicines_extracted': total_medicines_extracted,
+                'matched_medicines': len([m for m in analyzed_medicines if m.get('local_equivalent')]),
+                'unmatched_medicines': len([m for m in analyzed_medicines if not m.get('local_equivalent')]),
+                'high_confidence_matches': high_confidence_matches
+            }
+        }
+        return final_result
+
     def extract_text_from_prescription(self, image_path: str) -> Dict[str, Any]:
         """
         Intelligent medicine extraction from prescription image using Gemini AI
@@ -99,34 +146,27 @@ class OCRService:
             prompt = """
             You are an intelligent medical OCR and medicine analysis system.
 
-            Analyze this prescription image and extract ONLY medicine-related information:
+            Analyze the provided image and extract any medicine-related information. This includes medicine names, dosages, frequencies, and forms, even if presented within a question or sentence.
 
             For each medicine found:
-            1. Extract the EXACT brand name as written (e.g., "Dolo 650", "Crocin", "Azithral")
-            2. Identify strength/dosage (e.g., 650mg, 500mg, 5ml)
-            3. Determine dosage form (tablet, capsule, syrup, injection, etc.)
-            4. Extract frequency (once daily, twice daily, BID, TID, etc.)
-            5. Extract duration (7 days, 2 weeks, etc.)
-            6. Extract special instructions (after food, before meals, etc.)
+            1. Extract the medicine name (brand or generic).
+            2. Identify strength/dosage (e.g., 500mg, 10ml).
+            3. Determine dosage form (e.g., tablet, syrup).
+            4. Extract frequency (e.g., once daily, tid).
 
             IMPORTANT RULES:
-            - Focus ONLY on pharmacologically relevant medicines
-            - Ignore patient details, doctor information, clinic details
-            - Extract brand names exactly as written
-            - If generic name is mentioned, capture it separately
-            - Ignore non-medicine items (tests, procedures, advice)
+            - Focus ONLY on pharmacologically relevant medicines.
+            - Ignore non-medicine items, patient details, or doctor information.
+            - Extract information as accurately as possible from the text.
 
             Format response as JSON:
             {
                 "medicines": [
                     {
-                        "brand_name": "exact brand name from prescription",
+                        "medicine_name": "extracted medicine name",
                         "strength": "dosage with unit",
                         "form": "tablet/capsule/syrup/etc",
-                        "frequency": "how often to take",
-                        "duration": "how long to take",
-                        "instructions": "special instructions",
-                        "generic_mentioned": "if generic name is also mentioned"
+                        "frequency": "how often to take"
                     }
                 ]
             }
@@ -159,29 +199,21 @@ class OCRService:
     def _parse_json_response(self, text: str) -> List[Dict[str, Any]]:
         """
         Parse JSON response from Gemini AI into medicine objects
+        with a robust fallback for non-JSON text.
         """
         try:
-            # Handle None or empty text
-            if not text or text is None:
-                print("Warning: Empty or None response from OCR")
+            if not text:
                 return []
 
-            # Clean the response text
-            text = str(text).strip()
-
-            # Remove markdown code blocks if present
+            # Clean the response text from markdown
+            text = text.strip()
             if text.startswith('```json'):
-                text = text[7:]
+                text = text.removeprefix('```json')
             if text.endswith('```'):
-                text = text[:-3]
+                text = text.removesuffix('```')
             text = text.strip()
 
-            # If still empty after cleaning
-            if not text:
-                print("Warning: Empty text after cleaning")
-                return []
-
-            # Parse JSON
+            # Attempt to parse as JSON
             data = json.loads(text)
             medicines = data.get('medicines', [])
 
@@ -189,62 +221,63 @@ class OCRService:
             normalized_medicines = []
             for medicine in medicines:
                 normalized = {
-                    'brand_name': medicine.get('brand_name', '').strip(),
+                    'medicine_name': medicine.get('medicine_name', '').strip(),
                     'strength': medicine.get('strength', '').strip(),
                     'form': medicine.get('form', 'tablet').strip().lower(),
                     'frequency': medicine.get('frequency', '').strip(),
-                    'duration': medicine.get('duration', '').strip(),
-                    'instructions': medicine.get('instructions', '').strip(),
-                    'generic_mentioned': medicine.get('generic_mentioned', '').strip()
+                    # 'duration': medicine.get('duration', '').strip(), # Removed as per new prompt
+                    # 'instructions': medicine.get('instructions', '').strip(), # Removed as per new prompt
+                    # 'generic_mentioned': medicine.get('generic_mentioned', '').strip() # Removed as per new prompt
                 }
 
-                # Only add if we have a brand name
-                if normalized['brand_name']:
+                if normalized['medicine_name']:
                     normalized_medicines.append(normalized)
 
             return normalized_medicines
 
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
-            # Fallback to old parsing method if JSON fails
-            return self._parse_extracted_text_fallback(text)
+            print(f"JSON decode error: {e}. Falling back to text-based parsing.")
+            return self._find_medicines_in_text(text)
         except Exception as e:
-            print(f"Error parsing JSON response: {e}")
+            print(f"Error parsing JSON response: {e}. Returning empty list.")
             return []
 
-    def _parse_extracted_text_fallback(self, text: str) -> List[Dict[str, Any]]:
+    def _find_medicines_in_text(self, text: str) -> List[Dict[str, Any]]:
         """
-        Fallback parser for non-JSON responses
+        A robust fallback parser for non-JSON responses.
+        Searches for medicine names and other medicine-related keywords using more general regex.
         """
         medicines = []
-        current_medicine = {}
+        full_text = text.lower()
 
-        lines = text.split('\n')
-        for line in lines:
-            line = line.strip()
-            if not line or line == '---':
-                if current_medicine.get('brand_name'):
-                    medicines.append(current_medicine)
-                    current_medicine = {}
-                continue
+        # General patterns for medicine name, strength, form, frequency
+        # This is a simplified approach; a more advanced NLP library would be better for complex cases.
+        medicine_name_pattern = r'\b(?:paracetamol|ibuprofen|amoxicillin|azithromycin|omeprazole|metformin|cetirizine|amlodipine|aspirin)\b'
+        strength_pattern = r'(\d+(?:\.\d+)?)\s*(mg|ml|g|mcg|iu|units?)'
+        form_pattern = r'\b(tablet|capsule|syrup|injection|cream|ointment|drops|inhaler|patch)\b'
+        frequency_pattern = r'\b(once daily|twice daily|thrice daily|four times daily|bid|tid|qid|od|bd|tds)\b'
 
-            if line.startswith('Medicine:') or line.startswith('Brand:'):
-                current_medicine['brand_name'] = line.split(':', 1)[1].strip()
-            elif line.startswith('Strength:'):
-                current_medicine['strength'] = line.replace('Strength:', '').strip()
-            elif line.startswith('Form:'):
-                current_medicine['form'] = line.replace('Form:', '').strip()
-            elif line.startswith('Frequency:'):
-                current_medicine['frequency'] = line.replace('Frequency:', '').strip()
-            elif line.startswith('Duration:'):
-                current_medicine['duration'] = line.replace('Duration:', '').strip()
-            elif line.startswith('Instructions:'):
-                current_medicine['instructions'] = line.replace('Instructions:', '').strip()
+        # Find all potential medicine mentions
+        for match in re.finditer(medicine_name_pattern, full_text):
+            medicine_name = match.group(0)
+            
+            # Search for strength, form, frequency around the medicine name
+            # This is a very basic proximity search; could be improved with windowing
+            context_start = max(0, match.start() - 50)
+            context_end = min(len(full_text), match.end() + 50)
+            context = full_text[context_start:context_end]
 
-        # Add the last medicine if exists
-        if current_medicine.get('brand_name'):
-            medicines.append(current_medicine)
+            strength_match = re.search(strength_pattern, context)
+            form_match = re.search(form_pattern, context)
+            frequency_match = re.search(frequency_pattern, context)
 
+            medicines.append({
+                'medicine_name': medicine_name,
+                'strength': strength_match.group(0) if strength_match else '',
+                'form': form_match.group(0) if form_match else '',
+                'frequency': frequency_match.group(0) if frequency_match else ''
+            })
+        
         return medicines
 
     def _calculate_confidence(self, medicines: List[Dict]) -> float:
@@ -261,252 +294,10 @@ class OCRService:
                 score += 0.2
             if medicine.get('frequency'):
                 score += 0.2
-            if medicine.get('duration'):
-                score += 0.2
-            if medicine.get('instructions'):
-                score += 0.2
+            # Removed duration and instructions from confidence calculation as per new prompt
             total_score += score
         
         return min(total_score / len(medicines), 1.0)
-
-    def match_medicines_with_database(self, extracted_medicines: List[Dict]) -> List[Dict[str, Any]]:
-        """
-        Intelligent medicine matching with brand-to-generic mapping and pharmacy inventory
-        """
-        matched_results = []
-
-        for medicine in extracted_medicines:
-            brand_name = medicine.get('brand_name', '').strip()
-            if not brand_name:
-                continue
-
-            # Step 1: Identify generic name and composition
-            generic_info = self._identify_generic_from_brand(brand_name)
-
-            # Step 2: Find exact match in pharmacy inventory
-            exact_match = self._find_exact_pharmacy_match(brand_name, generic_info)
-
-            # Step 3: Find alternative if exact match not available
-            alternative_match = None
-            if not exact_match:
-                alternative_match = self._find_pharmacy_alternative(generic_info, medicine.get('strength', ''))
-
-            # Step 4: Compile result in required format
-            result = self._compile_medicine_result(
-                medicine, brand_name, generic_info, exact_match, alternative_match
-            )
-
-            matched_results.append(result)
-
-        return matched_results
-
-    def _identify_generic_from_brand(self, brand_name: str) -> Dict[str, Any]:
-        """
-        Identify generic name and composition from brand name
-        """
-        brand_lower = brand_name.lower().strip()
-
-        # Remove common suffixes and numbers for better matching
-        clean_brand = re.sub(r'\s*\d+\s*(mg|ml|g|mcg|iu).*$', '', brand_lower)
-        clean_brand = re.sub(r'\s*(tablet|capsule|syrup|injection).*$', '', clean_brand)
-
-        # Direct mapping lookup
-        for brand_key, info in self.brand_to_generic_mapping.items():
-            if brand_key in clean_brand or clean_brand.startswith(brand_key):
-                return {
-                    'generic_name': info['generic'],
-                    'composition': info['composition'],
-                    'common_strengths': info['common_strengths'],
-                    'mapping_confidence': 1.0,
-                    'source': 'direct_mapping'
-                }
-
-        # Fuzzy matching for partial matches
-        best_match = None
-        best_score = 0.0
-
-        for brand_key, info in self.brand_to_generic_mapping.items():
-            score = difflib.SequenceMatcher(None, clean_brand, brand_key).ratio()
-            if score > 0.7 and score > best_score:
-                best_score = score
-                best_match = info
-
-        if best_match:
-            return {
-                'generic_name': best_match['generic'],
-                'composition': best_match['composition'],
-                'common_strengths': best_match['common_strengths'],
-                'mapping_confidence': best_score,
-                'source': 'fuzzy_mapping'
-            }
-
-        # If no mapping found, try to extract from brand name
-        return {
-            'generic_name': brand_name,  # Use brand name as fallback
-            'composition': 'Unknown',
-            'common_strengths': [],
-            'mapping_confidence': 0.3,
-            'source': 'fallback'
-        }
-
-    def _find_exact_pharmacy_match(self, brand_name: str, generic_info: Dict) -> Optional[Dict[str, Any]]:
-        """
-        Find exact match for the brand in pharmacy inventory
-        """
-        # Try exact brand name match first
-        exact_matches = Product.objects.filter(
-            Q(name__iexact=brand_name) |
-            Q(name__icontains=brand_name.split()[0])  # Match first word of brand
-        ).filter(stock_quantity__gt=0)  # Only in-stock items
-
-        if exact_matches.exists():
-            product = exact_matches.first()
-            return self._format_product_result(product, 'exact_brand_match', 1.0)
-
-        return None
-
-    def _find_pharmacy_alternative(self, generic_info: Dict, strength: str = '') -> Optional[Dict[str, Any]]:
-        """
-        Find pharmacy's available alternative for the same generic
-        """
-        generic_name = generic_info.get('generic_name', '').lower()
-
-        # Search by generic name
-        alternatives = Product.objects.filter(
-            Q(generic_name__name__icontains=generic_name) |
-            Q(name__icontains=generic_name)
-        ).filter(stock_quantity__gt=0)  # Only in-stock items
-
-        # If strength is specified, try to match it
-        if strength and alternatives.exists():
-            strength_matches = alternatives.filter(strength__icontains=strength)
-            if strength_matches.exists():
-                product = strength_matches.first()
-                return self._format_product_result(product, 'generic_strength_match', 0.9)
-
-        # Return first available alternative
-        if alternatives.exists():
-            product = alternatives.first()
-            return self._format_product_result(product, 'generic_match', 0.8)
-
-        return None
-
-    def _format_product_result(self, product: Product, match_type: str, confidence: float) -> Dict[str, Any]:
-        """
-        Format product information in standardized format
-        """
-        return {
-            'product_id': product.id,
-            'available_brand_name': product.name,
-            'generic_name': product.generic_name.name if product.generic_name else 'Unknown',
-            'strength': product.strength or 'Not specified',
-            'form': product.form or 'tablet',
-            'manufacturer': product.manufacturer,
-            'price': float(product.price),
-            'stock_quantity': product.stock_quantity,
-            'match_type': match_type,
-            'confidence': confidence,
-            'is_prescription_required': product.is_prescription_required
-        }
-
-    def _compile_medicine_result(self, extracted_medicine: Dict, brand_name: str,
-                               generic_info: Dict, exact_match: Optional[Dict],
-                               alternative_match: Optional[Dict]) -> Dict[str, Any]:
-        """
-        Compile final result in the required format
-        """
-        # Determine which match to use
-        selected_match = exact_match or alternative_match
-
-        if selected_match:
-            return {
-                'input_brand_name': brand_name,
-                'generic_name': generic_info.get('generic_name', 'Unknown'),
-                'composition': generic_info.get('composition', 'Unknown'),
-                'available_brand_name': selected_match['available_brand_name'],
-                'form': selected_match['form'],
-                'strength': selected_match['strength'],
-                'manufacturer': selected_match['manufacturer'],
-                'price': selected_match['price'],
-                'stock_quantity': selected_match['stock_quantity'],
-                'instructions': extracted_medicine.get('instructions', 'As prescribed'),
-                'frequency': extracted_medicine.get('frequency', 'As directed'),
-                'duration': extracted_medicine.get('duration', 'As prescribed'),
-                'match_type': selected_match['match_type'],
-                'confidence': selected_match['confidence'],
-                'is_prescription_required': selected_match['is_prescription_required'],
-                'mapping_confidence': generic_info.get('mapping_confidence', 0.0),
-                'available': True
-            }
-        else:
-            return {
-                'input_brand_name': brand_name,
-                'generic_name': generic_info.get('generic_name', 'Unknown'),
-                'composition': generic_info.get('composition', 'Unknown'),
-                'available_brand_name': None,
-                'form': extracted_medicine.get('form', 'tablet'),
-                'strength': extracted_medicine.get('strength', 'Not specified'),
-                'manufacturer': None,
-                'price': None,
-                'stock_quantity': 0,
-                'instructions': extracted_medicine.get('instructions', 'As prescribed'),
-                'frequency': extracted_medicine.get('frequency', 'As directed'),
-                'duration': extracted_medicine.get('duration', 'As prescribed'),
-                'match_type': 'no_match',
-                'confidence': 0.0,
-                'is_prescription_required': True,  # Default to requiring prescription
-                'mapping_confidence': generic_info.get('mapping_confidence', 0.0),
-                'available': False,
-                'note': 'Medicine not available in pharmacy inventory'
-            }
-
-    def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """
-        Calculate similarity between two text strings
-        """
-        return difflib.SequenceMatcher(None, text1, text2).ratio()
-
-    def _calculate_match_confidence(self, medicine_name: str, matches: List[Dict]) -> float:
-        """
-        Calculate confidence score for medicine matching
-        """
-        if not matches:
-            return 0.0
-        
-        best_match = matches[0]
-        return best_match.get('match_score', 0.0)
-
-    def analyze_prescription_medicines_by_composition(self, image_path: str) -> Dict[str, Any]:
-        """
-        Medical prescription OCR AI with composition-based matching
-        Extracts brand names and finds local equivalents based on composition
-        """
-        # Step 1: Extract medicines from prescription
-        try:
-            extraction_result = self.extract_text_from_prescription(image_path)
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'OCR extraction failed: {str(e)}',
-                'medicines': []
-            }
-
-        if not extraction_result['success']:
-            return extraction_result
-
-        # Step 2: Composition-based analysis and matching
-        analyzed_medicines = self.match_medicines_by_composition(extraction_result['medicines'])
-
-        return {
-            'success': True,
-            'ocr_confidence': extraction_result['confidence_score'],
-            'total_medicines_extracted': len(extraction_result['medicines']),
-            'total_medicines_analyzed': len(analyzed_medicines),
-            'matched_medicines': len([m for m in analyzed_medicines if m.get('local_equivalent')]),
-            'unmatched_medicines': len([m for m in analyzed_medicines if not m.get('local_equivalent')]),
-            'medicines': analyzed_medicines,
-            'raw_ocr_text': extraction_result['raw_text']
-        }
 
     def match_medicines_by_composition(self, extracted_medicines: List[Dict]) -> List[Dict[str, Any]]:
         """
@@ -515,15 +306,15 @@ class OCRService:
         matched_results = []
 
         for medicine in extracted_medicines:
-            brand_name = medicine.get('brand_name', '').strip()
-            if not brand_name:
+            medicine_name = medicine.get('medicine_name', '').strip()
+            if not medicine_name:
                 continue
 
-            # Step 1: Identify generic name and composition from brand
-            generic_info = self._identify_generic_from_brand(brand_name)
+            # Step 1: Identify generic name and composition from medicine name
+            generic_info = self._identify_generic_from_medicine_name(medicine_name)
 
-            # Step 2: Extract strength from prescription or brand name
-            strength = self._extract_strength_from_medicine(medicine, brand_name)
+            # Step 2: Extract strength from prescription or medicine name
+            strength = self._extract_strength_from_medicine_data(medicine, medicine_name)
 
             # Step 3: Build standardized composition
             standardized_composition = self._build_standardized_composition(
@@ -540,7 +331,7 @@ class OCRService:
 
             # Step 5: Compile result in required format
             result = {
-                'input_brand': brand_name,
+                'input_medicine_name': medicine_name,
                 'generic_name': generic_info['generic_name'],
                 'composition': standardized_composition,
                 'form': medicine.get('form', 'tablet').title(),
@@ -553,23 +344,72 @@ class OCRService:
 
         return matched_results
 
-    def _extract_strength_from_medicine(self, medicine: Dict, brand_name: str) -> str:
+    def _identify_generic_from_medicine_name(self, medicine_name: str) -> Dict[str, Any]:
         """
-        Extract strength/dosage from medicine data or brand name
+        Identify generic name and composition from medicine name
+        """
+        medicine_lower = medicine_name.lower().strip()
+
+        # Remove common suffixes and numbers for better matching
+        clean_medicine_name = re.sub(r'\s*\d+\s*(mg|ml|g|mcg|iu).*$', '', medicine_lower)
+        clean_medicine_name = re.sub(r'\s*(tablet|capsule|syrup|injection).*$', '', clean_medicine_name)
+
+        # Direct mapping lookup
+        for brand_key, info in self.brand_to_generic_mapping.items():
+            if brand_key in clean_medicine_name or clean_medicine_name.startswith(brand_key):
+                return {
+                    'generic_name': info['generic'],
+                    'composition': info['composition'],
+                    'common_strengths': info['common_strengths'],
+                    'mapping_confidence': 1.0,
+                    'source': 'direct_mapping'
+                }
+
+        # Fuzzy matching for partial matches
+        best_match = None
+        best_score = 0.0
+
+        for brand_key, info in self.brand_to_generic_mapping.items():
+            score = difflib.SequenceMatcher(None, clean_medicine_name, brand_key).ratio()
+            if score > 0.7 and score > best_score:
+                best_score = score
+                best_match = info
+
+        if best_match:
+            return {
+                'generic_name': best_match['generic'],
+                'composition': best_match['composition'],
+                'common_strengths': best_match['common_strengths'],
+                'mapping_confidence': best_score,
+                'source': 'fuzzy_mapping'
+            }
+
+        # If no mapping found, try to extract from medicine name
+        return {
+            'generic_name': medicine_name,  # Use medicine name as fallback
+            'composition': 'Unknown',
+            'common_strengths': [],
+            'mapping_confidence': 0.3,
+            'source': 'fallback'
+        }
+
+    def _extract_strength_from_medicine_data(self, medicine: Dict, medicine_name: str) -> str:
+        """
+        Extract strength/dosage from medicine data or medicine name
         """
         # First try to get from extracted medicine data
         strength = medicine.get('strength', '').strip()
         if strength:
             return strength
 
-        # Try to extract from brand name using regex
+        # Try to extract from medicine name using regex
         strength_patterns = [
             r'(\d+(?:\.\d+)?)\s*(mg|g|ml|mcg|iu|units?)',
             r'(\d+(?:\.\d+)?)\s*(milligram|gram|milliliter|microgram)',
         ]
 
         for pattern in strength_patterns:
-            match = re.search(pattern, brand_name.lower())
+            match = re.search(pattern, medicine_name.lower())
             if match:
                 return f"{match.group(1)}{match.group(2)}"
 
@@ -727,257 +567,30 @@ class OCRService:
         # Boost score if key components match
         comp1_parts = set(comp1.split())
         comp2_parts = set(comp2.split())
-
-        # Check if main ingredients match
+        
         common_parts = comp1_parts.intersection(comp2_parts)
         if common_parts:
-            boost = len(common_parts) / max(len(comp1_parts), len(comp2_parts))
-            similarity = min(1.0, similarity + boost * 0.2)
+            # A simple boost based on the number of common words
+            similarity += (len(common_parts) / max(len(comp1_parts), len(comp2_parts))) * 0.1
 
-        return similarity
+        return min(similarity, 1.0)
 
     def _check_form_compatibility(self, form1: str, form2: str) -> float:
         """
-        Check compatibility between dosage forms
+        Check if two dosage forms are compatible
         """
-        if not form1 or not form2:
-            return 0.5  # Neutral score if form unknown
-
         form1 = form1.lower().strip()
         form2 = form2.lower().strip()
 
-        # Exact match
         if form1 == form2:
             return 1.0
+        
+        # Consider tablet and capsule as a potential match
+        if (form1 in ['tablet', 'capsule'] and form2 in ['tablet', 'capsule']):
+            return 0.9
+        
+        # Consider syrups and drops as a potential match
+        if (form1 in ['syrup', 'drops'] and form2 in ['syrup', 'drops']):
+            return 0.9
 
-        # Compatible forms
-        compatible_forms = {
-            'tablet': ['tab', 'tablets'],
-            'capsule': ['cap', 'capsules'],
-            'syrup': ['liquid', 'suspension', 'solution'],
-            'injection': ['inj', 'vial', 'ampoule'],
-            'cream': ['ointment', 'gel', 'lotion'],
-            'drops': ['drop', 'solution']
-        }
-
-        for main_form, alternatives in compatible_forms.items():
-            if (form1 == main_form and form2 in alternatives) or \
-               (form2 == main_form and form1 in alternatives):
-                return 0.9
-
-        return 0.3  # Different forms, low compatibility
-
-    def extract_composition_based_medicines(self, image_path: str) -> Dict[str, Any]:
-        """
-        NEW: Composition-based prescription processing for user-controlled workflow
-
-        Steps:
-        1. OCR extraction of medicine names and compositions
-        2. Composition-based matching with local database
-        3. Return suggestions for manual user selection (NO auto-cart addition)
-        4. Prepare data for admin approval workflow
-        """
-        try:
-            # Step 1: OCR Extraction
-            ocr_result = self._extract_text_from_image(image_path)
-            if not ocr_result['success']:
-                return {
-                    'success': False,
-                    'error': 'OCR extraction failed',
-                    'extracted_medicines': [],
-                    'composition_matches': []
-                }
-
-            # Step 2: Parse extracted medicines with composition focus
-            extracted_medicines = self._parse_medicines_with_composition(ocr_result['extracted_text'])
-
-            # Step 3: Find composition-based matches
-            composition_matches = []
-            for medicine in extracted_medicines:
-                matches = self._find_composition_matches(medicine)
-                composition_matches.append({
-                    'extracted_medicine': medicine,
-                    'composition_matches': matches,
-                    'user_selected': False,  # User must manually select
-                    'admin_approved': False  # Requires admin approval
-                })
-
-            return {
-                'success': True,
-                'ocr_confidence': ocr_result.get('confidence', 0.8),
-                'extracted_text': ocr_result['extracted_text'],
-                'extracted_medicines': extracted_medicines,
-                'composition_matches': composition_matches,
-                'total_medicines_found': len(extracted_medicines),
-                'requires_manual_selection': True,
-                'requires_admin_approval': True
-            }
-
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Composition-based processing failed: {str(e)}',
-                'extracted_medicines': [],
-                'composition_matches': []
-            }
-
-    def _parse_medicines_with_composition(self, extracted_text: str) -> List[Dict[str, Any]]:
-        """
-        Parse extracted text focusing on composition and salt extraction
-        """
-        medicines = []
-        lines = extracted_text.split('\n')
-
-        for i, line in enumerate(lines, 1):
-            line = line.strip()
-            if not line or len(line) < 3:
-                continue
-
-            # Extract medicine information with composition focus
-            medicine_info = self._extract_medicine_composition_info(line)
-            if medicine_info:
-                medicine_info['line_number'] = i
-                medicine_info['original_text'] = line
-                medicines.append(medicine_info)
-
-        return medicines
-
-    def _extract_medicine_composition_info(self, text: str) -> Optional[Dict[str, Any]]:
-        """
-        Extract medicine name, composition/salt, and dosage from text line
-        """
-        # Clean the text
-        text = re.sub(r'^\d+\.?\s*', '', text)  # Remove numbering
-        text = text.strip()
-
-        if len(text) < 2:
-            return None
-
-        # Extract dosage/strength
-        strength_pattern = r'(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|%|iu|units?)\b'
-        strength_matches = re.findall(strength_pattern, text, re.IGNORECASE)
-        strength = f"{strength_matches[0][0]}{strength_matches[0][1]}" if strength_matches else ""
-
-        # Extract medicine name (before strength or special characters)
-        medicine_name = re.split(r'\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|%|iu|units?)', text, 1)[0].strip()
-        medicine_name = re.split(r'[-–—]', medicine_name)[0].strip()
-
-        # Try to identify composition from brand name
-        composition = self._identify_composition_from_name(medicine_name)
-
-        # Extract frequency and duration if present
-        frequency = self._extract_frequency(text)
-        duration = self._extract_duration(text)
-
-        return {
-            'medicine_name': medicine_name,
-            'composition': composition,
-            'strength': strength,
-            'frequency': frequency,
-            'duration': duration,
-            'form': self._extract_form(text)
-        }
-
-    def _identify_composition_from_name(self, medicine_name: str) -> str:
-        """
-        Identify active ingredient/composition from medicine brand name
-        """
-        name_lower = medicine_name.lower().strip()
-
-        # Check brand-to-generic mapping
-        for brand, info in self.brand_to_generic_mapping.items():
-            if brand in name_lower or name_lower.startswith(brand):
-                return info['composition']
-
-        # If not found in mapping, return the name itself (might be generic)
-        return medicine_name
-
-    def _find_composition_matches(self, medicine_info: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Find medicines in database that match the composition/salt
-        """
-        composition = medicine_info.get('composition', '')
-        strength = medicine_info.get('strength', '')
-        form = medicine_info.get('form', '')
-
-        matches = []
-
-        # Query database for composition matches
-        products = Product.objects.filter(is_active=True)
-
-        for product in products:
-            match_score = self._calculate_composition_match_score(
-                medicine_info, product
-            )
-
-            if match_score > 0.3:  # Only include reasonable matches
-                matches.append({
-                    'product_id': str(product.id),
-                    'product_name': product.name,
-                    'composition': self._get_product_composition(product),
-                    'strength': product.strength,
-                    'form': product.form,
-                    'manufacturer': product.manufacturer,
-                    'price': float(product.price),
-                    'mrp': float(product.mrp),
-                    'stock_available': product.stock_quantity > 0,
-                    'stock_quantity': product.stock_quantity,
-                    'match_score': match_score,
-                    'match_type': self._get_match_type(match_score),
-                    'is_prescription_required': product.is_prescription_required
-                })
-
-        # Sort by match score (highest first)
-        matches.sort(key=lambda x: x['match_score'], reverse=True)
-
-        return matches[:10]  # Return top 10 matches
-
-    def _calculate_composition_match_score(self, medicine_info: Dict[str, Any], product) -> float:
-        """
-        Calculate match score based on composition similarity
-        """
-        extracted_composition = medicine_info.get('composition', '').lower()
-        product_composition = self._get_product_composition(product).lower()
-
-        # Composition similarity (most important)
-        comp_similarity = self._calculate_composition_similarity(
-            extracted_composition, product_composition
-        )
-
-        # Strength similarity
-        extracted_strength = medicine_info.get('strength', '').lower()
-        product_strength = (product.strength or '').lower()
-        strength_similarity = 1.0 if extracted_strength == product_strength else 0.5
-
-        # Form compatibility
-        extracted_form = medicine_info.get('form', '').lower()
-        product_form = (product.form or '').lower()
-        form_compatibility = self._check_form_compatibility(extracted_form, product_form)
-
-        # Calculate weighted score
-        total_score = (
-            comp_similarity * 0.6 +      # Composition is most important
-            strength_similarity * 0.3 +   # Strength is important
-            form_compatibility * 0.1       # Form is least important
-        )
-
-        return min(1.0, total_score)
-
-    def _get_match_type(self, score: float) -> str:
-        """
-        Categorize match type based on score
-        """
-        if score >= 0.9:
-            return 'exact_match'
-        elif score >= 0.7:
-            return 'high_similarity'
-        elif score >= 0.5:
-            return 'moderate_similarity'
-        else:
-            return 'low_similarity'
-
-    def process_prescription_image(self, image_path: str) -> Dict[str, Any]:
-        """
-        Legacy method for backward compatibility
-        """
-        return self.extract_composition_based_medicines(image_path)
+        return 0.0

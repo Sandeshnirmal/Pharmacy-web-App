@@ -13,7 +13,7 @@ const InventoryManagement = lazy(() => import('../pages/InventoryManagement'));
 const PrescriptionUploadsTable = lazy(() => import('../pages/PrescriptionUploadsTable'));
 const PrescriptionReview = lazy(() => import('../pages/PrescriptionReview'));
 const PendingPrescriptionsTable = lazy(() => import('../pages/PendingPrescriptionsTable'));
-const AITestPage = lazy(() => import('../pages/AITestPage'));
+const AdminPrescriptionsPage = lazy(() => import('../pages/AdminPrescriptionsPage'));
 
 // Order Management - Lazy loaded
 const OrderDetails = lazy(() => import('../pages/OrderDetails'));
@@ -79,10 +79,10 @@ export const routes = [
     lazy: true
   },
   {
-    path: '/prescription-review/:prescriptionId',
-    element: PrescriptionReview,
-    title: 'Prescription Review',
-    hidden: true, // Don't show in navigation
+    path: '/admin-prescriptions',
+    element: AdminPrescriptionsPage,
+    title: 'Admin Prescriptions',
+    icon: 'FileCheck', // Using a different icon for admin approval
     lazy: true
   },
 

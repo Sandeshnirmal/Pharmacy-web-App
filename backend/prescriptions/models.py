@@ -1,6 +1,5 @@
 from django.db import models
 from product.models import Product, Batch
-from orders.models import Order
 from usermanagement.models import User
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -74,7 +73,6 @@ class Prescription(models.Model):
 
     # User relationships
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='prescriptions')
-    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='prescription_upload')
     verified_by_admin = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

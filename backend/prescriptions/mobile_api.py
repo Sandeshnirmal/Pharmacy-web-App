@@ -60,35 +60,43 @@ def upload_prescription(request):
 
                 # Create prescription details from OCR results
                 for i, medicine_data in enumerate(ocr_result['medicines']):
-                    extracted_info = medicine_data['extracted_info']
-                    matches = medicine_data['database_matches']
+                    input_brand = medicine_data.get('input_brand', '')
+                    generic_name = medicine_data.get('generic_name', '')
+                    composition = medicine_data.get('composition', '')
+                    form = medicine_data.get('form', '')
+                    local_equivalent = medicine_data.get('local_equivalent')
+                    match_confidence = medicine_data.get('match_confidence', 0.0)
 
                     detail = PrescriptionDetail.objects.create(
                         prescription=prescription,
                         line_number=i + 1,
-                        recognized_text_raw=f"{extracted_info.get('name', '')} {extracted_info.get('strength', '')}",
-                        ai_extracted_medicine_name=extracted_info.get('name', ''),
-                        ai_extracted_dosage=extracted_info.get('strength', ''),
-                        ai_extracted_frequency=extracted_info.get('frequency', ''),
-                        ai_extracted_duration=extracted_info.get('duration', ''),
-                        ai_extracted_instructions=extracted_info.get('instructions', ''),
-                        ai_confidence_score=medicine_data['match_confidence'],
-                        mapping_status='Mapped' if matches else 'Pending',
-                        is_valid_for_order=len(matches) > 0
+                        recognized_text_raw=f"{input_brand} ({composition})",
+                        extracted_medicine_name=input_brand,
+                        extracted_dosage=medicine_data.get('strength', ''),
+                        extracted_frequency=medicine_data.get('frequency', ''),
+                        extracted_duration=medicine_data.get('duration', ''),
+                        extracted_instructions=medicine_data.get('instructions', ''),
+                        ai_confidence_score=match_confidence,
+                        mapping_status='Mapped' if local_equivalent else 'Pending',
+                        is_valid_for_order=local_equivalent is not None
                     )
 
                     # Set suggested products and best match
-                    if matches:
+                    if local_equivalent:
                         from product.models import Product
-                        product_ids = [match['product_id'] for match in matches]
-                        products = Product.objects.filter(id__in=product_ids)
-                        detail.suggested_products.set(products)
+                        try:
+                            product = Product.objects.get(name=local_equivalent['product_name'], form=local_equivalent['form'])
+                            detail.suggested_products.set([product])
 
-                        # Set best match as mapped product
-                        if matches[0]['match_score'] > 0.8:
-                            detail.mapped_product = products.first()
-                            detail.verified_medicine_name = matches[0]['name']
-                            detail.verified_dosage = matches[0]['strength']
+                            if match_confidence > 0.8:
+                                detail.mapped_product = product
+                                detail.verified_medicine_name = product.name
+                                detail.verified_dosage = product.strength
+                                detail.save()
+                        except Product.DoesNotExist:
+                            logger.warning(f"Product not found for local equivalent: {local_equivalent.get('product_name')}")
+                            detail.mapping_status = 'No_Product_Found'
+                            detail.is_valid_for_order = False
                             detail.save()
 
                 return Response({
@@ -751,11 +759,16 @@ def upload_prescription_for_paid_order(request):
             image_url=image_url,
             image_file=image_file,
             verification_status='Pending_Review',  # Use existing status choices
-            status='pending_verification',         # Use existing status choices
+            status='prescription_uploaded',         # Use existing status choices
             ai_processed=False,  # No AI processing for order verification
             verification_notes=f'Uploaded for paid order #{order_id} verification - manual review required',
             order=order,  # Link to order
         )
+
+        # Update the order status to 'prescription_uploaded'
+        order.order_status = 'prescription_uploaded'
+        order.prescription = prescription
+        order.save()
 
         return Response({
             'success': True,

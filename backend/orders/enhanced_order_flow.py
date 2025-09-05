@@ -194,6 +194,7 @@ class EnhancedOrderFlow:
                 # Update prescription with order reference
                 prescription.order = order
                 prescription.status = 'pending_verification'
+                prescription.verification_status = 'Pending_Review' # Ensure legacy field is also updated
                 prescription.save()
                 
                 # Record status history

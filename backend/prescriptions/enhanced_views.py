@@ -131,59 +131,124 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         self.simulate_ai_processing(prescription)
 
     def simulate_ai_processing(self, prescription):
-        """Simulate AI processing (replace with actual AI integration)"""
-        import time
-        import random
+        """Integrate actual AI processing for prescription"""
+        try:
+            ocr_service = OCRService()
+            # Ensure the image file exists and get its path
+            if not prescription.image_file or not prescription.image_file.path:
+                raise ValueError("Prescription image file not found.")
 
-        # Simulate processing time
-        processing_time = random.uniform(2.0, 5.0)
+            ocr_result = ocr_service.process_prescription_image(prescription.image_file.path)
 
-        # Simulate AI results
-        confidence_score = random.uniform(0.7, 0.95)
-        medicines_detected = random.randint(1, 3)
-        
-        # Update prescription
-        prescription.status = 'ai_mapped'
-        prescription.ai_processed = True
-        prescription.ai_confidence_score = confidence_score
-        prescription.ai_processing_time = processing_time
-        prescription.ocr_text = ai_log.extracted_text
-        prescription.save()
-        
-        # Create sample prescription medicines
-        for i in range(medicines_detected):
-            PrescriptionMedicine.objects.create(
+            if ocr_result['success']:
+                # Update prescription with OCR results
+                prescription.status = 'ai_mapped'
+                prescription.ai_processed = True
+                prescription.ai_confidence_score = ocr_result.get('ocr_confidence', 0.0)
+                prescription.ai_processing_time = ocr_result.get('processing_summary', {}).get('ai_processing_time', 0.0) # Assuming OCRService returns this
+                prescription.ocr_text = ocr_result.get('raw_text', '')
+                prescription.save()
+
+                # Clear existing prescription medicines to avoid duplicates on re-processing
+                prescription.prescription_medicines.all().delete()
+
+                # Create PrescriptionMedicine objects from OCR results
+                for i, medicine_data in enumerate(ocr_result['medicines']):
+                    extracted_name = medicine_data.get('input_medicine_name', '')
+                    extracted_dosage = medicine_data.get('strength', '')
+                    extracted_frequency = medicine_data.get('frequency', '')
+                    extracted_form = medicine_data.get('form', '')
+                    match_confidence = medicine_data.get('match_confidence', 0.0)
+                    local_equivalent = medicine_data.get('local_equivalent')
+
+                    prescription_medicine = PrescriptionMedicine.objects.create(
+                        prescription=prescription,
+                        line_number=i + 1,
+                        extracted_medicine_name=extracted_name,
+                        extracted_dosage=extracted_dosage,
+                        extracted_frequency=extracted_frequency,
+                        extracted_quantity="1", # Default to 1, can be improved with more advanced OCR
+                        extracted_instructions="", # Can be improved with more advanced OCR
+                        ai_confidence_score=match_confidence,
+                        verification_status='pending',
+                        mapping_status='Pending'
+                    )
+
+                    if local_equivalent:
+                        try:
+                            product = Product.objects.get(name=local_equivalent['product_name'])
+                            prescription_medicine.suggested_medicine = product
+                            prescription_medicine.verified_medicine = product
+                            prescription_medicine.mapped_product = product
+                            prescription_medicine.verified_medicine_name = product.name
+                            prescription_medicine.unit_price = product.price
+                            prescription_medicine.total_price = product.price * prescription_medicine.quantity_prescribed
+                            prescription_medicine.is_valid_for_order = True
+                            prescription_medicine.mapping_status = 'Mapped'
+                        except Product.DoesNotExist:
+                            prescription_medicine.mapping_status = 'Unmapped'
+                            prescription_medicine.is_valid_for_order = False
+                    else:
+                        prescription_medicine.mapping_status = 'Unmapped'
+                        prescription_medicine.is_valid_for_order = False
+                    
+                    prescription_medicine.save()
+
+                # Update status to pending verification
+                prescription.status = 'pending_verification'
+                prescription.save()
+
+                # Log workflow changes
+                PrescriptionWorkflowLog.objects.create(
+                    prescription=prescription,
+                    from_status='ai_processing',
+                    to_status='ai_mapped',
+                    action_taken='AI processing completed',
+                    performed_by=self.request.user if self.request.user.is_authenticated else None,
+                    system_generated=True
+                )
+                
+                PrescriptionWorkflowLog.objects.create(
+                    prescription=prescription,
+                    from_status='ai_mapped',
+                    to_status='pending_verification',
+                    action_taken='Ready for verification',
+                    performed_by=self.request.user if self.request.user.is_authenticated else None,
+                    system_generated=True
+                )
+            else:
+                # Handle OCR failure
+                prescription.status = 'ai_failed'
+                prescription.ai_processed = False
+                prescription.rejection_reason = ocr_result.get('error', 'AI processing failed.')
+                prescription.save()
+
+                PrescriptionWorkflowLog.objects.create(
+                    prescription=prescription,
+                    from_status='ai_processing',
+                    to_status='ai_failed',
+                    action_taken='AI processing failed',
+                    notes=ocr_result.get('error', 'Unknown error during AI processing.'),
+                    performed_by=self.request.user if self.request.user.is_authenticated else None,
+                    system_generated=True
+                )
+
+        except Exception as e:
+            print(f"Error during AI processing simulation: {e}")
+            prescription.status = 'ai_failed'
+            prescription.ai_processed = False
+            prescription.rejection_reason = f"Internal AI processing error: {str(e)}"
+            prescription.save()
+
+            PrescriptionWorkflowLog.objects.create(
                 prescription=prescription,
-                line_number=i + 1,
-                extracted_medicine_name=f"Medicine {i + 1}",
-                extracted_dosage="500mg",
-                extracted_frequency="Twice daily",
-                extracted_duration="7 days",
-                ai_confidence_score=random.uniform(0.6, 0.9)
+                from_status='ai_processing',
+                to_status='ai_failed',
+                action_taken='AI processing failed due to internal error',
+                notes=str(e),
+                performed_by=self.request.user if self.request.user.is_authenticated else None,
+                system_generated=True
             )
-        
-        # Update status to pending verification
-        prescription.status = 'pending_verification'
-        prescription.save()
-        
-        # Log workflow changes
-        PrescriptionWorkflowLog.objects.create(
-            prescription=prescription,
-            from_status='ai_processing',
-            to_status='ai_mapped',
-            action_taken='AI processing completed',
-            performed_by=self.request.user if self.request.user.is_authenticated else None,
-            system_generated=True
-        )
-        
-        PrescriptionWorkflowLog.objects.create(
-            prescription=prescription,
-            from_status='ai_mapped',
-            to_status='pending_verification',
-            action_taken='Ready for verification',
-            performed_by=self.request.user if self.request.user.is_authenticated else None,
-            system_generated=True
-        )
     
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def verify(self, request, pk=None):
@@ -192,6 +257,8 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         
         # Check verification status - use verification_status field primarily
         current_status = prescription.verification_status
+        print(f"Current Prescription Status: {current_status}") # Debug print
+        
         if current_status not in ['pending_verification', 'Pending_Review', 'AI_Processed']:
             return Response(
                 {'error': f'Prescription is not in pending verification status. Current status: {current_status}'},
@@ -358,113 +425,6 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
             'need_clarification': need_clarification,
             'average_processing_time': average_processing_time
         })
-
-    @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])
-    def create_order(self, request, pk=None):
-        """Create order from verified prescription only"""
-        prescription = self.get_object()
-
-        # Only allow order creation for verified prescriptions
-        if prescription.status != 'verified':
-            return Response({
-                'error': 'Orders can only be created from verified prescriptions',
-                'current_status': prescription.status,
-                'required_status': 'verified'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Check if all medicines are verified and mapped
-        unverified_medicines = prescription.prescription_medicines.filter(
-            verification_status__in=['pending', 'need_clarification', 'rejected']
-        )
-
-        if unverified_medicines.exists():
-            return Response({
-                'error': 'All medicines must be verified before creating order',
-                'unverified_count': unverified_medicines.count(),
-                'unverified_medicines': [
-                    {
-                        'id': med.id,
-                        'name': med.extracted_medicine_name,
-                        'status': med.verification_status
-                    }
-                    for med in unverified_medicines
-                ]
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Get order data from request
-        order_data = request.data
-
-        try:
-            from orders.models import Order, OrderItem
-            from django.db import transaction
-
-            with transaction.atomic():
-                # Create order
-                order = Order.objects.create(
-                    user=prescription.user,
-                    address_id=order_data.get('address_id'),
-                    total_amount=order_data.get('total_amount', 0),
-                    payment_method=order_data.get('payment_method', 'COD'),
-                    payment_status='Pending',
-                    order_status='Pending',
-                    is_prescription_order=True,
-                    prescription=prescription,
-                    notes=f'Order created from prescription {prescription.prescription_number}'
-                )
-
-                # Create order items from verified medicines
-                verified_medicines = prescription.prescription_medicines.filter(
-                    verification_status='verified',
-                    verified_medicine__isnull=False
-                )
-
-                total_amount = 0
-                for medicine in verified_medicines:
-                    quantity = medicine.quantity_prescribed or 1
-                    unit_price = medicine.verified_medicine.price
-
-                    OrderItem.objects.create(
-                        order=order,
-                        product=medicine.verified_medicine,
-                        quantity=quantity,
-                        unit_price=unit_price,
-                        unit_price_at_order=unit_price,
-                        prescription_detail=medicine
-                    )
-
-                    total_amount += quantity * unit_price
-
-                # Update order total
-                order.total_amount = total_amount
-                order.save()
-
-                # Update prescription status
-                prescription.status = 'dispensed'
-                prescription.save()
-
-                # Log workflow action
-                PrescriptionWorkflowLog.objects.create(
-                    prescription=prescription,
-                    from_status='verified',
-                    to_status='dispensed',
-                    action_taken='Order created from prescription',
-                    notes=f'Order #{order.id} created',
-                    performed_by=request.user if request.user.is_authenticated else None,
-                    system_generated=False
-                )
-
-                return Response({
-                    'success': True,
-                    'message': 'Order created successfully',
-                    'order_id': order.id,
-                    'total_amount': float(order.total_amount),
-                    'items_count': order.items.count()
-                })
-
-        except Exception as e:
-            return Response({
-                'error': f'Failed to create order: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # ============================================================================
 # PRESCRIPTION MEDICINE MANAGEMENT VIEWSET

@@ -38,7 +38,7 @@ class PrescriptionUploadSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class PrescriptionSerializer(serializers.ModelSerializer):
-    details = PrescriptionDetailSerializer(many=True, read_only=True)
+    prescription_medicines = PrescriptionDetailSerializer(many=True, read_only=True)
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_phone = serializers.CharField(source='user.phone_number', read_only=True)
@@ -47,8 +47,6 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     verified_medicines = serializers.SerializerMethodField()
     suggested_medicines = serializers.SerializerMethodField()
     processing_status = serializers.SerializerMethodField()
-    has_order = serializers.SerializerMethodField()
-    order_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Prescription
@@ -76,30 +74,3 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             return 'Rejected'
         else:
             return 'Uploaded'
-
-    def get_has_order(self, obj):
-        """Check if prescription has associated orders"""
-        try:
-            from orders.models import Order
-            return Order.objects.filter(prescription=obj).exists()
-        except:
-            return False
-
-    def get_order_info(self, obj):
-        """Get order information if exists"""
-        try:
-            from orders.models import Order
-            order = Order.objects.filter(prescription=obj).first()
-            if order:
-                return {
-                    'order_id': order.id,
-                    'order_number': f'ORD{order.id:06d}',
-                    'order_status': order.order_status,
-                    'payment_status': order.payment_status,
-                    'total_amount': float(order.total_amount),
-                    'order_date': order.order_date,
-                    'items_count': order.items.count()
-                }
-        except:
-            pass
-        return None
