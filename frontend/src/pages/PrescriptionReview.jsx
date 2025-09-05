@@ -1,6 +1,12 @@
-// PrescriptionReview.jsx
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+/*
+================================================================================
+  File: src/pages/PrescriptionReview.jsx
+  Description: A single, self-contained file for previewing the 
+               PrescriptionReview component with all mock data included.
+================================================================================
+*/
+
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft,
   CheckCircle,
@@ -11,15 +17,155 @@ import {
   Edit,
   Trash2,
   PlusCircle,
+  ZoomIn,
 } from "lucide-react";
-import axiosInstance from "../api/axiosInstance";
-import PrescriptionStatusBadge from "../components/prescription/PrescriptionStatusBadge";
-import { CircularConfidenceIndicator } from "../components/prescription/ConfidenceIndicator";
-import ConfidenceIndicator from "../components/prescription/ConfidenceIndicator";
 
 const PrescriptionReview = () => {
-  const { prescriptionId } = useParams();
-  const navigate = useNavigate();
+  //==============================================================================
+  // MOCK DATA, COMPONENTS & API (All contained within the component)
+  //==============================================================================
+
+  const samplePrescription = {
+    id: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    image_url:
+      "https://placehold.co/600x800/e0e7ff/3f51b5?text=Sample+Prescription",
+    upload_date: "2025-08-26T10:00:00Z",
+    verification_status: "Pending_Review",
+    ai_confidence_score: 88,
+    pharmacist_notes:
+      "Patient mentioned they prefer generic brands if available.",
+    user: {
+      first_name: "John",
+      last_name: "Doe",
+    },
+  };
+
+  const samplePrescriptionDetails = [
+    {
+      id: "detail-001",
+      product_name: "Paracetamol 500mg",
+      ai_extracted_medicine_name: "Paracetamol 500mg",
+      extracted_dosage: "1 tablet twice a day",
+      ai_extracted_instructions: "Take after meals for 3 days.",
+      ai_confidence_score: 95,
+      mapped_product: null,
+    },
+    {
+      id: "detail-002",
+      product_name: "Amoxicillin 250mg",
+      ai_extracted_medicine_name: "Amoxicillin 250mg",
+      extracted_dosage: "1 capsule every 8 hours",
+      ai_extracted_instructions: "Complete the full course.",
+      ai_confidence_score: 92,
+      mapped_product: "prod-xyz-789",
+      mapped_product_name: "Moxikind CV 250",
+      mapped_product_details: {
+        strength: "250mg",
+        form: "Capsule",
+      },
+    },
+    {
+      id: "detail-003",
+      product_name: "Cetirizine Syrup",
+      ai_extracted_medicine_name: "CZN Syrup",
+      extracted_dosage: "5ml at night",
+      ai_extracted_instructions: "May cause drowsiness.",
+      ai_confidence_score: 78,
+      mapped_product: null,
+    },
+  ];
+
+  const sampleProducts = [
+    {
+      id: "prod-abc-123",
+      name: "Crocin 500mg Tablet",
+      generic_name: { name: "Paracetamol" },
+      strength: "500mg",
+      manufacturer: "GSK",
+      price: "25.50",
+    },
+    {
+      id: "prod-def-456",
+      name: "Calpol 500mg Tablet",
+      generic_name: { name: "Paracetamol" },
+      strength: "500mg",
+      manufacturer: "GSK",
+      price: "24.00",
+    },
+    {
+      id: "prod-ghi-789",
+      name: "Okacet Syrup",
+      generic_name: { name: "Cetirizine" },
+      strength: "5mg/5ml",
+      manufacturer: "Cipla",
+      price: "45.00",
+    },
+    {
+      id: "prod-jkl-012",
+      name: "Cetzine Syrup",
+      generic_name: { name: "Cetirizine" },
+      strength: "5mg/5ml",
+      manufacturer: "Dr. Reddy",
+      price: "48.00",
+    },
+  ];
+
+  const axiosInstance = {
+    get: (url) => {
+      console.log(`Mock GET request to: ${url}`);
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          if (url.includes("enhanced-prescriptions")) {
+            resolve({ data: samplePrescription });
+          } else if (url.includes("medicines")) {
+            resolve({ data: { results: samplePrescriptionDetails } });
+          } else if (url.includes("enhanced-products")) {
+            resolve({ data: { results: sampleProducts } });
+          }
+        }, 500)
+      );
+    },
+    patch: (url, data) => {
+      console.log(`Mock PATCH request to: ${url} with data:`, data);
+      return Promise.resolve({ data: { success: true } });
+    },
+    delete: (url) => {
+      console.log(`Mock DELETE request to: ${url}`);
+      return Promise.resolve({ status: 204 });
+    },
+  };
+
+  const PrescriptionStatusBadge = ({ status }) => (
+    <span className="px-3 py-1 text-xs font-semibold text-white bg-blue-600 rounded-full">
+      {status.replace("_", " ")}
+    </span>
+  );
+
+  const ConfidenceIndicator = ({ confidence }) => (
+    <div className="flex items-center space-x-2">
+      <div className="w-20 bg-gray-200 rounded-full h-2">
+        <div
+          className="bg-green-500 h-2 rounded-full"
+          style={{ width: `${confidence}%` }}
+        ></div>
+      </div>
+      <span
+        className={`text-xs font-semibold ${
+          confidence > 70 ? "text-green-600" : "text-yellow-600"
+        }`}
+      >
+        {confidence}%
+      </span>
+    </div>
+  );
+
+  //==============================================================================
+  // COMPONENT LOGIC & STATE
+  //==============================================================================
+
+  // Mocking router hooks for the preview.
+  const prescriptionId = "a1b2c3d4";
+  const navigate = (path) => console.log(`Navigating to: ${path}`);
 
   // State management
   const [prescription, setPrescription] = useState(null);
@@ -36,104 +182,70 @@ const PrescriptionReview = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [detailToDelete, setDetailToDelete] = useState(null);
   const [currentDetailId, setCurrentDetailId] = useState(null);
-  const [reviewCompleted, setReviewCompleted] = useState(false);
   const [isFetchingProducts, setIsFetchingProducts] = useState(false);
+  const [isImagePopupOpen, setIsImagePopupOpen] = useState(false);
 
-  // Derived state
   const allItemsMapped =
     prescriptionDetails.length > 0 &&
     prescriptionDetails.every((detail) => detail.mapped_product);
 
-  // Data fetching
-  useEffect(() => {
-    if (prescriptionId) {
-      fetchPrescriptionData();
-    }
-  }, [prescriptionId]);
-
-  useEffect(() => {
-    if (showProductModal) {
-      setIsFetchingProducts(true);
-      const handler = setTimeout(() => {
-        fetchProducts();
-      }, 300); // Debounce API calls
-      return () => clearTimeout(handler);
-    }
-  }, [showProductModal, searchTerm]);
-
-  // Fetch prescription data
   const fetchPrescriptionData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null); // Clear previous errors
+      setError(null);
       const [prescriptionRes, detailsRes] = await Promise.all([
-        axiosInstance.get(`prescription/enhanced-prescriptions/${prescriptionId}/`),
-        axiosInstance.get(`prescription/medicines/?prescription=${prescriptionId}`)
+        axiosInstance.get(
+          `prescription/enhanced-prescriptions/${prescriptionId}/`
+        ),
+        axiosInstance.get(
+          `prescription/medicines/?prescription=${prescriptionId}`
+        ),
       ]);
       setPrescription(prescriptionRes.data);
       setPrescriptionDetails(detailsRes.data.results || detailsRes.data);
       setNotes(prescriptionRes.data.pharmacist_notes || "");
     } catch (err) {
-      console.error('Error fetching prescription:', err);
-      setError('Failed to fetch prescription data. Please try again.');
+      console.error("Error fetching prescription:", err);
+      setError("Failed to fetch prescription data. Please try again.");
     } finally {
       setLoading(false);
     }
   }, [prescriptionId]);
 
-  // Fetch products after prescription details are loaded
   const fetchProducts = useCallback(async () => {
+    setIsFetchingProducts(true);
     try {
-      const medicineNames = prescriptionDetails
-        .map(detail => detail.ai_extracted_medicine_name)
-        .filter(name => name && name.trim() !== '');
-
-      let productResponse;
-      if (medicineNames.length > 0) {
-        // Assuming the backend can handle comma-separated search terms or multiple `search` params
-        // For robustness, consider if your backend requires a different format or multiple API calls for each medicine
-        const searchTermParam = encodeURIComponent(medicineNames.join(' ')); // Join with space for broader search or adjust based on API
-        productResponse = await axiosInstance.get(`product/enhanced-products/?search=${searchTermParam}`);
-      } else {
-        // If no specific medicine names, fetch a general limited set of products
-        productResponse = await axiosInstance.get('product/enhanced-products/?limit=20');
-      }
-      setProducts(productResponse.data.results || productResponse.data);
+      const response = await axiosInstance.get(
+        `product/enhanced-products/?search=${encodeURIComponent(searchTerm)}`
+      );
+      setProducts(response.data.results || response.data);
     } catch (err) {
-      console.error('Error fetching products:', err);
-      // Fallback to limited products if initial search fails
-      try {
-        const fallbackResponse = await axiosInstance.get('product/enhanced-products/?limit=20');
-        setProducts(fallbackResponse.data.results || fallbackResponse.data);
-      } catch (fallbackErr) {
-        console.error('Fallback product fetch also failed:', fallbackErr);
-        setError('Failed to load products. Please try again later.');
-      }
+      console.error("Error fetching products:", err);
+    } finally {
+      setIsFetchingProducts(false);
     }
-  }, [prescriptionDetails]); // Dependency on prescriptionDetails
+  }, [searchTerm]);
 
-  // Initial data fetch
   useEffect(() => {
-    if (prescriptionId) {
-      fetchPrescriptionData();
+    fetchPrescriptionData();
+  }, [fetchPrescriptionData]);
+
+  useEffect(() => {
+    if (showProductModal) {
+      const handler = setTimeout(() => {
+        fetchProducts();
+      }, 300);
+      return () => clearTimeout(handler);
     }
-  }, [prescriptionId, fetchPrescriptionData]); // Added fetchPrescriptionData to dependencies
+  }, [showProductModal, searchTerm, fetchProducts]);
 
-  // Fetch products when prescriptionDetails are updated
-  useEffect(() => {
-    fetchProducts();
-  }, [prescriptionDetails, fetchProducts]); // Added fetchProducts to dependencies
-
-  // Handlers
-  const handleMapProduct = async (detailId, product) => {
-    const originalDetails = [...prescriptionDetails];
-    setPrescriptionDetails((details) =>
-      details.map((d) =>
+  const handleMapProduct = (detailId, product) => {
+    setPrescriptionDetails((prevDetails) =>
+      prevDetails.map((d) =>
         d.id === detailId
           ? {
               ...d,
               mapped_product: product.id,
-              mapping_status: "Mapped",
               mapped_product_name: product.name,
               mapped_product_details: {
                 strength: product.strength,
@@ -145,685 +257,298 @@ const PrescriptionReview = () => {
     );
     setShowProductModal(false);
     setSelectedProduct(null);
-    setSearchTerm("");
+  };
 
-    try {
-      await axiosInstance.patch(`prescription/prescription-details/${detailId}/`, {
-        mapped_product: productId,
-        mapping_status: 'Mapped'
+  const handleProceedToApproval = () => {
+    if (allItemsMapped) {
+      console.log("Proceeding to approval with data:", {
+        prescriptionId,
+        notes,
+        mappedMedicines: prescriptionDetails,
       });
-      await fetchPrescriptionData(); // Refresh data to reflect mapping
-      setShowProductMappingModal(false);
-      setSelectedProduct(null); // Clear selected product after mapping
-      setSearchTerm(''); // Clear search term after mapping
-    } catch (err) {
-      console.error('Error mapping product:', err);
-      setError('Failed to map product. Please try again.');
+      // Here you would typically make an API call to submit the review
+      // and then navigate to the next page.
+      navigate(`/approval/${prescriptionId}`);
     }
   };
 
-  const openProductModal = (detailId) => {
-    setCurrentDetailId(detailId);
-    setShowProductMappingModal(true);
-  };
+  const openImagePopup = () => setIsImagePopupOpen(true);
+  const closeImagePopup = () => setIsImagePopupOpen(false);
 
-  const handleAddMissingItem = () => {
-    setEditingMedicine(null); // Ensure no medicine is being edited (it's a new add)
-    setShowMedicineFormModal(true);
-  };
+  // ... (other handlers: openEditModal, handleSaveEdit, openDeleteConfirm, etc.)
 
-  const handleEditMedicine = (medicineDetail) => {
-    setEditingMedicine(medicineDetail);
-    setShowMedicineFormModal(true);
-  };
-
-  const handleSaveMedicine = async (medicineData) => {
-    try {
-      if (editingMedicine) {
-        // Update existing medicine detail
-        await axiosInstance.patch(`prescription/prescription-details/${editingMedicine.id}/`, medicineData);
-      } else {
-        // Add new medicine detail to the prescription
-        await axiosInstance.post(`prescription/prescription-details/`, {
-          ...medicineData,
-          prescription: prescriptionId, // Associate with current prescription
-          mapping_status: 'Pending', // New items typically need mapping
-          ai_confidence_score: 0, // Manual additions have no AI confidence
-        });
-      }
-      setShowMedicineFormModal(false);
-      setEditingMedicine(null);
-      await fetchPrescriptionData(); // Refresh data
-    } catch (err) {
-      console.error('Error saving medicine:', err);
-      setError('Failed to save medicine. Please try again.');
-    }
-  };
-
-  const handleCancelForm = () => {
-    setShowMedicineFormModal(false);
-    setEditingMedicine(null);
-  };
-
-  const handleSuggestSubstitute = (detailId) => {
-    // This would typically open a modal or navigate to a substitute selection page
-    console.log('Suggest substitute for detail:', detailId);
-    setError('Substitute functionality not yet implemented.'); // Example feedback
-  };
-
-  const openEditModal = (detail) => {
-    setEditingDetail({ ...detail });
-    setShowEditModal(true);
-  };
-
-  const handleAction = async (status, notesPayload = {}) => {
-    try {
-      await axiosInstance.patch(`prescription/prescriptions/${prescriptionId}/`, {
-        verification_status: 'Rejected',
-        rejection_reason: notes || 'Prescription rejected during review'
-      });
-      navigate('/prescriptions');
-    } catch (err) {
-      console.error('Error rejecting prescription:', err);
-      setError('Failed to reject prescription. Please try again.');
-    }
-  };
-
-  const handleApproveForDelivery = async () => {
-    try {
-      await axiosInstance.patch(
-        `prescription/prescriptions/${prescriptionId}/`,
-        {
-          verification_status: "Verified",
-          pharmacist_notes: notes,
-          verification_date: new Date().toISOString(),
-        }
-      );
-      navigate("/Prescription");
-    } catch (err) {
-      console.error('Error requesting clarification:', err);
-      setError('Failed to request clarification. Please try again.');
-    }
-  };
-
-  const handleVerify = async () => {
-    // Check if all prescription details are mapped before verifying
-    const unmappedItems = prescriptionDetails.filter(d => !d.mapped_product);
-    if (unmappedItems.length > 0) {
-      setError('All prescription items must be mapped to products before verification.');
-      return;
-    }
-
-    try {
-      // 1. Update prescription status to 'Verified'
-      await axiosInstance.post(`prescription/enhanced-prescriptions/${prescriptionId}/verify/`, {
-        action: 'verified',
-        notes: notes
-      });
-
-      // 2. Create the order based on the verified prescription details
-      // This assumes an API endpoint for creating orders from a prescription ID
-      const orderCreationPayload = {
-        prescription: prescriptionId,
-        // Potentially include other order details like delivery address, payment method etc.
-        // For simplicity, we'll just send the prescription ID.
-      };
-      const orderResponse = await axiosInstance.post(`order/orders/create_from_prescription/`, orderCreationPayload);
-      console.log('Order created successfully:', orderResponse.data);
-
-      navigate('/prescriptions'); // Navigate back to prescriptions list or to order details
-    } catch (err) {
-      console.error('Error verifying prescription or creating order:', err);
-      setError(`Failed to verify prescription or create order. Error: ${err.response?.data?.detail || err.message}`);
-    }
-  };
-
-  const handleOCRReprocessComplete = (ocrResult) => {
-    fetchPrescriptionData(); // Refresh prescription data after OCR reprocessing
-    setError(null); // Clear any previous errors if reprocessing was successful
-    console.log('OCR Reprocessing completed:', ocrResult);
-  };
-
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.generic_name?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto p-8">
-        <div
-          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
-          role="alert"
-        >
-          <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{error}</span>
-        </div>
-      </div>
-    );
-  }
-
-  const needsReview =
-    !reviewCompleted && prescription?.verification_status !== "Verified";
-  const isReadyForDelivery =
-    reviewCompleted && prescription?.verification_status !== "Verified";
-  const isDelivered = prescription?.verification_status === "Verified";
+  if (loading) return <div className="p-8">Loading...</div>;
+  if (error) return <div className="p-8 text-red-600">{error}</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 font-inter">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate("/Prescription")}
-                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900"
-              >
-                <ArrowLeft size={20} />
-                <span className="font-medium">Back to Prescriptions</span>
-              </button>
-              <div className="h-6 border-l border-gray-300"></div>
-              <h1 className="text-xl font-bold text-gray-900">
-                Prescription #{prescription?.id}
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-600">
-                  AI Confidence:
-                </span>
-                <CircularConfidenceIndicator
-                  confidence={prescription?.ai_confidence_score || 0}
-                  size={32}
-                />
-              </div>
-              <PrescriptionStatusBadge
-                status={prescription?.verification_status}
-              />
-              <span className="text-sm text-gray-500">
-                Uploaded on{" "}
-                {new Date(prescription.upload_date).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
+    <div className="bg-gray-50 min-h-screen font-sans">
+      <header className="bg-white border-b p-4 flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <button onClick={() => navigate("/prescriptions")}>
+            <ArrowLeft className="text-gray-600" />
+          </button>
+          <h1 className="text-xl font-bold text-gray-800">
+            Review Prescription
+          </h1>
+        </div>
+        <div>
+          <PrescriptionStatusBadge
+            status={prescription?.verification_status || "Loading..."}
+          />
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column: Prescription Image */}
-          <aside className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Prescription Image
-            </h2>
-            <div className="flex justify-center items-center bg-gray-50 rounded-lg p-4 min-h-[60vh]">
+      <main className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left Column: Prescription Image & Info */}
+        <div className="lg:col-span-1 lg:sticky lg:top-8 self-start space-y-6">
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="relative group">
               <img
-                src={
-                  prescription?.image_url ||
-                  "https://placehold.co/600x800/e0e7ff/3f51b5?text=Prescription"
-                }
+                src={prescription?.image_url}
                 alt="Prescription"
-                className="max-w-full max-h-[75vh] h-auto rounded-md shadow-md object-contain"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src =
-                    "https://placehold.co/600x400/cccccc/333333?text=Image+Not+Found";
-                }}
+                className="w-full rounded-md shadow-sm cursor-pointer"
+                onClick={openImagePopup}
               />
+              <div
+                className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-opacity duration-300"
+                onClick={openImagePopup}
+              >
+                <ZoomIn className="text-white h-12 w-12 opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all duration-300" />
+              </div>
             </div>
-          </aside>
 
-          {/* Right Column: Review / Delivery Details */}
-          <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            {needsReview && (
-              <div id="review-state">
-                <div className="flex justify-between items-center mb-6">
+            <div className="mt-6 space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Patient:</span>
+                <span className="text-gray-800">{`${prescription?.user?.first_name} ${prescription?.user?.last_name}`}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Uploaded:</span>
+                <span className="text-gray-800">
+                  {new Date(prescription?.upload_date).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-gray-600">
+                  AI Confidence:
+                </span>
+                <ConfidenceIndicator
+                  confidence={prescription?.ai_confidence_score}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-3">
+              Pharmacist Notes
+            </h3>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full p-2 border rounded-md h-32 focus:ring-2 focus:ring-blue-500 transition"
+              placeholder="Add any relevant notes here..."
+            />
+          </div>
+        </div>
+
+        {/* Right Column: Medicine Details */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Extracted Medicines
+            </h2>
+            <button className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition">
+              <PlusCircle size={20} />
+              <span>Add Medicine</span>
+            </button>
+          </div>
+          {prescriptionDetails.map((detail) => (
+            <div
+              key={detail.id}
+              className="bg-white rounded-lg shadow-md overflow-hidden"
+            >
+              {/* Medicine Card Content... */}
+              <div className="p-5">
+                <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-800 mb-1">
-                      Action Required: Review & Map
-                    </h2>
                     <p className="text-sm text-gray-500">
-                      Please map the AI-detected medicines to the correct
-                      products.
+                      AI Extracted: "{detail.ai_extracted_medicine_name}"
+                    </p>
+                    <p className="text-lg font-bold text-gray-800">
+                      {detail.product_name}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {detail.extracted_dosage}
                     </p>
                   </div>
-                  <button
-                    onClick={handleAddMissingItem}
-                    className="flex items-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium"
-                  >
-                    <PlusCircle size={16} />
-                    <span>Add Item</span>
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  {prescriptionDetails.map((detail) => (
-                    <div
-                      key={detail.id}
-                      className="p-4 rounded-lg border-2 transition-all bg-white hover:border-blue-200"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-1.5">
-                          <p className="text-sm font-semibold text-gray-800">
-                            {detail.product_name ||
-                              "Unknown Medicine"}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            Dosage: {detail.extracted_dosage || "N/A"}
-                          </p>
-                          {detail.ai_extracted_instructions && (
-                            <p className="text-xs text-blue-700 bg-blue-50 p-1.5 rounded-md">
-                              <span className="font-semibold">Instr:</span>{" "}
-                              {detail.ai_extracted_instructions}
-                            </p>
-                          )}
-                          <ConfidenceIndicator
-                            confidence={detail.ai_confidence_score || 0}
-                            size="sm"
-                          />
-                        </div>
-                        <div className="ml-4 flex-shrink-0 text-right">
-                          {detail.mapped_product ? (
-                            <div>
-                              <div className="flex items-center justify-end space-x-2 text-green-600">
-                                <CheckCircle size={18} />
-                                <span className="text-sm font-medium">
-                                  Mapped
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-700 mt-1 font-semibold">
-                                {detail.mapped_product_name}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {detail.mapped_product_details?.strength}{" "}
-                                {detail.mapped_product_details?.form}
-                              </p>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() =>
-                                openProductModal(
-                                  detail.id,
-                                  detail.product_name
-                                )
-                              }
-                              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-all text-sm"
-                            >
-                              <span>Map Product</span>
-                              <ChevronRight size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-end space-x-3 mt-3 border-t pt-2">
-                        <button
-                          onClick={() => openEditModal(detail)}
-                          title="Edit"
-                          className="p-1 text-gray-500 hover:text-blue-600 rounded-full hover:bg-gray-100"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => openConfirmModal(detail.id)}
-                          title="Remove"
-                          className="p-1 text-gray-500 hover:text-red-600 rounded-full hover:bg-gray-100"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 border-t pt-6">
-                  <h3 className="text-base font-semibold text-gray-700 mb-2">
-                    Pharmacist Notes
-                  </h3>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px] text-sm"
-                    placeholder="Add notes for clarification or rejection..."
+                  <ConfidenceIndicator
+                    confidence={detail.ai_confidence_score}
                   />
-                  <div className="mt-4 flex items-center justify-between">
-                    {allItemsMapped ? (
-                      <button
-                        onClick={() => setReviewCompleted(true)}
-                        className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg transition-transform transform hover:scale-105"
-                      >
-                        <span>Proceed to Final Review</span>
-                        <ArrowLeft className="transform rotate-180" size={20} />
-                      </button>
-                    ) : (
-                      <div className="flex items-center justify-end space-x-3 w-full">
-                        <button
-                          onClick={() =>
-                            handleAction("Rejected", {
-                              rejection_reason:
-                                notes || "Prescription rejected during review",
-                            })
-                          }
-                          className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg"
-                        >
-                          <XCircle size={18} />
-                          <span>Reject</span>
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleAction("Pending_Review", {
-                              pharmacist_notes: notes,
-                            })
-                          }
-                          className="flex items-center space-x-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white font-medium rounded-lg"
-                        >
-                          <AlertCircle size={18} />
-                          <span>Request Clarification</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
-              </div>
-            )}
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <p className="text-xs font-semibold text-yellow-800">
+                    AI Instructions:
+                  </p>
+                  <p className="text-sm text-yellow-900">
+                    {detail.ai_extracted_instructions}
+                  </p>
+                </div>
 
-            {isReadyForDelivery && (
-              <div id="delivery-state">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="bg-green-100 p-2 rounded-full">
-                      <CheckCircle size={24} className="text-green-600" />
-                    </div>
+                {detail.mapped_product ? (
+                  <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500 flex justify-between items-center">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-800">
-                        Ready for Delivery
-                      </h2>
-                      <p className="text-sm text-gray-500">
-                        All items mapped for{" "}
-                        <span className="font-semibold">
-                          {prescription.user.first_name}{" "}
-                          {prescription.user.last_name}
-                        </span>
-                        .
+                      <p className="text-sm font-semibold text-green-800">
+                        Mapped to: {detail.mapped_product_name}
+                      </p>
+                      <p className="text-xs text-green-700">
+                        {detail.mapped_product_details.strength} -{" "}
+                        {detail.mapped_product_details.form}
                       </p>
                     </div>
+                    <button className="text-blue-600 hover:text-blue-800 font-semibold text-sm">
+                      Change
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setReviewCompleted(false)}
-                    className="flex items-center space-x-2 text-sm font-medium text-gray-600 hover:text-gray-900"
-                  >
-                    <Edit size={16} />
-                    <span>Back to Edit</span>
-                  </button>
-                </div>
-                <div className="space-y-3 mb-6 p-4 bg-gray-50 rounded-lg border">
-                  {prescriptionDetails.map((detail) => (
-                    <div
-                      key={detail.id}
-                      className="flex justify-between items-center text-sm"
-                    >
-                      <span className="font-medium text-gray-700">
-                        {detail.mapped_product_name ||
-                          detail.product_name}
-                      </span>
-                      <span className="text-gray-500">
-                        Qty:{" "}
-                        {detail.verified_quantity ||
-                          detail.quantity_prescribed ||
-                          1}
-                      </span>
+                ) : (
+                  <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 flex justify-between items-center">
+                    <div className="flex items-center">
+                      <AlertCircle className="text-red-500 mr-2" size={20} />
+                      <p className="text-sm font-semibold text-red-800">
+                        Needs Mapping
+                      </p>
                     </div>
-                  ))}
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-gray-700 mb-2">
-                    Final Notes (Optional)
-                  </h3>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px] text-sm"
-                    placeholder="Add any final notes for the order..."
-                  />
-                </div>
-                <div className="mt-6">
-                  <button
-                    onClick={handleApproveForDelivery}
-                    className="w-full flex items-center justify-center space-x-2 px-6 py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-lg transition-transform transform hover:scale-105"
-                  >
-                    <CheckCircle size={20} />
-                    <span>Approve for Delivery</span>
-                  </button>
-                </div>
+                    <button
+                      onClick={() => {
+                        setCurrentDetailId(detail.id);
+                        setSearchTerm(detail.ai_extracted_medicine_name);
+                        setShowProductModal(true);
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
+                    >
+                      <span>Find Product</span>
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-
-            {isDelivered && (
-              <div className="text-center py-16">
-                <div className="bg-green-100 p-4 rounded-full inline-block mb-4">
-                  <CheckCircle size={48} className="text-green-600" />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800">
-                  Prescription Verified
-                </h2>
-                <p className="text-gray-600 mt-2">
-                  This prescription for{" "}
-                  <span className="font-semibold">
-                    {prescription.user.first_name} {prescription.user.last_name}
-                  </span>{" "}
-                  has been processed.
-                </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Order ID: {prescription.order || "N/A"}
-                </p>
-              </div>
-            )}
-          </section>
+            </div>
+          ))}
         </div>
       </main>
 
-      {/* Modals */}
+      {/* Sticky Footer for Action Button */}
+      <footer className="sticky bottom-0 bg-white bg-opacity-90 backdrop-blur-sm border-t p-4 z-10">
+        <div className="max-w-7xl mx-auto flex justify-end">
+          <button
+            onClick={handleProceedToApproval}
+            disabled={!allItemsMapped}
+            className="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-lg hover:bg-blue-700 transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none flex items-center space-x-2 transform hover:scale-105 disabled:transform-none"
+          >
+            <span>Proceed to Approval</span>
+            <CheckCircle size={20} />
+          </button>
+        </div>
+      </footer>
+
+      {/* Fullscreen Image Popup */}
+      {isImagePopupOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4 transition-opacity duration-300"
+          onClick={closeImagePopup}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={prescription?.image_url}
+              alt="Prescription Fullscreen"
+              className="max-h-[90vh] object-contain rounded-lg"
+            />
+            <button
+              onClick={closeImagePopup}
+              className="absolute top-0 right-0 -m-3 bg-white rounded-full p-2 text-gray-800 hover:bg-gray-200 transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              aria-label="Close image viewer"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Product Search Modal (existing code) */}
       {showProductModal && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
             <div className="p-6 border-b">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Map Product
-              </h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Search for and select the correct product from the inventory.
+              <h2 className="text-xl font-bold">Map Medicine</h2>
+              <p className="text-sm text-gray-500">
+                Search for a product to map to "
+                {
+                  prescriptionDetails.find((d) => d.id === currentDetailId)
+                    ?.product_name
+                }
+                "
               </p>
             </div>
-            <div className="p-6 flex-grow overflow-y-auto">
-              <div className="relative mb-4">
-                <Search
-                  size={20}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+            <div className="p-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by product name, generic name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Search for product name, generic name..."
+                  className="w-full pl-10 pr-4 py-2.5 border rounded-lg"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="mt-4 h-64 overflow-y-auto space-y-2 pr-2">
                 {isFetchingProducts ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  </div>
-                ) : products.length > 0 ? (
+                  <p>Searching...</p>
+                ) : (
                   products.map((product) => (
                     <div
                       key={product.id}
-                      className={`p-4 border rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all ${
+                      className={`p-4 border rounded-lg cursor-pointer ${
                         selectedProduct?.id === product.id
-                          ? "bg-blue-100 border-blue-500 ring-2 ring-blue-300"
+                          ? "bg-blue-100 border-blue-500"
                           : "border-gray-200"
                       }`}
                       onClick={() => setSelectedProduct(product)}
                     >
-                      <p className="font-semibold text-gray-800">
-                        {product.name}
-                      </p>
+                      <p className="font-semibold">{product.name}</p>
                       <p className="text-sm text-gray-500">
-                        {product.generic_name?.name} - {product.strength}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Mfr: {product.manufacturer} | Price: ₹{product.price}
+                        {product.generic_name.name}
                       </p>
                     </div>
                   ))
-                ) : (
-                  <p className="text-center text-gray-500 py-8">
-                    No products found. Try a different search term.
-                  </p>
                 )}
               </div>
             </div>
             <div className="p-6 bg-gray-50 border-t flex justify-end space-x-3">
               <button
-                onClick={() => {
-                  setShowProductModal(false);
-                  setSelectedProduct(null);
-                  setSearchTerm("");
-                }}
-                className="px-5 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300"
+                onClick={() => setShowProductModal(false)}
+                className="px-5 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg"
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  if (selectedProduct && currentDetailId) {
-                    handleMapProduct(currentDetailId, selectedProduct);
-                  }
-                }}
+                onClick={() =>
+                  handleMapProduct(currentDetailId, selectedProduct)
+                }
                 disabled={!selectedProduct}
-                className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg disabled:bg-gray-400"
               >
                 Map Selected Product
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditModal && editingDetail && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
-            <div className="p-6 border-b">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Edit Medicine Details
-              </h3>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Medicine Name
-                </label>
-                <input
-                  type="text"
-                  value={editingDetail.product_name || ""}
-                  onChange={(e) =>
-                    setEditingDetail({
-                      ...editingDetail,
-                      product_name: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Dosage
-                </label>
-                <input
-                  type="text"
-                  value={editingDetail.extracted_dosage || ""}
-                  onChange={(e) =>
-                    setEditingDetail({
-                      ...editingDetail,
-                      ai_extracted_dosage: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Instructions
-                </label>
-                <textarea
-                  value={editingDetail.ai_extracted_instructions || ""}
-                  onChange={(e) =>
-                    setEditingDetail({
-                      ...editingDetail,
-                      ai_extracted_instructions: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
-                />
-              </div>
-            </div>
-            <div className="p-6 bg-gray-50 border-t flex justify-end space-x-3">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="px-5 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateDetail}
-                className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700"
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
-            <div className="p-6">
-              <div className="text-center">
-                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
-                  <XCircle className="h-6 w-6 text-red-600" />
-                </div>
-                <h3 className="mt-5 text-lg font-medium text-gray-900">
-                  Remove Item
-                </h3>
-                <div className="mt-2">
-                  <p className="text-sm text-gray-500">
-                    Are you sure you want to remove this item? This action
-                    cannot be undone.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="p-4 bg-gray-50 flex justify-center space-x-4">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="px-5 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 w-full"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRemoveDetail}
-                className="px-5 py-2.5 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 w-full"
-              >
-                Remove
               </button>
             </div>
           </div>

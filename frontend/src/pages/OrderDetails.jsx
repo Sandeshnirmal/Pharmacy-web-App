@@ -1,11 +1,101 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import axiosInstance from '../api/axiosInstance';
+import { useState, useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+// import axiosInstance from '../api/axiosInstance'; // Assuming you have this configured
+
+// Mock axiosInstance for demonstration purposes
+const axiosInstance = {
+  get: async (url) => {
+    console.log(`Mock GET request to: ${url}`);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (url.includes("order/orders/")) {
+      return {
+        data: {
+          id: "12345",
+          order_date: new Date().toISOString(),
+          order_status: "Processing",
+          total_amount: "2550.00",
+          is_prescription_order: true,
+          prescription: {
+            id: "P987",
+            verification_status: "Verified",
+            upload_date: new Date().toISOString(),
+            pharmacist_notes: "Patient advised to take after meals.",
+            // Replace with your actual image URL or a placeholder
+            prescription_file:
+              "https://placehold.co/800x1100/ffffff/000000?text=Sample+Prescription",
+          },
+          user: {
+            first_name: "John",
+            last_name: "Doe",
+            email: "john.doe@example.com",
+            phone_number: "555-123-4567",
+          },
+          delivery_address: "123 Health St, Wellness City, 12345",
+          delivery_method: "Standard Delivery",
+          expected_delivery_date: new Date(
+            Date.now() + 3 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+        },
+      };
+    }
+    if (url.includes("order/order-items/")) {
+      return {
+        data: [
+          {
+            id: 1,
+            product: {
+              name: "Paracetamol",
+              generic_name: { name: "Acetaminophen" },
+              hsn_code: "30049099",
+              company: { name: "Pharma Inc." },
+            },
+            batch_number: "B123",
+            quantity: 2,
+            unit_price: "50.00",
+            total_price: "100.00",
+          },
+          {
+            id: 2,
+            product: {
+              name: "Amoxicillin",
+              generic_name: { name: "Amoxicillin Trihydrate" },
+              hsn_code: "30041090",
+              company: { name: "MediCorp" },
+            },
+            batch_number: "B456",
+            quantity: 1,
+            unit_price: "150.00",
+            total_price: "150.00",
+          },
+          {
+            id: 3,
+            product: {
+              name: "Vitamin C",
+              generic_name: { name: "Ascorbic Acid" },
+              hsn_code: "29362700",
+              company: { name: "HealthWell" },
+            },
+            batch_number: "B789",
+            quantity: 5,
+            unit_price: "20.00",
+            total_price: "100.00",
+          },
+        ],
+      };
+    }
+    return { data: {} };
+  },
+  patch: async (url, data) => {
+    console.log(`Mock PATCH request to: ${url} with data:`, data);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return { data: { ...data, order_status: data.order_status } };
+  },
+};
 
 const OrderDetails = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const orderId = searchParams.get('id');
+  const orderId = searchParams.get("id") || "12345"; // Default for demo
 
   // State management
   const [order, setOrder] = useState(null);
@@ -13,6 +103,8 @@ const OrderDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [isImagePopupOpen, setIsImagePopupOpen] = useState(false);
+  const [popupImageSrc, setPopupImageSrc] = useState("");
 
   useEffect(() => {
     if (orderId) {
@@ -25,14 +117,14 @@ const OrderDetails = () => {
       setLoading(true);
       const [orderRes, itemsRes] = await Promise.all([
         axiosInstance.get(`order/orders/${orderId}/`),
-        axiosInstance.get(`order/order-items/?order=${orderId}`)
+        axiosInstance.get(`order/order-items/?order=${orderId}`),
       ]);
 
       setOrder(orderRes.data);
       setOrderItems(itemsRes.data.results || itemsRes.data);
     } catch (err) {
-      setError('Failed to fetch order details');
-      console.error('Error fetching order details:', err);
+      setError("Failed to fetch order details");
+      console.error("Error fetching order details:", err);
     } finally {
       setLoading(false);
     }
@@ -42,30 +134,62 @@ const OrderDetails = () => {
     try {
       setStatusUpdating(true);
       await axiosInstance.patch(`order/orders/${orderId}/`, {
-        order_status: newStatus
+        order_status: newStatus,
       });
-      await fetchOrderDetails(); // Refresh data
+      fetchOrderDetails(); // Refresh data
     } catch (err) {
-      console.error('Error updating order status:', err);
-      setError('Failed to update order status');
+      console.error("Error updating order status:", err);
+      setError("Failed to update order status");
     } finally {
       setStatusUpdating(false);
     }
   };
 
+  const openImagePopup = (src) => {
+    setPopupImageSrc(src);
+    setIsImagePopupOpen(true);
+  };
+
+  const closeImagePopup = () => {
+    setIsImagePopupOpen(false);
+    setPopupImageSrc("");
+  };
+
   const getStatusBadge = (status) => {
     const statusConfig = {
-      'Pending': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
-      'Processing': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Processing' },
-      'Shipped': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Shipped' },
-      'Delivered': { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
-      'Cancelled': { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' }
+      Pending: {
+        bg: "bg-yellow-100",
+        text: "text-yellow-800",
+        label: "Pending",
+      },
+      Processing: {
+        bg: "bg-blue-100",
+        text: "text-blue-800",
+        label: "Processing",
+      },
+      Shipped: {
+        bg: "bg-purple-100",
+        text: "text-purple-800",
+        label: "Shipped",
+      },
+      Delivered: {
+        bg: "bg-green-100",
+        text: "text-green-800",
+        label: "Delivered",
+      },
+      Cancelled: { bg: "bg-red-100", text: "text-red-800", label: "Cancelled" },
     };
 
-    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
+    const config = statusConfig[status] || {
+      bg: "bg-gray-100",
+      text: "text-gray-800",
+      label: status,
+    };
 
     return (
-      <span className={`px-3 py-1 text-sm rounded-full ${config.bg} ${config.text}`}>
+      <span
+        className={`px-3 py-1 text-sm font-medium rounded-full ${config.bg} ${config.text}`}
+      >
         {config.label}
       </span>
     );
@@ -75,7 +199,7 @@ const OrderDetails = () => {
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
         </div>
       </div>
     );
@@ -84,9 +208,9 @@ const OrderDetails = () => {
   if (error || !order) {
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative">
           <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{error || 'Order not found'}</span>
+          <span className="block sm:inline">{error || "Order not found"}</span>
         </div>
       </div>
     );
@@ -95,233 +219,368 @@ const OrderDetails = () => {
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-inter bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <header className="flex flex-wrap justify-between items-center mb-8 gap-4">
         <div>
           <button
-            onClick={() => navigate('/Orders')}
-            className="text-blue-600 hover:text-blue-800 mb-2 flex items-center"
+            onClick={() => navigate("/Orders")}
+            className="text-blue-600 hover:text-blue-800 mb-2 flex items-center transition-colors"
           >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-5 h-5 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
             Back to Orders
           </button>
-          <h1 className="text-3xl font-semibold text-gray-800">Order #{order.id}</h1>
-          <p className="text-sm text-gray-600">
+          <h1 className="text-3xl font-bold text-gray-800">
+            Order #{order.id}
+          </h1>
+          <p className="text-sm text-gray-500">
             Placed on {new Date(order.order_date).toLocaleDateString()}
           </p>
         </div>
         <div className="flex items-center space-x-4">
           {getStatusBadge(order.order_status)}
-          {order.order_status === 'Pending' && (
-            <button
-              onClick={() => handleStatusUpdate('Processing')}
-              disabled={statusUpdating}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium transition duration-150 disabled:opacity-50"
-            >
-              {statusUpdating ? 'Updating...' : 'Mark Processing'}
-            </button>
-          )}
-          {order.order_status === 'Processing' && (
-            <button
-              onClick={() => handleStatusUpdate('Shipped')}
-              disabled={statusUpdating}
-              className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-md font-medium transition duration-150 disabled:opacity-50"
-            >
-              {statusUpdating ? 'Updating...' : 'Mark Shipped'}
-            </button>
-          )}
-          {order.order_status === 'Shipped' && (
-            <button
-              onClick={() => handleStatusUpdate('Delivered')}
-              disabled={statusUpdating}
-              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md font-medium transition duration-150 disabled:opacity-50"
-            >
-              {statusUpdating ? 'Updating...' : 'Mark Delivered'}
-            </button>
-          )}
         </div>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Order Information */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Order Items */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Order Items</h2>
-            <div className="space-y-4">
-              {orderItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 7.172V5L8 4z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">{item.product?.name}</h3>
-                      <p className="text-sm text-gray-600">{item.product?.generic_name?.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {item.product?.strength} - {item.product?.form}
-                      </p>
-                    </div>
+      <main className="space-y-8">
+        {/* Prescription Information */}
+        {order.is_prescription_order && order.prescription && (
+          <section className="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                Prescription Viewer
+              </h2>
+              <div
+                className="grid grid-cols-1 md:grid-cols-3 gap-6"
+                style={{ height: "calc(100vh - 16rem)" }}
+              >
+                <div className="md:col-span-1 space-y-4 text-sm">
+                  <div>
+                    <p className="font-semibold text-gray-600">Patient Name</p>
+                    <p className="text-gray-900">
+                      {order.user?.first_name} {order.user?.last_name}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900">Qty: {item.quantity}</p>
-                    <p className="text-sm text-gray-600">₹{item.unit_price} each</p>
-                    <p className="font-semibold text-gray-900">₹{item.total_price}</p>
+                  <div>
+                    <p className="font-semibold text-gray-600">Doctor's Name</p>
+                    <p className="text-gray-900">Dr. Emily Carter</p>{" "}
+                    {/* Placeholder */}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-600">Date Issued</p>
+                    <p className="text-gray-900">
+                      {new Date(
+                        order.prescription.upload_date
+                      ).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-600">
+                      Verification Status
+                    </p>
+                    <p className="text-gray-900">
+                      {getStatusBadge(
+                        order.prescription.verification_status === "Verified"
+                          ? "Delivered"
+                          : "Pending"
+                      )}
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* Order Total */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-gray-900">Total Amount:</span>
-                <span className="text-2xl font-bold text-gray-900">₹{order.total_amount}</span>
+                <div className="md:col-span-2 bg-gray-100 rounded-lg p-2 flex items-center justify-center">
+                  <img
+                    src={order.prescription.prescription_file}
+                    alt="Prescription"
+                    className="max-w-full max-h-full object-contain rounded-md cursor-pointer transition-transform duration-200 hover:scale-105"
+                    onClick={() =>
+                      openImagePopup(order.prescription.prescription_file)
+                    }
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src =
+                        "https://placehold.co/800x1100/f0f0f0/ff0000?text=Image+Not+Found";
+                    }}
+                  />
+                </div>
               </div>
             </div>
+          </section>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* Medicine Details Table */}
+            <section className="bg-white rounded-lg shadow-lg">
+              <div className="p-6">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                  Medicine Details
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-gray-500">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-100 rounded-t-lg">
+                      <tr>
+                        <th scope="col" className="px-4 py-3">
+                          S.No.
+                        </th>
+                        <th scope="col" className="px-4 py-3">
+                          HSN Code
+                        </th>
+                        <th scope="col" className="px-4 py-3">
+                          Drug / Generic Name
+                        </th>
+                        <th scope="col" className="px-4 py-3">
+                          Company
+                        </th>
+                        <th scope="col" className="px-4 py-3">
+                          Batch No.
+                        </th>
+                        <th scope="col" className="px-4 py-3 text-center">
+                          Quantity
+                        </th>
+                        <th scope="col" className="px-4 py-3 text-right">
+                          Rate
+                        </th>
+                        <th scope="col" className="px-4 py-3 text-right">
+                          Amount
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderItems.map((item, index) => (
+                        <tr
+                          key={item.id}
+                          className="bg-white border-b hover:bg-gray-50"
+                        >
+                          <td className="px-4 py-4 font-medium text-gray-900">
+                            {index + 1}
+                          </td>
+                          <td className="px-4 py-4">
+                            {item.product?.hsn_code || "N/A"}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="font-medium text-gray-900">
+                              {item.product?.name}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {item.product?.generic_name?.name}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            {item.product?.company?.name || "N/A"}
+                          </td>
+                          <td className="px-4 py-4">
+                            {item.batch_number || "N/A"}
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            {item.quantity}
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            ₹{parseFloat(item.unit_price).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-4 text-right font-semibold text-gray-900">
+                            ₹{parseFloat(item.total_price).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Order Total */}
+                <div className="mt-6 pt-6 border-t border-gray-200 flex justify-end">
+                  <div className="w-full max-w-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-semibold text-gray-900">
+                        Total:
+                      </span>
+                      <span className="text-2xl font-bold text-gray-900">
+                        ₹{parseFloat(order.total_amount).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Test Details Section */}
+            <section className="bg-white rounded-lg shadow-lg">
+              <div className="p-6">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                  Test Details
+                </h2>
+                <p className="text-gray-600">
+                  No diagnostic tests associated with this order.
+                </p>
+              </div>
+            </section>
           </div>
 
-          {/* Prescription Information */}
-          {order.is_prescription_order && order.prescription && (
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Prescription Information</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Prescription ID</p>
-                  <p className="text-gray-900">#{order.prescription.id}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Verification Status</p>
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    order.prescription.verification_status === 'Verified' ? 'bg-green-100 text-green-800' :
-                    order.prescription.verification_status === 'Pending_Review' ? 'bg-yellow-100 text-yellow-800' :
-                    order.prescription.verification_status === 'Rejected' ? 'bg-red-100 text-red-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {order.prescription.verification_status}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Upload Date</p>
-                  <p className="text-gray-900">
-                    {new Date(order.prescription.upload_date).toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Pharmacist Notes</p>
-                  <p className="text-gray-900">{order.prescription.pharmacist_notes || 'No notes'}</p>
-                </div>
-              </div>
-              {order.prescription.verification_status !== 'Verified' && (
-                <div className="mt-4">
+          {/* Sidebar */}
+          <div className="space-y-8">
+            <section className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">
+                Update Status
+              </h2>
+              <div className="flex flex-col space-y-2">
+                {order.order_status === "Pending" && (
                   <button
-                    onClick={() => navigate(`/Prescription_Review/${order.prescription.id}`)}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium transition duration-150"
+                    onClick={() => handleStatusUpdate("Processing")}
+                    disabled={statusUpdating}
+                    className="btn-primary bg-blue-500"
                   >
-                    Review Prescription
+                    Mark Processing
                   </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                )}
+                {order.order_status === "Processing" && (
+                  <button
+                    onClick={() => handleStatusUpdate("Shipped")}
+                    disabled={statusUpdating}
+                    className="btn-primary bg-purple-500"
+                  >
+                    Mark Shipped
+                  </button>
+                )}
+                {order.order_status === "Shipped" && (
+                  <button
+                    onClick={() => handleStatusUpdate("Delivered")}
+                    disabled={statusUpdating}
+                    className="btn-primary bg-green-500"
+                  >
+                    Mark Delivered
+                  </button>
+                )}
+                {order.order_status !== "Delivered" &&
+                  order.order_status !== "Cancelled" && (
+                    <button
+                      onClick={() => handleStatusUpdate("Cancelled")}
+                      disabled={statusUpdating}
+                      className="btn-primary bg-red-500"
+                    >
+                      Cancel Order
+                    </button>
+                  )}
+              </div>
+            </section>
 
-        {/* Customer Information */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Customer Information</h2>
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Name</p>
-                <p className="text-gray-900">
-                  {order.user?.first_name} {order.user?.last_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Email</p>
-                <p className="text-gray-900">{order.user?.email}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Phone</p>
-                <p className="text-gray-900">{order.user?.phone_number || 'Not provided'}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Delivery Information */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Delivery Information</h2>
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Delivery Address</p>
-                <p className="text-gray-900">{order.delivery_address || 'Not provided'}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Delivery Method</p>
-                <p className="text-gray-900">{order.delivery_method || 'Standard Delivery'}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Expected Delivery</p>
-                <p className="text-gray-900">
-                  {order.expected_delivery_date
-                    ? new Date(order.expected_delivery_date).toLocaleDateString()
-                    : 'To be determined'
-                  }
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Order Timeline */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Order Timeline</h2>
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+            <section className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">
+                Customer Information
+              </h2>
+              <div className="space-y-3 text-sm">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Order Placed</p>
-                  <p className="text-xs text-gray-500">
-                    {new Date(order.order_date).toLocaleString()}
+                  <p className="font-semibold text-gray-600">Name</p>
+                  <p className="text-gray-900">
+                    {order.user?.first_name} {order.user?.last_name}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-600">Email</p>
+                  <p className="text-gray-900 break-words">
+                    {order.user?.email}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-600">Phone</p>
+                  <p className="text-gray-900">
+                    {order.user?.phone_number || "N/A"}
                   </p>
                 </div>
               </div>
+            </section>
 
-              {order.order_status !== 'Pending' && (
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Processing Started</p>
-                    <p className="text-xs text-gray-500">Status updated</p>
-                  </div>
+            <section className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">
+                Delivery Information
+              </h2>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="font-semibold text-gray-600">Address</p>
+                  <p className="text-gray-900">
+                    {order.delivery_address || "N/A"}
+                  </p>
                 </div>
-              )}
-
-              {['Shipped', 'Delivered'].includes(order.order_status) && (
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full mr-3"></div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Order Shipped</p>
-                    <p className="text-xs text-gray-500">In transit</p>
-                  </div>
+                <div>
+                  <p className="font-semibold text-gray-600">
+                    Expected Delivery
+                  </p>
+                  <p className="text-gray-900">
+                    {order.expected_delivery_date
+                      ? new Date(
+                          order.expected_delivery_date
+                        ).toLocaleDateString()
+                      : "TBD"}
+                  </p>
                 </div>
-              )}
-
-              {order.order_status === 'Delivered' && (
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-green-600 rounded-full mr-3"></div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Order Delivered</p>
-                    <p className="text-xs text-gray-500">Completed</p>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            </section>
           </div>
         </div>
-      </div>
+      </main>
+
+      {/* Fullscreen Image Popup */}
+      {isImagePopupOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4 transition-opacity duration-300"
+          onClick={closeImagePopup}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={popupImageSrc}
+              alt="Prescription Fullscreen"
+              className="max-h-[90vh] object-contain rounded-lg"
+            />
+            <button
+              onClick={closeImagePopup}
+              className="absolute top-0 right-0 -m-3 bg-white rounded-full p-2 text-gray-800 hover:bg-gray-200 transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              aria-label="Close image viewer"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .btn-primary {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: 600;
+            transition: all 0.2s;
+            opacity: 1;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+      `}</style>
     </div>
   );
 };
