@@ -145,7 +145,7 @@ def get_prescription_status(request, prescription_id):
         is_ready = (
             prescription.ai_processed and
             prescription.verification_status in ['AI_Processed', 'Verified'] and
-            prescription.details.count() > 0
+            prescription.prescription_medicines.count() > 0
         )
 
         return Response({
@@ -154,7 +154,7 @@ def get_prescription_status(request, prescription_id):
             'processed': prescription.ai_processed,
             'is_ready': is_ready,  # This is what the mobile app is looking for!
             'processing_time': prescription.ai_processing_time,
-            'medicines_count': prescription.details.count(),
+            'medicines_count': prescription.prescription_medicines.count(),
             'upload_date': prescription.upload_date,
             'can_get_suggestions': prescription.ai_processed and prescription.verification_status != 'Rejected'
         })
@@ -191,11 +191,11 @@ def get_medicine_suggestions(request, prescription_id):
         total_cost = 0
         available_medicines = 0
         
-        for detail in prescription.details.all():
+        for detail in prescription.prescription_medicines.all():
             suggestion = {
                 'id': detail.id,
-                'medicine_name': detail.ai_extracted_medicine_name,
-                'dosage': detail.ai_extracted_dosage,
+                'medicine_name': detail.extracted_medicine_name,
+                'dosage': detail.extracted_dosage,
                 'quantity': detail.ai_extracted_quantity,
                 'instructions': detail.ai_extracted_instructions,
                 'confidence_score': detail.ai_confidence_score,
@@ -298,7 +298,7 @@ def create_prescription_order(request):
             detail_id = medicine_data.get('detail_id')
             quantity = int(medicine_data.get('quantity', 1))
             
-            detail = PrescriptionDetail.objects.get(
+            detail = PrescriptionMedicine.objects.get(
                 id=detail_id,
                 prescription=prescription
             )
@@ -400,7 +400,7 @@ def reprocess_prescription_ocr(request, prescription_id):
 
             if ocr_result['success']:
                 # Clear existing details
-                prescription.details.all().delete()
+                prescription.prescription_medicines.all().delete()
 
                 # Update prescription
                 prescription.ai_processed = True
@@ -487,7 +487,7 @@ def get_prescription_products(request, prescription_id):
         prescription = Prescription.objects.get(id=prescription_id, user=request.user)
 
         # Get all prescription details with mapped products
-        prescription_details = prescription.details.all()
+        prescription_details = prescription.prescription_medicines.all()
 
         products_data = []
         for detail in prescription_details:
@@ -783,4 +783,58 @@ def upload_prescription_for_paid_order(request):
         return Response({
             'success': False,
             'error': f'Upload failed: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_prescription_detail_mobile(request, prescription_id):
+    """
+    Mobile API: Get a single prescription detail by ID, including all associated medicine details.
+    """
+    from .serializers import PrescriptionSerializer
+    try:
+        prescription = Prescription.objects.get(id=prescription_id, user=request.user)
+        
+        # Use the PrescriptionSerializer to get all data, including aggregated suggested_medicines
+        serializer = PrescriptionSerializer(prescription)
+
+        return Response({
+            'success': True,
+            'prescription': serializer.data
+        }, status=status.HTTP_200_OK)
+
+    except Prescription.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Prescription not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error fetching prescription detail: {e}")
+        return Response({
+            'success': False,
+            'error': f'Failed to retrieve prescription details: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_user_prescriptions_mobile(request):
+    """
+    Mobile API: Get a list of all prescriptions for the authenticated user.
+    """
+    from .serializers import PrescriptionSerializer
+    try:
+        if not request.user.is_authenticated:
+            # Anonymous users have no prescriptions, return an empty list
+            return Response([], status=status.HTTP_200_OK)
+
+        prescriptions = Prescription.objects.filter(user=request.user).order_by('-upload_date')
+        serializer = PrescriptionSerializer(prescriptions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error fetching user prescriptions: {e}")
+        return Response({
+            'success': False,
+            'error': f'Failed to retrieve user prescriptions: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

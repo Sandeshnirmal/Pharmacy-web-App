@@ -45,7 +45,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     verified_by_name = serializers.CharField(source='verified_by_admin.get_full_name', read_only=True)
     total_medicines = serializers.SerializerMethodField()
     verified_medicines = serializers.SerializerMethodField()
-    suggested_medicines = serializers.SerializerMethodField()
+    suggested_medicines = serializers.SerializerMethodField() # This will now return a list of products
     processing_status = serializers.SerializerMethodField()
 
     class Meta:
@@ -59,7 +59,12 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         return obj.prescription_medicines.filter(is_valid_for_order=True).count()
 
     def get_suggested_medicines(self, obj):
-        return obj.prescription_medicines.filter(suggested_products__isnull=False).count()
+        # Aggregate all unique suggested products from all prescription medicines
+        all_suggested_products = set()
+        for detail in obj.prescription_medicines.all():
+            for product in detail.suggested_products.all():
+                all_suggested_products.add(product)
+        return SuggestedProductSerializer(list(all_suggested_products), many=True).data
 
     def get_processing_status(self, obj):
         if obj.verification_status == 'AI_Processing':

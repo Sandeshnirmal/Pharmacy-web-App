@@ -18,7 +18,7 @@ const AdminPrescriptionsPage = () => {
 
   const fetchPrescriptions = async () => {
     try {
-      const response = await axios.get('http://localhost:8001/api/prescriptions/enhanced-prescriptions/');
+      const response = await axios.get('http://localhost:8000/api/prescriptions/enhanced-prescriptions/');
       setPrescriptions(response.data);
     } catch (err) {
       setError(err);
@@ -33,7 +33,7 @@ const AdminPrescriptionsPage = () => {
 
   const handleApprove = async (id) => {
     try {
-      await axios.post(`http://localhost:8001/api/prescriptions/enhanced-prescriptions/${id}/verify/`, {
+      await axios.post(`http://localhost:8000/api/prescriptions/enhanced-prescriptions/${id}/verify/`, {
         action: 'verified',
         notes: 'Approved by admin/pharmacist',
       });
@@ -64,7 +64,7 @@ const AdminPrescriptionsPage = () => {
       return;
     }
     try {
-      const response = await axios.get(`http://localhost:8001/api/products/?search=${searchProductTerm}`);
+      const response = await axios.get(`http://localhost:8000/api/products/?search=${searchProductTerm}`);
       setSearchResults(response.data);
     } catch (err) {
       console.error('Error searching products:', err);
@@ -83,7 +83,7 @@ const AdminPrescriptionsPage = () => {
     }
 
     try {
-      await axios.post(`http://localhost:8001/api/prescriptions/medicines/${currentMedicine.id}/remap_medicine/`, {
+      await axios.post(`http://localhost:8000/api/prescriptions/medicines/${currentMedicine.id}/remap_medicine/`, {
         product_id: selectedProduct.id,
         comment: remapComment,
       });
@@ -102,7 +102,7 @@ const AdminPrescriptionsPage = () => {
       return;
     }
     try {
-      await axios.post(`http://localhost:8001/api/prescriptions/enhanced-prescriptions/${currentPrescriptionId}/verify/`, {
+      await axios.post(`http://localhost:8000/api/prescriptions/enhanced-prescriptions/${currentPrescriptionId}/verify/`, {
         action: 'rejected',
         rejection_reason: rejectionReason,
       });
