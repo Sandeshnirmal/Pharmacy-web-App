@@ -93,16 +93,14 @@ const SidebarNavbar = () => {
         <h2 className="text-lg font-semibold mb-8 text-gray-900">
           Admin Panel
         </h2>
-        <h2 className="text-lg font-semibold mb-8 text-gray-900">
-          Admin Panel
-        </h2>
+      
         <nav className="space-y-2">
           <SidebarItem label="Dashboard" to="/Dashboard" />
           {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
-          <SidebarItem label="Generic Mappings" to="/Generics" />
+          
           <SidebarItem label="Inventory Management" to="/Inventory" />
           <SidebarItem label="Prescriptions" to="/Prescription" />
-          <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" />
+          {/* <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" /> */}
           {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
           <SidebarItem label="Orders" to="/Orders" />
           <SidebarItem label="Customers" to="/Customers" />
