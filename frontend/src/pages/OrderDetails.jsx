@@ -1,96 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-// import axiosInstance from '../api/axiosInstance'; // Assuming you have this configured
-
-// Mock axiosInstance for demonstration purposes
-const axiosInstance = {
-  get: async (url) => {
-    console.log(`Mock GET request to: ${url}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    if (url.includes("order/orders/")) {
-      return {
-        data: {
-          id: "12345",
-          order_date: new Date().toISOString(),
-          order_status: "Processing",
-          total_amount: "2550.00",
-          is_prescription_order: true,
-          prescription: {
-            id: "P987",
-            verification_status: "Verified",
-            upload_date: new Date().toISOString(),
-            pharmacist_notes: "Patient advised to take after meals.",
-            // Replace with your actual image URL or a placeholder
-            prescription_file:
-              "https://placehold.co/800x1100/ffffff/000000?text=Sample+Prescription",
-          },
-          user: {
-            first_name: "John",
-            last_name: "Doe",
-            email: "john.doe@example.com",
-            phone_number: "555-123-4567",
-          },
-          delivery_address: "123 Health St, Wellness City, 12345",
-          delivery_method: "Standard Delivery",
-          expected_delivery_date: new Date(
-            Date.now() + 3 * 24 * 60 * 60 * 1000
-          ).toISOString(),
-        },
-      };
-    }
-    if (url.includes("order/order-items/")) {
-      return {
-        data: [
-          {
-            id: 1,
-            product: {
-              name: "Paracetamol",
-              generic_name: { name: "Acetaminophen" },
-              hsn_code: "30049099",
-              company: { name: "Pharma Inc." },
-            },
-            batch_number: "B123",
-            quantity: 2,
-            unit_price: "50.00",
-            total_price: "100.00",
-          },
-          {
-            id: 2,
-            product: {
-              name: "Amoxicillin",
-              generic_name: { name: "Amoxicillin Trihydrate" },
-              hsn_code: "30041090",
-              company: { name: "MediCorp" },
-            },
-            batch_number: "B456",
-            quantity: 1,
-            unit_price: "150.00",
-            total_price: "150.00",
-          },
-          {
-            id: 3,
-            product: {
-              name: "Vitamin C",
-              generic_name: { name: "Ascorbic Acid" },
-              hsn_code: "29362700",
-              company: { name: "HealthWell" },
-            },
-            batch_number: "B789",
-            quantity: 5,
-            unit_price: "20.00",
-            total_price: "100.00",
-          },
-        ],
-      };
-    }
-    return { data: {} };
-  },
-  patch: async (url, data) => {
-    console.log(`Mock PATCH request to: ${url} with data:`, data);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return { data: { ...data, order_status: data.order_status } };
-  },
-};
+import axiosInstance from '../api/axiosInstance';
 
 const OrderDetails = () => {
   const [searchParams] = useSearchParams();
@@ -115,13 +25,10 @@ const OrderDetails = () => {
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
-      const [orderRes, itemsRes] = await Promise.all([
-        axiosInstance.get(`order/orders/${orderId}/`),
-        axiosInstance.get(`order/order-items/?order=${orderId}`),
-      ]);
+      const orderRes = await axiosInstance.get(`order/orders/${orderId}/`);
 
       setOrder(orderRes.data);
-      setOrderItems(itemsRes.data.results || itemsRes.data);
+      setOrderItems(orderRes.data.items || []);
     } catch (err) {
       setError("Failed to fetch order details");
       console.error("Error fetching order details:", err);
@@ -254,7 +161,7 @@ const OrderDetails = () => {
 
       <main className="space-y-8">
         {/* Prescription Information */}
-        {order.is_prescription_order && order.prescription && (
+        {order.is_prescription_order && order.prescription_image_base64 && (
           <section className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="p-6">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">
@@ -268,7 +175,7 @@ const OrderDetails = () => {
                   <div>
                     <p className="font-semibold text-gray-600">Patient Name</p>
                     <p className="text-gray-900">
-                      {order.user?.first_name} {order.user?.last_name}
+                      {order.user_name}
                     </p>
                   </div>
                   <div>
@@ -280,8 +187,8 @@ const OrderDetails = () => {
                     <p className="font-semibold text-gray-600">Date Issued</p>
                     <p className="text-gray-900">
                       {new Date(
-                        order.prescription.upload_date
-                      ).toLocaleDateString()}
+                        order.order_date
+                      ).toLocaleDateString()} {/* Using order_date as a fallback */}
                     </p>
                   </div>
                   <div>
@@ -290,8 +197,8 @@ const OrderDetails = () => {
                     </p>
                     <p className="text-gray-900">
                       {getStatusBadge(
-                        order.prescription.verification_status === "Verified"
-                          ? "Delivered"
+                        order.prescription_status === "verified"
+                          ? "Delivered" // Map 'verified' to 'Delivered' for badge display
                           : "Pending"
                       )}
                     </p>
@@ -299,11 +206,11 @@ const OrderDetails = () => {
                 </div>
                 <div className="md:col-span-2 bg-gray-100 rounded-lg p-2 flex items-center justify-center">
                   <img
-                    src={order.prescription.prescription_file}
+                    src={`data:image/jpeg;base64,${order.prescription_image_base64}`}
                     alt="Prescription"
                     className="max-w-full max-h-full object-contain rounded-md cursor-pointer transition-transform duration-200 hover:scale-105"
                     onClick={() =>
-                      openImagePopup(order.prescription.prescription_file)
+                      openImagePopup(`data:image/jpeg;base64,${order.prescription_image_base64}`)
                     }
                     onError={(e) => {
                       e.target.onerror = null;
@@ -370,14 +277,14 @@ const OrderDetails = () => {
                           </td>
                           <td className="px-4 py-4">
                             <div className="font-medium text-gray-900">
-                              {item.product?.name}
+                              {item.product_name}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {item.product?.generic_name?.name}
+                              {item.product?.generic_name?.name || "N/A"}
                             </div>
                           </td>
                           <td className="px-4 py-4">
-                            {item.product?.company?.name || "N/A"}
+                            {item.product?.manufacturer || "N/A"}
                           </td>
                           <td className="px-4 py-4">
                             {item.batch_number || "N/A"}
@@ -386,7 +293,7 @@ const OrderDetails = () => {
                             {item.quantity}
                           </td>
                           <td className="px-4 py-4 text-right">
-                            ₹{parseFloat(item.unit_price).toFixed(2)}
+                            ₹{parseFloat(item.unit_price_at_order).toFixed(2)}
                           </td>
                           <td className="px-4 py-4 text-right font-semibold text-gray-900">
                             ₹{parseFloat(item.total_price).toFixed(2)}
@@ -432,7 +339,10 @@ const OrderDetails = () => {
                 Update Status
               </h2>
               <div className="flex flex-col space-y-2">
-                {order.order_status === "Pending" && (
+                {(order.order_status === "Pending" ||
+                  order.order_status === "payment_completed" ||
+                  order.order_status === "prescription_uploaded" ||
+                  order.order_status === "verified") && (
                   <button
                     onClick={() => handleStatusUpdate("Processing")}
                     disabled={statusUpdating}
@@ -480,19 +390,19 @@ const OrderDetails = () => {
                 <div>
                   <p className="font-semibold text-gray-600">Name</p>
                   <p className="text-gray-900">
-                    {order.user?.first_name} {order.user?.last_name}
+                    {order.user_name}
                   </p>
                 </div>
                 <div>
                   <p className="font-semibold text-gray-600">Email</p>
                   <p className="text-gray-900 break-words">
-                    {order.user?.email}
+                    {order.user_email}
                   </p>
                 </div>
                 <div>
                   <p className="font-semibold text-gray-600">Phone</p>
                   <p className="text-gray-900">
-                    {order.user?.phone_number || "N/A"}
+                    {order.user_phone || "N/A"}
                   </p>
                 </div>
               </div>
@@ -506,7 +416,7 @@ const OrderDetails = () => {
                 <div>
                   <p className="font-semibold text-gray-600">Address</p>
                   <p className="text-gray-900">
-                    {order.delivery_address || "N/A"}
+                    {order.address_full || "N/A"}
                   </p>
                 </div>
                 <div>
