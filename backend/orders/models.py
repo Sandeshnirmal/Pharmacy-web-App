@@ -31,7 +31,13 @@ class Order(models.Model):
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS)
     order_status = models.CharField(max_length=25, choices=ORDER_STATUS, default='Pending')
     is_prescription_order = models.BooleanField(default=False)
-    prescription = models.ForeignKey('prescriptions.Prescription', on_delete=models.SET_NULL, null=True, blank=True ,related_name='orders')
+    prescription_image_base64 = models.TextField(blank=True, null=True) # Store base64 image directly
+    PRESCRIPTION_STATUS_CHOICES = [
+        ('pending_review', 'Pending Review'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected'),
+    ]
+    prescription_status = models.CharField(max_length=20, choices=PRESCRIPTION_STATUS_CHOICES, default='pending_review')
     delivery_method = models.CharField(max_length=50, default='Standard Delivery')
     expected_delivery_date = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)

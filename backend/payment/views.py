@@ -4,7 +4,7 @@ import hashlib
 import logging
 from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated,AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Payment
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize Razorpay client (you'll need to add these to settings)
 razorpay_client = razorpay.Client(auth=(
-    getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_live_46E992FtnTVX2O'),
-    getattr(settings, 'RAZORPAY_KEY_SECRET', '1qR4WgCT2k6K2Ud6r5cCoqtT')
+    getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_test_u32HLv2OyCBfAN'),
+    getattr(settings, 'RAZORPAY_KEY_SECRET', 'Owlg61rwtT7V3RQKoYGKhsUC')
 ))
 
 @api_view(['POST'])
@@ -61,7 +61,7 @@ def create_payment_order(request):
         logger.info(f"Payment order created: {payment.id} for order {order_id}")
         
         return Response({
-            'id': razorpay_order['id'],
+            'razorpay_order_id': razorpay_order['id'], # Changed 'id' to 'razorpay_order_id' for clarity and consistency with mobile app expectation
             'amount': razorpay_order['amount'],
             'currency': razorpay_order['currency'],
             'receipt': razorpay_order['receipt'],
@@ -69,42 +69,63 @@ def create_payment_order(request):
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
-        logger.error(f"Failed to create payment order: {str(e)}")
+        logger.exception("An unexpected error occurred during payment order creation.") # Use exception for full traceback
         return Response({
-            'error': f'Failed to create payment order: {str(e)}'
+            'error': f'Failed to create payment order: {str(e)}',
+            'detail': 'An unexpected server error occurred. Please try again later.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated]) # Revert to IsAuthenticated
 def verify_payment(request):
     """Verify Razorpay payment signature"""
     try:
-        payment_id = request.data.get('payment_id')
-        order_id = request.data.get('order_id')
-        signature = request.data.get('signature')
+        # Explicitly check if the user is authenticated
+        if not request.user.is_authenticated:
+            logger.error("Attempted payment verification by unauthenticated user.")
+            return Response({
+                'error': 'Authentication required for payment verification.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        logger.info(f"Verify Payment Request - Raw Body: {request.body}")
+        logger.info(f"Verify Payment Request - Parsed Data: {request.data}")
+
+        payment_id = request.data.get('razorpay_payment_id')
+        order_id = request.data.get('razorpay_order_id')
+        signature = request.data.get('razorpay_signature')
         
         if not all([payment_id, order_id, signature]):
+            logger.error(f"Missing required fields for payment verification. payment_id: {payment_id}, order_id: {order_id}, signature: {signature}")
             return Response({
                 'error': 'payment_id, order_id, and signature are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Verify signature
-        key_secret = getattr(settings, 'RAZORPAY_KEY_SECRET', 'YOUR_KEY_SECRET')
+        key_secret = getattr(settings, 'RAZORPAY_KEY_SECRET', 'YOUR_RAZORPAY_KEY_SECRET') # Use generic placeholder
+        
+        logger.info(f"RAZORPAY_KEY_SECRET used for verification: {key_secret}")
+        logger.info(f"Order ID for signature (Razorpay Order ID): {order_id}")
+        logger.info(f"Payment ID for signature (Razorpay Payment ID): {payment_id}")
+        logger.info(f"Signature received from Razorpay: {signature}")
+
         generated_signature = hmac.new(
             key_secret.encode(),
             f"{order_id}|{payment_id}".encode(),
             hashlib.sha256
         ).hexdigest()
         
+        logger.info(f"Generated signature on backend: {generated_signature}")
+
         if generated_signature != signature:
-            logger.warning(f"Invalid payment signature for order {order_id}")
+            logger.warning(f"Invalid payment signature for order {order_id}. Generated: {generated_signature}, Received: {signature}")
             return Response({
                 'error': 'Invalid payment signature'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Update payment record
         try:
+            # Ensure request.user is used correctly with the Payment model's user field
             payment = Payment.objects.get(razorpay_order_id=order_id, user=request.user)
             payment.razorpay_payment_id = payment_id
             payment.razorpay_signature = signature
@@ -114,7 +135,7 @@ def verify_payment(request):
             # Update order status
             order = payment.order
             order.payment_status = 'Paid'
-            order.order_status = 'payment_completed'  # Use the correct status
+            order.order_status = 'payment_completed'
             order.save()
             
             logger.info(f"Payment verified successfully for order {order.id}")
@@ -128,15 +149,16 @@ def verify_payment(request):
             }, status=status.HTTP_200_OK)
             
         except Payment.DoesNotExist:
-            logger.error(f"Payment record not found for order {order_id}")
+            logger.error(f"Payment record not found for order {order_id} and user {request.user.id}")
             return Response({
-                'error': 'Payment record not found'
+                'error': 'Payment record not found or does not belong to the authenticated user.'
             }, status=status.HTTP_404_NOT_FOUND)
         
     except Exception as e:
-        logger.error(f"Payment verification failed: {str(e)}")
+        logger.exception(f"An unexpected error occurred during payment verification: {str(e)}")
         return Response({
-            'error': f'Payment verification failed: {str(e)}'
+            'error': f'Payment verification failed: {str(e)}',
+            'detail': 'An unexpected server error occurred. Please try again later.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

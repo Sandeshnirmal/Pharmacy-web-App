@@ -262,38 +262,49 @@ def create_paid_order_for_prescription(request):
     }
     """
     from .enhanced_order_flow import EnhancedOrderFlow
+    # Removed: from prescriptions.models import Prescription # No longer needed
 
     try:
+        logger.info(f"create_paid_order_for_prescription Request - Raw Body: {request.body}")
+        logger.info(f"create_paid_order_for_prescription Request - Parsed Data: {request.data}")
+
         # Extract and validate request data
         items = request.data.get('items', [])
-        delivery_address = request.data.get('delivery_address', {})
+        delivery_address_data = request.data.get('delivery_address', {})
         payment_data = request.data.get('payment_data', {})
+        prescription_image_base64 = request.data.get('prescription_image_base64') # Get directly from request
+        prescription_status = request.data.get('prescription_status') # Get directly from request
 
         # Validate required fields
         if not items:
+            logger.error("Items are required for create_paid_order_for_prescription.")
             return Response({
                 'success': False,
                 'error': 'Items are required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if not delivery_address:
+        if not delivery_address_data:
+            logger.error("Delivery address is required for create_paid_order_for_prescription.")
             return Response({
                 'success': False,
                 'error': 'Delivery address is required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         if not payment_data:
+            logger.error("Payment data is required for create_paid_order_for_prescription.")
             return Response({
                 'success': False,
                 'error': 'Payment data is required'
             }, status=status.HTTP_400_BAD_REQUEST)
-
+        
         # Create paid order
         result = EnhancedOrderFlow.create_paid_order_for_prescription_review(
             user=request.user,
             items=items,
-            delivery_address=delivery_address,
-            payment_data=payment_data
+            delivery_address=delivery_address_data,
+            payment_data=payment_data,
+            prescription_image_base64=prescription_image_base64, # Pass base64 image
+            prescription_status=prescription_status # Pass prescription status
         )
 
         if result['success']:
@@ -305,9 +316,11 @@ def create_paid_order_for_prescription(request):
                 'status': order.order_status,
                 'total_amount': float(order.total_amount),
                 'delivery_address': order.delivery_address,
+                'prescription_id': order.id, # Return order ID as prescription ID for consistency
                 'message': result['message']
             }, status=status.HTTP_201_CREATED)
         else:
+            logger.error(f"EnhancedOrderFlow.create_paid_order_for_prescription_review failed: {result.get('error', 'Unknown error')}")
             return Response({
                 'success': False,
                 'error': result['error']
@@ -540,50 +553,39 @@ def get_order_status_history(request, order_id):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Require authentication
 def create_pending_order(request):
     """
     Create a pending order before prescription verification
     Payment happens first, then prescription upload and verification
     """
     try:
-        import uuid
         from product.models import Product
-        from usermanagement.models import Address
 
         items = request.data.get('items', [])
-        delivery_address = request.data.get('delivery_address', {})
+        delivery_address_data = request.data.get('delivery_address', {})
         payment_method = request.data.get('payment_method', 'COD')  # Match model choices
         total_amount = request.data.get('total_amount', 0)
+        prescription_image_base64 = request.data.get('prescription_image')
 
         if not items:
             return Response({
                 'error': 'No items provided'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Store delivery address in notes since Address model requires user
-        delivery_info = ""
-        if delivery_address:
-            delivery_info = f"""
-Customer: {delivery_address.get('name', 'Anonymous')}
-Phone: {delivery_address.get('phone', 'Not provided')}
-Address: {delivery_address.get('address', 'Not provided')}
-"""
-
-        # Get a default user for anonymous orders (use first user as fallback)
-        from usermanagement.models import User
-        default_user = User.objects.first()
-
         # Create pending order using existing model fields
         order = Order.objects.create(
-            user=default_user,  # Use default user for anonymous orders
-            address=None,  # No address object for anonymous orders
+            user=request.user,  # Associate with the authenticated user
+            address=None,  # Address will be stored in delivery_address JSON field
             order_status='Pending',  # Use existing status choices
             payment_status='Pending',  # Use existing status choices
             payment_method=payment_method.upper(),  # Ensure uppercase
             is_prescription_order=True,
             total_amount=total_amount,
-            notes=f"Anonymous prescription order{delivery_info}",
+            delivery_address=delivery_address_data, # Store delivery address as JSON
+            prescription_image_base64=prescription_image_base64, # Store base64 image directly
+            prescription_status='pending_review' if prescription_image_base64 else None, # Set initial status
+            notes="Prescription order pending payment/verification",
         )
 
         # Add order items
@@ -597,11 +599,15 @@ Address: {delivery_address.get('address', 'Not provided')}
                     unit_price_at_order=item.get('price', product.price),
                 )
             except Product.DoesNotExist:
-                # Skip invalid products
+                # Log and skip invalid products, or return an error if strict
+                logger.warning(f"Product with ID {item['product_id']} not found for order {order.id}")
+                continue
+            except Exception as e:
+                logger.error(f"Error creating order item for product {item.get('product_id')}: {str(e)}")
                 continue
 
         # Generate a simple order number
-        order_number = f"PO{order.id:06d}"
+        order_number = f"ORD{order.id:06d}"
 
         return Response({
             'success': True,
@@ -610,12 +616,15 @@ Address: {delivery_address.get('address', 'Not provided')}
             'status': order.order_status,
             'payment_method': payment_method,
             'total_amount': float(order.total_amount),
+            'prescription_id': order.id, # Return order ID as prescription ID for consistency
             'message': 'Pending order created successfully'
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
+        logger.exception("An unexpected error occurred during pending order creation.")
         return Response({
-            'error': f'Failed to create pending order: {str(e)}'
+            'error': f'Failed to create pending order: {str(e)}',
+            'detail': 'An unexpected server error occurred. Please try again later.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
