@@ -49,44 +49,12 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
     """Enhanced prescription management with intelligent workflow"""
     queryset = Prescription.objects.all()
     serializer_class = PrescriptionSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny] # Ensure AllowAny is explicitly set
     
     def get_queryset(self):
-        """Filter prescriptions based on user role and permissions"""
-        user = self.request.user
-        queryset = Prescription.objects.all()
-        
-        # Customers see only their prescriptions
-        if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
-            queryset = queryset.filter(user=user)
-        
-        # Apply filters
-        status_filter = self.request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        
-        verification_status = self.request.query_params.get('verification_status')
-        if verification_status:
-            queryset = queryset.filter(verification_status=verification_status)
-        
-        # Date range filter
-        date_from = self.request.query_params.get('date_from')
-        date_to = self.request.query_params.get('date_to')
-        if date_from:
-            queryset = queryset.filter(upload_date__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(upload_date__date__lte=date_to)
-        
-        # Search functionality
-        search = self.request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(prescription_number__icontains=search) |
-                Q(patient_name__icontains=search) |
-                Q(doctor_name__icontains=search)
-            )
-        
-        return queryset.order_by('-upload_date')
+        """Temporarily remove filtering to debug 404 issue."""
+        # For debugging, return all prescriptions without filtering
+        return Prescription.objects.all().order_by('-upload_date')
     
     def perform_create(self, serializer):
         """Create prescription with workflow logging"""
@@ -196,6 +164,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
 
                 # Update status to pending verification
                 prescription.status = 'pending_verification'
+                prescription.verification_status = 'Pending_Review' # Ensure frontend can display actions
                 prescription.save()
 
                 # Log workflow changes
@@ -440,20 +409,22 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
         """Filter prescription medicines based on user permissions"""
         user = self.request.user
         queryset = PrescriptionMedicine.objects.all()
+        print(f"PrescriptionMedicineViewSet.get_queryset called. Initial queryset count: {queryset.count()}")
 
-        # Customers see only their prescription medicines
-        if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
-            queryset = queryset.filter(prescription__user=user)
+        # Temporarily disable filtering for debugging remapping 404
+        # if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
+        #     queryset = queryset.filter(prescription__user=user)
+        #     print(f"  - After customer filter: {queryset.count()}")
 
-        # Filter by prescription
-        prescription_id = self.request.query_params.get('prescription')
-        if prescription_id:
-            queryset = queryset.filter(prescription_id=prescription_id)
+        # prescription_id = self.request.query_params.get('prescription')
+        # if prescription_id:
+        #     queryset = queryset.filter(prescription_id=prescription_id)
+        #     print(f"  - After prescription_id filter ({prescription_id}): {queryset.count()}")
 
-        # Filter by verification status
-        verification_status = self.request.query_params.get('verification_status')
-        if verification_status:
-            queryset = queryset.filter(verification_status=verification_status)
+        # verification_status = self.request.query_params.get('verification_status')
+        # if verification_status:
+        #     queryset = queryset.filter(verification_status=verification_status)
+        #     print(f"  - After verification_status filter ({verification_status}): {queryset.count()}")
 
         return queryset.order_by('prescription__upload_date', 'line_number')
 
@@ -524,9 +495,19 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def remap_medicine(self, request, pk=None):
         """Remap prescription medicine to a different product"""
-        medicine = self.get_object()
+        print(f"remap_medicine action called. PK: {pk}")
+        try:
+            medicine = self.get_object()
+            print(f"Medicine object retrieved: {medicine.id} - {medicine.extracted_medicine_name}")
+        except Exception as e:
+            print(f"Error retrieving medicine object with PK {pk}: {e}")
+            return Response({
+                'error': f'Medicine not found or invalid ID: {str(e)}'
+            }, status=status.HTTP_404_NOT_FOUND)
 
         new_product_id = request.data.get('product_id')
+        print(f"New product ID from request: {new_product_id}")
+
         if not new_product_id:
             return Response({
                 'error': 'Product ID is required for remapping'
@@ -535,6 +516,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
         try:
             from product.models import Product
             new_product = Product.objects.get(id=new_product_id, is_active=True)
+            print(f"New product found: {new_product.name}")
 
             # Update the medicine mapping
             old_product = medicine.verified_medicine
@@ -545,6 +527,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             medicine.pharmacist_comment = request.data.get('comment', f'Remapped from {old_product.name if old_product else "unknown"} to {new_product.name}')
             medicine.verified_by = request.user if request.user.is_authenticated else None
             medicine.save()
+            print(f"Medicine {medicine.id} remapped successfully to {new_product.name}")
 
             # Log the remapping action
             PrescriptionWorkflowLog.objects.create(
@@ -556,6 +539,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                 performed_by=request.user if request.user.is_authenticated else None,
                 system_generated=False
             )
+            print("Workflow log created.")
 
             return Response({
                 'success': True,
@@ -570,10 +554,12 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             })
 
         except Product.DoesNotExist:
+            print(f"Product with ID {new_product_id} not found or inactive.")
             return Response({
                 'error': 'Product not found or inactive'
             }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(f"Unhandled exception during remapping: {e}")
             return Response({
                 'error': f'Failed to remap medicine: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

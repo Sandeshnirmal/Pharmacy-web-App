@@ -1,3 +1,4 @@
+
 // Enhanced Prescription Service - Streamlined API for prescription management
 import axiosInstance from './axiosInstance';
 
@@ -69,7 +70,8 @@ export const prescriptionService = {
         page_size: 50,
         ...params
       };
-      const response = await axiosInstance.get('/product/enhanced-products/', { params: searchParams });
+      // Corrected URL: changed '/api/product/' to '/api/products/'
+      const response = await axiosInstance.get('/api/products/enhanced-products/', { params: searchParams });
       return {
         success: true,
         data: Array.isArray(response.data) ? response.data : response.data.results || []

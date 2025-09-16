@@ -4,7 +4,7 @@ import axios from 'axios';
 const axiosInstance = axios.create({
   baseURL: 'http://127.0.0.1:8000/',
   timeout: 10000, // Increased timeout for better reliability
-  withCredentials: false, // Disable credentials for login endpoint
+  withCredentials: true, // Enable credentials for CORS
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -16,12 +16,7 @@ axiosInstance.interceptors.request.use(
   (config) => {
     const accessToken = localStorage.getItem('access_token');
     if (accessToken) {
-      // Check if it's a JWT token (longer) or regular token
-      if (accessToken.length > 100) {
-        config.headers['Authorization'] = `Bearer ${accessToken}`;
-      } else {
-        config.headers['Authorization'] = `Token ${accessToken}`;
-      }
+      config.headers['Authorization'] = `Bearer ${accessToken}`;
     }
     return config;
   },

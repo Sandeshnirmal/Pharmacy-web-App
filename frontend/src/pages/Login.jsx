@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authAPI } from '../api/apiService';
+import axiosInstance from '../api/axiosInstance';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,7 +15,7 @@ const Login = () => {
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (token) {
-      // navigate('/Dashboard');
+      navigate('/Dashboard');
     }
   }, [navigate]);
 
@@ -32,35 +32,22 @@ const Login = () => {
     setError('');
 
     try {
-      console.log('Attempting login with:', formData.email);
-
-      // Use the API service for authentication
-      const data = await authAPI.login({
+      const response = await axiosInstance.post('user/login/', {
         email: formData.email,
         password: formData.password
       });
 
-      console.log('Login response:', data);
-
-      if (data.token || data.access) {
-        // Store authentication tokens
-        localStorage.setItem('access_token', data.token || data.access);
-        localStorage.setItem('refresh_token', data.token || data.access);
-        if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-        }
-        console.log('Login successful, redirecting to dashboard');
+      // Store authentication tokens
+      if (response.data.access) {
+        localStorage.setItem('access_token', response.data.access);
+        localStorage.setItem('refresh_token', response.data.refresh);   
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        console.log(response.data.access)
         // Redirect to dashboard
         navigate('/Dashboard');
-      } else {
-        // Handle error response
-        const errorMessage = data.detail || data.message || data.error || 'Login failed. Please try again.';
-        setError(errorMessage);
-        console.error('Login failed:', errorMessage);
       }
     } catch (err) {
-      console.error('Login error:', err);
-      setError('Network error. Please check your connection and try again.');
+      setError(err.response?.data?.detail || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,7 @@
 // Composition-Based Prescription Processor Component
-import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, ShoppingCart, Eye } from 'lucide-react';
-import { prescriptionAPI } from '../api/apiService'; // Using centralized API service
+import React, { useState } from 'react';
+import { Upload, Search, ShoppingCart, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import axiosInstance from '../api/axiosInstance';
 
 const CompositionBasedPrescriptionProcessor = () => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -46,7 +46,15 @@ const CompositionBasedPrescriptionProcessor = () => {
       const formData = new FormData();
       formData.append('prescription_image', selectedFile);
 
-      const response = await prescriptionAPI.processCompositionBasedPrescription(formData);
+      const response = await axiosInstance.post(
+        'prescription/enhanced-prescriptions/process_composition_based_prescription/',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
 
       if (response.data.success) {
         setResults(response.data);
@@ -172,12 +180,12 @@ const CompositionBasedPrescriptionProcessor = () => {
           >
             {processing ? (
               <>
-                <FileText className="inline h-4 w-4 mr-2 animate-spin" />
+                <Search className="inline h-4 w-4 mr-2 animate-spin" />
                 Processing...
               </>
             ) : (
               <>
-                <FileText className="inline h-4 w-4 mr-2" />
+                <Search className="inline h-4 w-4 mr-2" />
                 Process Prescription
               </>
             )}
@@ -231,7 +239,7 @@ const CompositionBasedPrescriptionProcessor = () => {
           {/* Workflow Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center mb-3">
-              <Eye className="h-5 w-5 text-blue-500 mr-2" />
+              <Info className="h-5 w-5 text-blue-500 mr-2" />
               <h3 className="text-lg font-semibold text-blue-800">Next Steps</h3>
             </div>
             <ol className="list-decimal list-inside space-y-1 text-blue-700 text-sm">

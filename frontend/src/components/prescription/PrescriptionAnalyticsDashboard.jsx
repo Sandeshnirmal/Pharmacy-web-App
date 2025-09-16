@@ -10,7 +10,7 @@ import {
   Calendar,
   BarChart3
 } from 'lucide-react';
-import { prescriptionAPI } from '../../api/apiService'; // Using centralized API service
+import axiosInstance from '../../api/axiosInstance';
 
 const PrescriptionAnalyticsDashboard = () => {
   const [analytics, setAnalytics] = useState({
@@ -31,7 +31,7 @@ const PrescriptionAnalyticsDashboard = () => {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await prescriptionAPI.getAnalytics({ range: timeRange });
+      const response = await axiosInstance.get(`prescription/analytics/?range=${timeRange}`);
       setAnalytics(response.data);
     } catch (error) {
       console.error('Error fetching analytics:', error);

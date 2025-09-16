@@ -8,20 +8,7 @@ import axiosInstance from './axiosInstance';
 // ============================================================================
 
 export const authAPI = {
-  // Mobile app authentication (Token-based)
   login: async (credentials) => {
-    const response = await axiosInstance.post('/api/auth/login/', credentials);
-    const { token, access } = response.data;
-    
-    // Store token for mobile app compatibility
-    localStorage.setItem('access_token', token || access);
-    localStorage.setItem('refresh_token', token || access); // For compatibility
-    
-    return response.data;
-  },
-
-  // JWT authentication for web dashboard
-  loginJWT: async (credentials) => {
     const response = await axiosInstance.post('/api/token/', credentials);
     const { access, refresh } = response.data;
     
@@ -36,7 +23,7 @@ export const authAPI = {
     localStorage.removeItem('refresh_token');
   },
 
-  getCurrentUser: () => axiosInstance.get('/api/auth/user/'),
+  getCurrentUser: () => axiosInstance.get('/api/users/auth-me/'),
 
   refreshToken: async () => {
     const refreshToken = localStorage.getItem('refresh_token');
@@ -49,31 +36,27 @@ export const authAPI = {
 // ============================================================================
 
 export const userAPI = {
-  // User management
-  getUsers: (params = {}) => axiosInstance.get('/api/users/', { params }),
-  getUser: (id) => axiosInstance.get(`/api/users/${id}/`),
-  createUser: (userData) => axiosInstance.post('/api/users/', userData),
-  updateUser: (id, userData) => axiosInstance.patch(`/api/users/${id}/`, userData),
-  deleteUser: (id) => axiosInstance.delete(`/api/users/${id}/`),
+  // Enhanced user management
+  getUsers: (params = {}) => axiosInstance.get('/api/users/enhanced-users/', { params }),
+  getUser: (id) => axiosInstance.get(`/api/users/enhanced-users/${id}/`),
+  createUser: (userData) => axiosInstance.post('/api/users/enhanced-users/', userData),
+  updateUser: (id, userData) => axiosInstance.patch(`/api/users/enhanced-users/${id}/`, userData),
+  deleteUser: (id) => axiosInstance.delete(`/api/users/enhanced-users/${id}/`),
   
-  // User status management
-  toggleUserActive: (id) => axiosInstance.post(`/api/users/${id}/toggle_active/`),
+  // User role management
+  getRoles: () => axiosInstance.get('/api/users/roles/'),
+  getRole: (id) => axiosInstance.get(`/api/users/roles/${id}/`),
+  createRole: (roleData) => axiosInstance.post('/api/users/roles/', roleData),
+  updateRole: (id, roleData) => axiosInstance.patch(`/api/users/roles/${id}/`, roleData),
+  deleteRole: (id) => axiosInstance.delete(`/api/users/roles/${id}/`),
   
-  // Role management
-  getRoleStatistics: () => axiosInstance.get('/api/users/role_statistics/'),
-  getUsersByRole: (role, params = {}) => axiosInstance.get(`/api/users/?role=${role}`, { params }),
+  // User actions
+  changePassword: (id, passwordData) => axiosInstance.post(`/api/users/enhanced-users/${id}/change_password/`, passwordData),
+  verifyUser: (id, verificationData) => axiosInstance.post(`/api/users/enhanced-users/${id}/verify_user/`, verificationData),
+  toggleUserStatus: (id) => axiosInstance.post(`/api/users/enhanced-users/${id}/toggle_status/`),
   
-  // User activity and analytics
-  getUserActivity: (params = {}) => axiosInstance.get('/api/users/activity/', { params }),
-  getUserStats: (params = {}) => axiosInstance.get('/api/users/stats/', { params }),
-  
-  // Profile management
-  updateProfile: (id, profileData) => axiosInstance.patch(`/api/users/${id}/profile/`, profileData),
-  changePassword: (id, passwordData) => axiosInstance.post(`/api/users/${id}/change_password/`, passwordData),
-  
-  // Authentication and permissions
-  checkPermissions: (id) => axiosInstance.get(`/api/users/${id}/permissions/`),
-  assignRole: (id, roleData) => axiosInstance.post(`/api/users/${id}/assign_role/`, roleData),
+  // Statistics
+  getRoleStatistics: () => axiosInstance.get('/api/users/enhanced-users/role_statistics/'),
 };
 
 // ============================================================================
@@ -92,19 +75,14 @@ export const dashboardAPI = {
 
 export const productAPI = {
   // Enhanced product management
-  getEnhancedProducts: (params = {}) => axiosInstance.get('/api/products/enhanced-products/', { params }),
-  getEnhancedProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
-  createEnhancedProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
-  updateEnhancedProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),
-  deleteEnhancedProduct: (id) => axiosInstance.delete(`/api/products/enhanced-products/${id}/`),
+  getProducts: (params = {}) => axiosInstance.get('/api/products/enhanced-products/', { params }),
+  getProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
+  createProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
+  updateProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),
+  deleteProduct: (id) => axiosInstance.delete(`/api/products/enhanced-products/${id}/`),
   
-  // Product search and filtering
-  searchProducts: (query, params = {}) => axiosInstance.get(`/api/products/enhanced-products/search/?q=${query}`, { params }),
-  getProductsByCategory: (categoryId, params = {}) => axiosInstance.get(`/api/products/enhanced-products/?category=${categoryId}`, { params }),
-  getProductsByComposition: (compositionId, params = {}) => axiosInstance.get(`/api/products/enhanced-products/?composition=${compositionId}`, { params }),
-  
-  // Product compositions
-  getCompositions: () => axiosInstance.get('/api/products/compositions/'),
+  // Composition management
+  getCompositions: (params = {}) => axiosInstance.get('/api/products/compositions/', { params }),
   getComposition: (id) => axiosInstance.get(`/api/products/compositions/${id}/`),
   createComposition: (compositionData) => axiosInstance.post('/api/products/compositions/', compositionData),
   updateComposition: (id, compositionData) => axiosInstance.patch(`/api/products/compositions/${id}/`, compositionData),
@@ -126,18 +104,6 @@ export const productAPI = {
   getLegacyProducts: (params = {}) => axiosInstance.get('/api/products/legacy/products/', { params }),
   getCategories: () => axiosInstance.get('/api/products/legacy/categories/'),
   getGenericNames: () => axiosInstance.get('/api/products/legacy/generic-names/'),
-  
-  // Batch management
-  getBatches: (params = {}) => axiosInstance.get('/api/products/legacy/batches/', { params }),
-  getBatch: (id) => axiosInstance.get(`/api/products/legacy/batches/${id}/`),
-  createBatch: (batchData) => axiosInstance.post('/api/products/legacy/batches/', batchData),
-  updateBatch: (id, batchData) => axiosInstance.patch(`/api/products/legacy/batches/${id}/`, batchData),
-  deleteBatch: (id) => axiosInstance.delete(`/api/products/legacy/batches/${id}/`),
-  
-  // Category management
-  createCategory: (categoryData) => axiosInstance.post('/api/products/legacy/categories/', categoryData),
-  updateCategory: (id, categoryData) => axiosInstance.patch(`/api/products/legacy/categories/${id}/`, categoryData),
-  deleteCategory: (id) => axiosInstance.delete(`/api/products/legacy/categories/${id}/`),
 };
 
 // ============================================================================
@@ -145,83 +111,52 @@ export const productAPI = {
 // ============================================================================
 
 export const prescriptionAPI = {
-  // Enhanced prescription management (Fixed endpoints)
-  getPrescriptions: (params = {}) => axiosInstance.get('/api/prescriptions/enhanced-prescriptions/', { params }),
-  getPrescription: (id) => axiosInstance.get(`/api/prescriptions/enhanced-prescriptions/${id}/`),
-  createPrescription: (prescriptionData) => axiosInstance.post('/api/prescriptions/enhanced-prescriptions/', prescriptionData),
-  updatePrescription: (id, prescriptionData) => axiosInstance.patch(`/api/prescriptions/enhanced-prescriptions/${id}/`, prescriptionData),
+  // Enhanced prescription management
+  getPrescriptions: (params = {}) => axiosInstance.get('/prescription/enhanced-prescriptions/', { params }),
+  getPrescription: (id) => axiosInstance.get(`/prescription/enhanced-prescriptions/${id}/`),
+  createPrescription: (prescriptionData) => axiosInstance.post('/prescription/enhanced-prescriptions/', prescriptionData),
+  updatePrescription: (id, prescriptionData) => axiosInstance.patch(`/prescription/enhanced-prescriptions/${id}/`, prescriptionData),
   
   // Prescription verification workflow
-  verifyPrescription: (id, verificationData) =>
-    axiosInstance.post(`/api/prescriptions/enhanced-prescriptions/${id}/verify_prescription/`, verificationData),
-  getVerificationQueue: (params = {}) =>
-    axiosInstance.get('/api/prescriptions/enhanced-prescriptions/verification_queue/', { params }),
-
+  verifyPrescription: (id, verificationData) => 
+    axiosInstance.post(`/prescription/enhanced-prescriptions/${id}/verify_prescription/`, verificationData),
+  getVerificationQueue: (params = {}) => 
+    axiosInstance.get('/prescription/enhanced-prescriptions/verification_queue/', { params }),
+  
   // Prescription medicines
-  getPrescriptionMedicines: (params = {}) => axiosInstance.get('/api/prescriptions/medicines/', { params }),
-  getPrescriptionMedicine: (id) => axiosInstance.get(`/api/prescriptions/medicines/${id}/`),
-  verifyMedicine: (id, verificationData) =>
-    axiosInstance.post(`/api/prescriptions/medicines/${id}/verify_medicine/`, verificationData),
-  bulkVerifyMedicines: (verificationData) =>
-    axiosInstance.post('/api/prescriptions/medicines/bulk_verify/', verificationData),
-  getSuggestedAlternatives: (id) =>
-    axiosInstance.post(`/api/prescriptions/medicines/${id}/suggest_alternatives/`),
-  
-  // Prescription details management
-  updatePrescriptionDetail: (id, detailData) =>
-    axiosInstance.patch(`/api/prescriptions/prescription-details/${id}/`, detailData),
-  createPrescriptionDetail: (detailData) =>
-    axiosInstance.post('/api/prescriptions/prescription-details/', detailData),
-  
-  // Order confirmation
-  confirmPrescriptionOrder: (orderId) =>
-    axiosInstance.post(`/api/order/confirm-prescription/${orderId}/`),
+  getPrescriptionMedicines: (params = {}) => axiosInstance.get('/prescription/medicines/', { params }),
+  getPrescriptionMedicine: (id) => axiosInstance.get(`/prescription/medicines/${id}/`),
+  verifyMedicine: (id, verificationData) => 
+    axiosInstance.post(`/prescription/medicines/${id}/verify_medicine/`, verificationData),
+  bulkVerifyMedicines: (verificationData) => 
+    axiosInstance.post('/prescription/medicines/bulk_verify/', verificationData),
+  getSuggestedAlternatives: (id) => 
+    axiosInstance.post(`/prescription/medicines/${id}/suggest_alternatives/`),
   
   // Workflow and audit logs
-  getWorkflowHistory: (prescriptionId) =>
-    axiosInstance.get(`/api/prescriptions/enhanced-prescriptions/${prescriptionId}/workflow_history/`),
-
+  getWorkflowHistory: (prescriptionId) => 
+    axiosInstance.get(`/prescription/enhanced-prescriptions/${prescriptionId}/workflow_history/`),
+  
   // Analytics
-  getAnalytics: () => axiosInstance.get('/api/prescriptions/enhanced-prescriptions/analytics/'),
-
-  // Prescription Scanner (New enhanced features)
-  scanPrescription: (prescriptionText) =>
-    axiosInstance.post('/api/prescriptions/scanner/scan_prescription/', { prescription_text: prescriptionText }),
-  searchMedicines: (query, type = 'name') =>
-    axiosInstance.get(`/api/prescriptions/scanner/search_medicines/?q=${query}&type=${type}`),
-  getScanHistory: () => axiosInstance.get('/api/prescriptions/scanner/scan_history/'),
-
-  // Composition-based prescription processing
-  processCompositionBasedPrescription: (formData) => {
-    const config = {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    };
-    return axiosInstance.post('/api/prescriptions/enhanced-prescriptions/process_composition_based_prescription/', formData, config);
-  },
-
-  // OCR reprocessing
-  reprocessOCR: (prescriptionId) => 
-    axiosInstance.post(`/api/prescriptions/admin/reprocess-ocr/${prescriptionId}/`),
+  getAnalytics: () => axiosInstance.get('/prescription/enhanced-prescriptions/analytics/'),
 
   // Verify prescription (only verified prescriptions can create orders)
-  verifyPrescription: (id, data) => axiosInstance.post(`/api/prescriptions/enhanced-prescriptions/${id}/verify_prescription/`, data),
+  verifyPrescription: (id, data) => axiosInstance.post(`/prescription/enhanced-prescriptions/${id}/verify_prescription/`, data),
 
   // Create order from verified prescription only
-  createOrderFromPrescription: (id, data) => axiosInstance.post(`/api/prescriptions/enhanced-prescriptions/${id}/create_order/`, data),
+  createOrderFromPrescription: (id, data) => axiosInstance.post(`/prescription/enhanced-prescriptions/${id}/create_order/`, data),
 
   // Get prescription medicines
-  getPrescriptionMedicines: (params) => axiosInstance.get('/api/prescriptions/medicines/', { params }),
+  getPrescriptionMedicines: (params) => axiosInstance.get('/prescription/medicines/', { params }),
 
   // Remap medicine to different product
-  remapMedicine: (medicineId, data) => axiosInstance.post(`/api/prescriptions/medicines/${medicineId}/remap_medicine/`, data),
+  remapMedicine: (medicineId, data) => axiosInstance.post(`/prescription/medicines/${medicineId}/remap_medicine/`, data),
 
   // Add medicine to prescription
-  addMedicineToPrescrip: (data) => axiosInstance.post('/api/prescriptions/medicines/add_medicine_to_prescription/', data),
+  addMedicineToPrescrip: (data) => axiosInstance.post('/prescription/medicines/add_medicine_to_prescription/', data),
 
   // Verify individual medicine
-  verifyMedicine: (medicineId, data) => axiosInstance.post(`/api/prescriptions/medicines/${medicineId}/verify_medicine/`, data),
+  verifyMedicine: (medicineId, data) => axiosInstance.post(`/prescription/medicines/${medicineId}/verify_medicine/`, data),
   
   // Legacy mobile API endpoints
   uploadPrescription: (formData) => {
@@ -230,12 +165,13 @@ export const prescriptionAPI = {
         'Content-Type': 'multipart/form-data',
       },
     };
-    return axiosInstance.post('/api/prescriptions/mobile/upload/', formData, config);
+    return axiosInstance.post('/prescription/mobile/upload/', formData, config);
   },
-  getPrescriptionStatus: (id) => axiosInstance.get(`/api/prescriptions/mobile/status/${id}/`),
-  getMedicineSuggestions: (id) => axiosInstance.get(`/api/prescriptions/mobile/suggestions/${id}/`),
-  getPrescriptionProducts: (id) => axiosInstance.get(`/api/prescriptions/mobile/products/${id}/`),
-  createPrescriptionOrder: (orderData) => axiosInstance.post('/api/prescriptions/mobile/create-order/', orderData),
+  getPrescriptionStatus: (id) => axiosInstance.get(`/prescription/mobile/status/${id}/`),
+  getMedicineSuggestions: (id) => axiosInstance.get(`/prescription/mobile/suggestions/${id}/`),
+  getPrescriptionProducts: (id) => axiosInstance.get(`/prescription/mobile/products/${id}/`),
+  getPrescriptionById: (id) => axiosInstance.get(`/prescription/mobile/id/${id}/`),
+  createPrescriptionOrder: (orderData) => axiosInstance.post('/prescription/mobile/create-order/', orderData),
 };
 
 // ============================================================================
@@ -243,82 +179,11 @@ export const prescriptionAPI = {
 // ============================================================================
 
 export const orderAPI = {
-  // Legacy order endpoints
-  getOrders: (params = {}) => axiosInstance.get('/api/order/orders/', { params }),
-  getOrder: (id) => axiosInstance.get(`/api/order/orders/${id}/`),
-  createOrder: (orderData) => axiosInstance.post('/api/order/orders/', orderData),
-  updateOrder: (id, orderData) => axiosInstance.patch(`/api/order/orders/${id}/`, orderData),
-  deleteOrder: (id) => axiosInstance.delete(`/api/order/orders/${id}/`),
-
-  // Order items
-  getOrderItems: (params = {}) => axiosInstance.get('/api/order/order-items/', { params }),
-  getOrderItem: (id) => axiosInstance.get(`/api/order/order-items/${id}/`),
-  createOrderItem: (itemData) => axiosInstance.post('/api/order/order-items/', itemData),
-  updateOrderItem: (id, itemData) => axiosInstance.patch(`/api/order/order-items/${id}/`, itemData),
-  deleteOrderItem: (id) => axiosInstance.delete(`/api/order/order-items/${id}/`),
-
-  // Order tracking and status
-  getOrderTracking: (id) => axiosInstance.get(`/api/order/tracking/${id}/`),
-  getOrderStatusHistory: (id) => axiosInstance.get(`/api/order/status-history/${id}/`),
-  addTrackingUpdate: (id, updateData) => axiosInstance.post(`/api/order/tracking/${id}/update/`, updateData),
-
-  // Enhanced Order Flow - Payment First Approach
-  createPaidOrder: (orderData) => axiosInstance.post('/api/order/enhanced/create-paid-order/', orderData),
-  linkPrescriptionToOrder: (orderId, prescriptionData) =>
-    axiosInstance.post(`/api/order/enhanced/${orderId}/link-prescription/`, prescriptionData),
-  verifyPrescriptionAndConfirmOrder: (orderId, verificationData) =>
-    axiosInstance.post(`/api/order/enhanced/${orderId}/verify-prescription/`, verificationData),
-  getOrdersForPrescriptionReview: (params = {}) =>
-    axiosInstance.get('/api/order/enhanced/prescription-review/', { params }),
-  getPaidOrdersAwaitingPrescription: (params = {}) =>
-    axiosInstance.get('/api/order/enhanced/awaiting-prescription/', { params }),
-};
-
-// ============================================================================
-// COURIER API (Professional courier integration)
-// ============================================================================
-
-export const courierAPI = {
-  // Courier partners
-  getCourierPartners: () => axiosInstance.get('/api/courier/partners/'),
-
-  // Shipments
-  getShipments: (params = {}) => axiosInstance.get('/api/courier/shipments/', { params }),
-  getShipment: (id) => axiosInstance.get(`/api/courier/shipments/${id}/`),
-  createShipment: (shipmentData) => axiosInstance.post('/api/courier/shipments/create_shipment/', shipmentData),
-  schedulePickup: (shipmentId, pickupData) =>
-    axiosInstance.post(`/api/courier/shipments/${shipmentId}/schedule_pickup/`, pickupData),
-  cancelShipment: (shipmentId) => axiosInstance.post(`/api/courier/shipments/${shipmentId}/cancel_shipment/`),
-
-  // Tracking
-  trackShipment: (trackingNumber) =>
-    axiosInstance.get(`/api/courier/shipments/track/?tracking_number=${trackingNumber}`),
-
-  // Service areas and rates
-  getServiceAreas: (params = {}) => axiosInstance.get('/api/courier/service-areas/', { params }),
-  getRateCards: (params = {}) => axiosInstance.get('/api/courier/rate-cards/', { params }),
-};
-
-// ============================================================================
-// PAYMENT API (Razorpay Integration)
-// ============================================================================
-
-export const paymentAPI = {
-  // Create payment order
-  createPaymentOrder: (paymentData) => 
-    axiosInstance.post('/payment/create/', paymentData),
-  
-  // Verify payment
-  verifyPayment: (verificationData) => 
-    axiosInstance.post('/payment/verify/', verificationData),
-  
-  // Get payment status
-  getPaymentStatus: (paymentId) => 
-    axiosInstance.get(`/payment/status/${paymentId}/`),
-  
-  // Process order payment
-  processOrderPayment: (orderData) => 
-    axiosInstance.post('/payment/process-order/', orderData),
+  getOrders: (params = {}) => axiosInstance.get('/api/orders/', { params }),
+  getOrder: (id) => axiosInstance.get(`/api/orders/${id}/`),
+  createOrder: (orderData) => axiosInstance.post('/api/orders/', orderData),
+  updateOrder: (id, orderData) => axiosInstance.patch(`/api/orders/${id}/`, orderData),
+  deleteOrder: (id) => axiosInstance.delete(`/api/orders/${id}/`),
 };
 
 // ============================================================================
@@ -328,8 +193,8 @@ export const paymentAPI = {
 export const reportsAPI = {
   // Prescription Reports
   getPrescriptionAnalytics: () => prescriptionAPI.getAnalytics(),
-  getPrescriptionTrends: (params = {}) => axiosInstance.get('/api/prescriptions/enhanced-prescriptions/trends/', { params }),
-  getVerificationMetrics: () => axiosInstance.get('/api/prescriptions/enhanced-prescriptions/verification_metrics/'),
+  getPrescriptionTrends: (params = {}) => axiosInstance.get('/prescription/enhanced-prescriptions/trends/', { params }),
+  getVerificationMetrics: () => axiosInstance.get('/prescription/enhanced-prescriptions/verification_metrics/'),
   
   // User Reports
   getUserAnalytics: () => userAPI.getRoleStatistics(),
@@ -341,8 +206,8 @@ export const reportsAPI = {
   getProductPerformance: (params = {}) => axiosInstance.get('/api/products/performance/', { params }),
   
   // Order Reports
-  getOrderAnalytics: (params = {}) => axiosInstance.get('/api/order/analytics/', { params }),
-  getSalesReports: (params = {}) => axiosInstance.get('/api/order/sales_reports/', { params }),
+  getOrderAnalytics: (params = {}) => axiosInstance.get('/api/orders/analytics/', { params }),
+  getSalesReports: (params = {}) => axiosInstance.get('/api/orders/sales_reports/', { params }),
   
   // Dashboard Reports
   getAdminReports: () => dashboardAPI.getAdminDashboard(),

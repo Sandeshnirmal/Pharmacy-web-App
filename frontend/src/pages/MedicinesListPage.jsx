@@ -19,7 +19,7 @@ const Medicines = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await productAPI.getEnhancedProducts();
+      const response = await productAPI.getProducts();
       setMedicines(Array.isArray(response.data) ? response.data : response.data.results || []);
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);

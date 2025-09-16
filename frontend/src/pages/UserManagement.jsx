@@ -17,7 +17,6 @@ import {
   Activity
 } from 'lucide-react';
 import axiosInstance from '../api/axiosInstance';
-import { userAPI } from '../api/apiService';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -68,7 +67,7 @@ const UserManagement = () => {
         params.append('search', searchTerm);
       }
 
-      const response = await userAPI.getUsers(Object.fromEntries(params));
+      const response = await axiosInstance.get(`user/users/?${params}`);
       setUsers(response.data.results || response.data);
       setError(null);
     } catch (err) {
@@ -81,7 +80,7 @@ const UserManagement = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await userAPI.getRoleStatistics();
+      const response = await axiosInstance.get('user/users/stats/');
       setStats(response.data);
     } catch (err) {
       console.error('Error fetching stats:', err);
@@ -97,7 +96,7 @@ const UserManagement = () => {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
-      await userAPI.createUser(newUser);
+      await axiosInstance.post('user/users/', newUser);
       setShowCreateModal(false);
       setNewUser({
         first_name: '',
@@ -118,7 +117,7 @@ const UserManagement = () => {
 
   const handleToggleUserStatus = async (userId) => {
     try {
-      await userAPI.toggleUserActive(userId);
+      await axiosInstance.post(`user/users/${userId}/toggle_active/`);
       await Promise.all([fetchUsers(), fetchStats()]);
       setError(null);
     } catch (err) {
@@ -130,7 +129,7 @@ const UserManagement = () => {
   const handleEditUser = async (e) => {
     e.preventDefault();
     try {
-      await userAPI.updateUser(selectedUser.id, selectedUser);
+      await axiosInstance.patch(`user/users/${selectedUser.id}/`, selectedUser);
       setShowEditModal(false);
       setSelectedUser(null);
       await Promise.all([fetchUsers(), fetchStats()]);
@@ -144,7 +143,7 @@ const UserManagement = () => {
   const handleDeleteUser = async (userId) => {
     if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       try {
-        await userAPI.deleteUser(userId);
+        await axiosInstance.delete(`user/users/${userId}/`);
         await Promise.all([fetchUsers(), fetchStats()]);
         setError(null);
       } catch (err) {
@@ -405,7 +404,7 @@ const UserManagement = () => {
                       Edit
                     </button>
                     <button
-                      onClick={() => handleToggleUserStatus(user.id)}
+                      onClick={() => handleToggleUserStatus(user.id, user.is_active)}
                       className={`px-3 py-1 rounded-md transition duration-150 ${
                         user.is_active
                           ? 'text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200'

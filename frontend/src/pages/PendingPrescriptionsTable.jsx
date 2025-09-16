@@ -87,7 +87,9 @@ const PendingPrescriptionsTable = () => {
   const handleBulkStatusUpdate = async (newStatus) => {
     try {
       const updatePromises = selectedPrescriptions.map(id =>
-        prescriptionService.verifyPrescription(id, { verification_status: newStatus })
+        axiosInstance.patch(`prescription/prescriptions/${id}/`, {
+          verification_status: newStatus
+        })
       );
 
       await Promise.all(updatePromises);

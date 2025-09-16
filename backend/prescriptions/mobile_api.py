@@ -164,6 +164,9 @@ def get_prescription_status(request, prescription_id):
             'error': 'Prescription not found'
         }, status=status.HTTP_404_NOT_FOUND)
 
+        
+        
+        
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_medicine_suggestions(request, prescription_id):
@@ -837,4 +840,28 @@ def get_user_prescriptions_mobile(request):
         return Response({
             'success': False,
             'error': f'Failed to retrieve user prescriptions: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_prescriptions_by_id(request, prescription_id):
+    """
+    Mobile API: Get a single prescription by ID for the authenticated user.
+    """
+    from .serializers import PrescriptionSerializer
+    try:
+        prescription = Prescription.objects.get(id=prescription_id, user=request.user)
+        serializer = PrescriptionSerializer(prescription)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Prescription.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Prescription not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error fetching prescription by ID: {e}")
+        return Response({
+            'success': False,
+            'error': f'Failed to retrieve prescription: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

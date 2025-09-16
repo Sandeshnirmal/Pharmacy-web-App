@@ -10,7 +10,7 @@ import {
   FileText,
   RefreshCw
 } from 'lucide-react';
-import { prescriptionAPI } from '../../api/apiService'; // Using centralized API service
+import axiosInstance from '../../api/axiosInstance';
 import PrescriptionStatusBadge from './PrescriptionStatusBadge';
 import PriorityIndicator from './PriorityIndicator';
 
@@ -25,7 +25,6 @@ const EnhancedPrescriptionDashboard = () => {
   const [recentPrescriptions, setRecentPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -34,10 +33,9 @@ const EnhancedPrescriptionDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      setError(null); // Clear previous errors
       const [prescriptionsRes, statsRes] = await Promise.all([
-        prescriptionAPI.getPrescriptions({ limit: 10, ordering: '-upload_date' }),
-        prescriptionAPI.getAnalytics()
+        axiosInstance.get('prescription/prescriptions/?limit=10&ordering=-upload_date'),
+        axiosInstance.get('prescription/prescriptions/stats/')
       ]);
 
       setRecentPrescriptions(prescriptionsRes.data.results || prescriptionsRes.data);
@@ -50,7 +48,6 @@ const EnhancedPrescriptionDashboard = () => {
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      setError('Failed to fetch prescription data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -133,30 +130,6 @@ const EnhancedPrescriptionDashboard = () => {
             ))}
           </div>
           <div className="bg-gray-200 h-96 rounded-lg"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <div className="flex items-center">
-            <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
-            <div className="flex-1">
-              <h3 className="text-lg font-medium text-red-800">Error Loading Dashboard</h3>
-              <p className="text-red-700 mt-1">{error}</p>
-            </div>
-          </div>
-          <div className="mt-4">
-            <button
-              onClick={fetchDashboardData}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
         </div>
       </div>
     );

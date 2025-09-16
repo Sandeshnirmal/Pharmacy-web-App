@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { orderAPI, prescriptionAPI, userAPI, productAPI } from '../api/apiService';
+import axiosInstance from '../api/axiosInstance';
 import ModernStatsCard from '../components/ModernStatsCard';
 import useRealTimeData from '../hooks/useRealTimeData';
 import APITestPanel from '../components/APITestPanel';
@@ -31,27 +31,19 @@ function DashboardMainContent() {
     try {
       setLoading(true);
 
-      // Fetch all required data in parallel using API service
+      // Fetch all required data in parallel
       const [ordersRes, prescriptionsRes, usersRes, productsRes] =
         await Promise.all([
-          orderAPI.getOrders(),
-          prescriptionAPI.getPrescriptions(),
-          userAPI.getUsers(),
-          productAPI.getEnhancedProducts(),
+          axiosInstance.get("order/orders/"),
+          axiosInstance.get("prescription/prescriptions/"),
+          axiosInstance.get("user/users/"),
+          axiosInstance.get("/api/products/enhanced-products/"),
         ]);
 
-      // Ensure we have arrays and handle potential null/undefined responses
-      const orders = Array.isArray(ordersRes.data.results) ? ordersRes.data.results : 
-                    Array.isArray(ordersRes.data) ? ordersRes.data : [];
-      
-      const prescriptions = Array.isArray(prescriptionsRes.data.results) ? prescriptionsRes.data.results : 
-                           Array.isArray(prescriptionsRes.data) ? prescriptionsRes.data : [];
-      
-      const users = Array.isArray(usersRes.data.results) ? usersRes.data.results : 
-                   Array.isArray(usersRes.data) ? usersRes.data : [];
-      
-      const products = Array.isArray(productsRes.data.results) ? productsRes.data.results : 
-                      Array.isArray(productsRes.data) ? productsRes.data : [];
+      const orders = ordersRes.data.results || ordersRes.data;
+      const prescriptions = prescriptionsRes.data.results || prescriptionsRes.data;
+      const users = usersRes.data.results || usersRes.data;
+      const products = productsRes.data.results || productsRes.data;
 
       // Calculate statistics
       const totalRevenue = orders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
