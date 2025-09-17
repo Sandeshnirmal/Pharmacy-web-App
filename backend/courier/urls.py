@@ -6,7 +6,7 @@ from .views import (
 )
 
 router = DefaultRouter()
-router.register(r'partners', CourierPartnerViewSet)
+router.register(r'tpc-partner', CourierPartnerViewSet, basename='tpc-partner') # Added basename and changed path
 router.register(r'shipments', CourierShipmentViewSet)
 router.register(r'service-areas', CourierServiceAreaViewSet)
 router.register(r'rate-cards', CourierRateCardViewSet)

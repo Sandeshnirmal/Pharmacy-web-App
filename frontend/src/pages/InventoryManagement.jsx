@@ -1,142 +1,16 @@
 import React, { useState, useEffect } from "react";
-
+import axiosInstance from '../api/axiosInstance'
+import Medicines from "./MedicinesListPage";
+import '../api/apiService'
+import { apiUtils, productAPI } from "../api/apiService";
 // --- Sample Data ---
 // In a real app, this would come from an API.
-const sampleCategories = [
-  { id: 1, name: "Analgesics", description: "Pain relievers" },
-  { id: 2, name: "Antibiotics", description: "Inhibit bacterial growth" },
-  { id: 3, name: "Antipyretics", description: "Fever reducers" },
-  { id: 4, name: "Vitamins", description: "Dietary supplements" },
-];
 
-const sampleGenericNames = [
-  { id: 1, name: "Paracetamol", description: "Used to treat pain and fever." },
-  {
-    id: 2,
-    name: "Amoxicillin",
-    description: "Antibiotic for various infections.",
-  },
-  {
-    id: 3,
-    name: "Ibuprofen",
-    description: "NSAID for pain, fever, and inflammation.",
-  },
-  { id: 4, name: "Vitamin C", description: "Ascorbic acid." },
-];
 
-const sampleProducts = [
-  {
-    id: 1,
-    name: "Calpol 500mg",
-    category_id: 1,
-    generic_name_id: 1,
-    strength: "500mg",
-    form: "Tablet",
-    manufacturer: "GSK",
-    price: 20.5,
-    mrp: 25.0,
-    is_prescription_required: false,
-    hsn_code: "30049099",
-    packaging_unit: "Strip",
-    pack_size: "15",
-    stock_quantity: 75,
-    min_stock_level: 10,
-  },
-  {
-    id: 2,
-    name: "Moxikind-CV 625",
-    category_id: 2,
-    generic_name_id: 2,
-    strength: "625mg",
-    form: "Tablet",
-    manufacturer: "Mankind Pharma",
-    price: 150.0,
-    mrp: 180.5,
-    is_prescription_required: true,
-    hsn_code: "30041090",
-    packaging_unit: "Strip",
-    pack_size: "10",
-    stock_quantity: 8,
-    min_stock_level: 10,
-  },
-  {
-    id: 3,
-    name: "Brufen 400",
-    category_id: 1,
-    generic_name_id: 3,
-    strength: "400mg",
-    form: "Tablet",
-    manufacturer: "Abbott",
-    price: 15.0,
-    mrp: 18.0,
-    is_prescription_required: false,
-    hsn_code: "30049099",
-    packaging_unit: "Strip",
-    pack_size: "10",
-    stock_quantity: 120,
-    min_stock_level: 20,
-  },
-  {
-    id: 4,
-    name: "Limcee 500mg",
-    category_id: 4,
-    generic_name_id: 4,
-    strength: "500mg",
-    form: "Chewable Tablet",
-    manufacturer: "Abbott",
-    price: 21.0,
-    mrp: 23.44,
-    is_prescription_required: false,
-    hsn_code: "30045020",
-    packaging_unit: "Strip",
-    pack_size: "15",
-    stock_quantity: 0,
-    min_stock_level: 15,
-  },
-];
 
-const sampleBatches = [
-  {
-    id: 1,
-    product: 1,
-    batch_number: "P1A001",
-    quantity: 50,
-    current_quantity: 50,
-    expiry_date: "2026-12-31",
-    cost_price: 18.0,
-    selling_price: 25.0,
-  },
-  {
-    id: 2,
-    product: 1,
-    batch_number: "P1A002",
-    quantity: 25,
-    current_quantity: 25,
-    expiry_date: "2025-09-30",
-    cost_price: 18.5,
-    selling_price: 25.0,
-  },
-  {
-    id: 3,
-    product: 2,
-    batch_number: "P2B001",
-    quantity: 8,
-    current_quantity: 8,
-    expiry_date: "2025-10-15",
-    cost_price: 140.0,
-    selling_price: 180.5,
-  },
-  {
-    id: 4,
-    product: 3,
-    batch_number: "P3C001",
-    quantity: 120,
-    current_quantity: 120,
-    expiry_date: "2027-01-31",
-    cost_price: 12.0,
-    selling_price: 18.0,
-  },
-];
+
+
+
 
 const InventoryManagement = () => {
   const [products, setProducts] = useState([]);
@@ -157,6 +31,91 @@ const InventoryManagement = () => {
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedProductBatches, setSelectedProductBatches] = useState([]);
+
+
+
+  useEffect(()=>{
+    fetchMedicines();
+    fetchCategory();
+    fetchGericname();
+  },[]);
+
+  const fetchMedicines = async()=>{
+
+    try{
+      setLoading(true);
+      setError(null);
+      const response = await productAPI.getProducts();
+      console.log("product",response);
+      setProducts(Array.isArray(response.data)? response.data:response.data.results || []);
+    } catch(error){
+      const errorInfo =apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("error fetching medicines",error);
+
+    }finally{
+      setLoading(false);
+    }
+  };
+
+ const fetchCategory = async () => {
+    try {
+        setLoading(true);
+        setError(null);
+        const categoriesResponse = await productAPI.getCategories();
+        console.log("API response:", categoriesResponse); // Added a more descriptive log message
+        
+        // Use Array.isArray() for a reliable check
+        const data = categoriesResponse.data;
+        if (Array.isArray(data)) {
+            setCategories(data);
+        } else if (data && Array.isArray(data.results)) {
+            setCategories(data.results);
+        } else {
+            // Handle unexpected data format gracefully
+            console.warn("Unexpected API response format for categories.");
+            setCategories([]);
+        }
+
+    } catch (error) { // The error object is now correctly passed
+        const errorInfo = apiUtils.handleError(error);
+        setError(errorInfo.message);
+        console.error("Error fetching category:", error); // Use console.error for errors
+    } finally {
+        setLoading(false);
+    }
+};
+
+const fetchGericname = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    const ResponsegenericName = await productAPI.getGenericNames();
+    console.log("API response:", ResponsegenericName);
+
+    // 1. Declare the data variable
+    const data = ResponsegenericName.data;
+
+    if (Array.isArray(data)) {
+      // 2. Correctly access the data property
+      setGenericNames(data);
+    } else if (data && Array.isArray(data.results)) {
+      // 3. Correctly update the generic names state
+      setGenericNames(data.results);
+    } else {
+      console.log("Unexpected API response format for generic names.");
+      // 3. Correctly update the generic names state
+      setGenericNames([]);
+    }
+
+  } catch (error) { // 4. Add the 'error' parameter
+    const errorInfo = apiUtils.handleError(error);
+    setError(errorInfo.message);
+    console.error("Error fetching generic name:", error); // Use console.error for errors
+  } finally {
+    setLoading(false);
+  }
+};
 
   const [newBatch, setNewBatch] = useState({
     product: "",
@@ -190,17 +149,7 @@ const InventoryManagement = () => {
     description: "",
   });
 
-  useEffect(() => {
-    // Simulate fetching data
-    setLoading(true);
-    setTimeout(() => {
-      setProducts(sampleProducts);
-      setBatches(sampleBatches);
-      setCategories(sampleCategories);
-      setGenericNames(sampleGenericNames);
-      setLoading(false);
-    }, 1000);
-  }, []);
+
 
   const getCategoryName = (id) =>
     categories.find((c) => c.id === id)?.name || "N/A";
@@ -498,7 +447,7 @@ const InventoryManagement = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {getCategoryName(product.category_id)}
+                      {getCategoryName(product.category_name)}
                     </td>
                     <td className="px-6 py-4">
                       {getGenericName(product.generic_name_id)}
@@ -727,6 +676,7 @@ const InventoryManagement = () => {
                     <option value="">Select Category</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
+                      
                         {c.name}
                       </option>
                     ))}

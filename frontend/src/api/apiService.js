@@ -75,7 +75,7 @@ export const dashboardAPI = {
 
 export const productAPI = {
   // Enhanced product management
-  getProducts: (params = {}) => axiosInstance.get('/api/products/enhanced-products/', { params }),
+  getProducts: () => axiosInstance.get('/api/products/enhanced-products/'),
   getProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
   createProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
   updateProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),
@@ -172,6 +172,37 @@ export const prescriptionAPI = {
   getPrescriptionProducts: (id) => axiosInstance.get(`/prescription/mobile/products/${id}/`),
   getPrescriptionById: (id) => axiosInstance.get(`/prescription/mobile/id/${id}/`),
   createPrescriptionOrder: (orderData) => axiosInstance.post('/prescription/mobile/create-order/', orderData),
+};
+
+// ============================================================================
+// COURIER MANAGEMENT API (TPC Specific)
+// ============================================================================
+
+export const courierAPI = {
+  // Get the single TPC courier partner details
+  getTPCCourierPartner: () => axiosInstance.get('/api/courier/tpc-partner/'),
+  
+  // Update the single TPC courier partner details
+  updateTPCCourierPartner: (partnerData) => axiosInstance.patch('/api/courier/tpc-partner/', partnerData),
+
+  // TPC specific actions
+  checkPincodeService: (pincode) => axiosInstance.get('/api/courier/tpc-partner/check_pincode_service/', { params: { pincode } }),
+  searchAreaName: (areaName) => axiosInstance.get('/api/courier/tpc-partner/search_area_name/', { params: { area_name: areaName } }),
+  requestConsignmentNotes: (qty) => axiosInstance.post('/api/courier/tpc-partner/request_consignment_notes/', { qty }),
+  getConsignmentNoteStock: () => axiosInstance.get('/api/courier/tpc-partner/get_consignment_note_stock/'),
+  getConsignmentNoteStockDetails: () => axiosInstance.get('/api/courier/tpc-partner/get_consignment_note_stock_details/'),
+  checkDuplicateRefNo: (refNo) => axiosInstance.get('/api/courier/tpc-partner/check_duplicate_ref_no/', { params: { ref_no: refNo } }),
+  getTrackingWebpageUrl: (shipmentId) => axiosInstance.get(`/api/courier/shipments/${shipmentId}/get_tracking_webpage_url/`),
+  printConsignmentNote: (shipmentId, singleCopy = false) => axiosInstance.get(`/api/courier/shipments/${shipmentId}/print_consignment_note/`, { params: { single_copy: singleCopy } }),
+
+  // Shipment related actions (these operate on individual shipments, not the partner itself)
+  createShipment: (shipmentData) => axiosInstance.post('/api/courier/shipments/create_shipment/', shipmentData),
+  schedulePickup: (shipmentId, pickupData) => axiosInstance.post(`/api/courier/shipments/${shipmentId}/schedule_pickup/`, pickupData),
+  cancelShipment: (shipmentId) => axiosInstance.post(`/api/courier/shipments/${shipmentId}/cancel_shipment/`),
+  trackShipment: (trackingNumber, newVersion = false, withContact = false) => 
+    axiosInstance.get('/api/courier/shipments/track/', { params: { tracking_number: trackingNumber, new_version: newVersion, with_contact: withContact } }),
+  createCodBooking: (codData) => axiosInstance.post('/api/courier/shipments/create_cod_booking/', codData),
+  addPickupAddonDetails: (shipmentId, addonData) => axiosInstance.post(`/api/courier/shipments/${shipmentId}/add_pickup_addon_details/`, addonData),
 };
 
 // ============================================================================

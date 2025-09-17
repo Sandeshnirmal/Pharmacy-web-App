@@ -21,7 +21,7 @@ import OrdersTable from './pages/OrdersTable.jsx';
 import Login from './pages/Login.jsx';
 import UserManagement from './pages/UserManagement.jsx';
 import CustomerManagement from './pages/CustomerManagement.jsx';
-
+import TPCCourierManagementPage from './pages/TPCCourierManagementPage.jsx'
 // Reports
 import SalesReportsAnalysisPage from "./pages/Report.jsx";
 
@@ -63,6 +63,7 @@ function App() {
 
           {/* Reports */}
           <Route path="/Reports" element={<SalesReportsAnalysisPage />} />
+          <Route path="/TPCCourierManagement" element={<TPCCourierManagementPage />} />
         </Route>
       </Routes>
     </Router>

@@ -3,8 +3,8 @@ from .models import CourierPartner, CourierShipment, CourierServiceArea, Courier
 
 @admin.register(CourierPartner)
 class CourierPartnerAdmin(admin.ModelAdmin):
-    list_display = ['name', 'courier_type', 'is_active', 'created_at']
-    list_filter = ['courier_type', 'is_active']
+    list_display = ['name', 'is_active', 'created_at']
+    list_filter = ['is_active']
     search_fields = ['name']
     readonly_fields = ['created_at', 'updated_at']
 

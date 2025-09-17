@@ -23,6 +23,9 @@ const OrdersTable = lazy(() => import('../pages/OrdersTable'));
 const UserManagement = lazy(() => import('../pages/UserManagement'));
 const CustomerManagement = lazy(() => import('../pages/CustomerManagement'));
 
+// Courier Management - Lazy loaded
+const TPCCourierManagementPage = lazy(() => import('../pages/TPCCourierManagementPage'));
+
 // Reports - Lazy loaded
 const ReportsAnalytics = lazy(() => import('../pages/ReportsAnalytics'));
 
@@ -119,6 +122,13 @@ export const routes = [
     element: ReportsAnalytics,
     title: 'Reports & Analytics',
     icon: 'BarChart3',
+    lazy: true
+  },
+  {
+    path: '/tpc-courier-management',
+    element: TPCCourierManagementPage,
+    title: 'TPC Courier Management',
+    icon: 'Truck', // Using a truck icon for courier
     lazy: true
   }
 ];

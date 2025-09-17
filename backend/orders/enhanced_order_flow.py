@@ -8,7 +8,8 @@ from rest_framework import status
 from .models import Order, OrderItem, OrderStatusHistory
 from prescriptions.models import Prescription
 from product.models import Product
-from courier.services import get_courier_service
+from courier.services import get_courier_service, TPCCourierService # Import TPCCourierService
+from courier.serializers import TPCPickupRequestSerializer, TPCCODBookingSerializer # Import TPC serializers
 from payment.models import Payment
 import logging
 import json
@@ -309,16 +310,18 @@ class EnhancedOrderFlow:
         Step 4: Schedule courier pickup for verified order
         """
         try:
-            # Get courier service
-            courier_service = get_courier_service('professional')
+            # Get TPC courier service
+            courier_service = get_courier_service('TPC')
             
-            if not courier_service:
+            if not courier_service or not isinstance(courier_service, TPCCourierService):
+                logger.error("TPC Courier service not available or not correctly initialized.")
                 return {
                     'success': False,
-                    'error': 'Courier service not available'
+                    'error': 'TPC Courier service not available'
                 }
             
-            # Prepare addresses
+            # Prepare pickup address (pharmacy's address)
+            # This should ideally come from a configurable setting or a PharmacyProfile model
             pickup_address = {
                 'name': 'InfxMart Pharmacy',
                 'phone': '+91-9876543210',
@@ -327,52 +330,171 @@ class EnhancedOrderFlow:
                 'city': 'Bangalore',
                 'state': 'Karnataka',
                 'pincode': '560001',
-                'country': 'India'
+                'country': 'India',
+                'email': 'pharmacy@infxmart.com' # Added email
             }
             
-            delivery_address = order.delivery_address if hasattr(order, 'delivery_address') else {
-                'name': order.user.get_full_name() or order.user.email,
-                'phone': getattr(order.user, 'phone', '+91-0000000000'),
-                'address_line_1': 'Customer Address',
-                'city': 'Bangalore',
-                'state': 'Karnataka',
-                'pincode': '560001',
-                'country': 'India'
+            # Prepare delivery address from order's delivery_address JSONField
+            delivery_address = order.delivery_address
+            if not delivery_address:
+                logger.error(f"Order {order.id} has no delivery address.")
+                return {'success': False, 'error': 'Delivery address not found for order'}
+
+            # Ensure required fields are present in delivery_address
+            required_delivery_fields = ['name', 'phone', 'address_line_1', 'city', 'pincode']
+            for field in required_delivery_fields:
+                if field not in delivery_address:
+                    logger.error(f"Missing required delivery address field '{field}' for order {order.id}.")
+                    return {'success': False, 'error': f"Missing delivery address field: {field}"}
+
+            # Calculate shipment details from order items
+            total_weight = 0.0
+            total_pieces = 0
+            declared_value = 0.0
+            for item in order.items.all():
+                # Assuming a default weight if product model doesn't have it
+                # For now, let's assume 0.1 kg per item if not specified
+                product_weight = getattr(item.product, 'weight', 0.1) # Assuming product has a 'weight' attribute
+                total_weight += float(product_weight) * item.quantity
+                total_pieces += item.quantity
+                declared_value += float(item.total_price)
+
+            # Ensure minimum weight for courier API
+            if total_weight < 0.1:
+                total_weight = 0.1
+            if total_pieces == 0:
+                total_pieces = 1
+
+            # Determine COD amount
+            cod_amount = float(order.total_amount) if order.payment_method == 'COD' else 0.0
+
+            # Prepare shipment data for TPC API
+            shipment_data = {
+                "REF_NO": str(order.id),
+                "BDATE": timezone.now().strftime("%Y-%m-%d"),
+                "SENDER": pickup_address['name'],
+                "SENDER_ADDRESS": pickup_address['address_line_1'],
+                "SENDER_CITY": pickup_address['city'],
+                "SENDER_PINCODE": pickup_address['pincode'],
+                "SENDER_MOB": pickup_address['phone'],
+                "SENDER_EMAIL": pickup_address['email'],
+                "RECIPIENT": delivery_address['name'],
+                "RECIPIENT_COMPANY": delivery_address.get('company', delivery_address['name']), # Use name if company not provided
+                "RECIPIENT_ADDRESS": delivery_address['address_line_1'],
+                "RECIPIENT_CITY": delivery_address['city'],
+                "RECIPIENT_PINCODE": delivery_address['pincode'],
+                "RECIPIENT_MOB": delivery_address['phone'],
+                "RECIPIENT_EMAIL": delivery_address.get('email', ''),
+                "WEIGHT": str(round(total_weight, 2)),
+                "PIECES": total_pieces,
+                "CUST_INVOICEAMT": str(round(declared_value, 2)),
+                "VOL_LENGTH": "10", # Default dimensions, can be made configurable
+                "VOL_WIDTH": "10",
+                "VOL_HEIGHT": "10",
+                "DESCRIPTION": f"Pharmacy Order #{order.id}",
+                "REMARKS": f"Pharmacy Order #{order.id}",
+                "COD_AMOUNT": str(round(cod_amount, 2)),
+                "PAYMENT_MODE": "CASH" if order.payment_method == 'COD' else "CREDIT",
+                "TYPE": "PICKUP",
+                "ORDER_STATUS": "HOLD",
+                "MODE": "AT", # Air Transit, can be 'ST' for Surface Transit
+                "SERVICE": "PRO" # Premium service, if applicable
             }
-            
-            # Create shipment
-            shipment = courier_service.create_shipment(
-                order=order,
-                pickup_address=pickup_address,
-                delivery_address=delivery_address
-            )
-            
-            # Update order status
-            order.order_status = 'processing'
-            order.tracking_number = shipment.tracking_number
-            order.save()
-            
-            # Record status history
-            OrderStatusHistory.objects.create(
-                order=order,
-                old_status='verified',
-                new_status='processing',
-                changed_by=None,
-                reason=f'Courier pickup scheduled. Tracking: {shipment.tracking_number}'
-            )
-            
-            return {
-                'success': True,
-                'shipment': shipment,
-                'tracking_number': shipment.tracking_number,
-                'message': 'Courier pickup scheduled successfully'
-            }
+
+            # Use appropriate serializer for validation
+            if order.payment_method == 'COD':
+                serializer = TPCCODBookingSerializer(data=shipment_data)
+            else:
+                serializer = TPCPickupRequestSerializer(data=shipment_data)
+
+            if not serializer.is_valid():
+                logger.error(f"TPC Shipment data validation failed for order {order.id}: {serializer.errors}")
+                return {
+                    'success': False,
+                    'error': f"Invalid shipment data: {serializer.errors}"
+                }
+
+            # Call TPC API
+            if order.payment_method == 'COD':
+                response_data = courier_service.create_cod_booking(
+                    order=order,
+                    pickup_address=pickup_address,
+                    delivery_address=delivery_address,
+                    cod_data=serializer.validated_data
+                )
+            else:
+                response_data = courier_service.create_shipment(
+                    order=order,
+                    pickup_address=pickup_address,
+                    delivery_address=delivery_address,
+                    shipment_data=serializer.validated_data
+                )
+
+            if response_data.get('status') == 'success':
+                tracking_number = response_data.get('POD_NO', '').replace('Saved Successfully with Cons No ', '')
+                ref_no = response_data.get('REF_NO')
+
+                # Create CourierShipment entry
+                from courier.models import CourierShipment # Import here to avoid circular dependency
+                shipment_obj = CourierShipment.objects.create(
+                    order=order,
+                    courier_partner=courier_service.courier_partner,
+                    tracking_number=tracking_number,
+                    courier_order_id=ref_no,
+                    status='pending', # Initial status
+                    pickup_address=pickup_address,
+                    delivery_address=delivery_address,
+                    delivery_contact=delivery_address['phone'],
+                    weight=total_weight,
+                    dimensions={
+                        "length": shipment_data["VOL_LENGTH"],
+                        "width": shipment_data["VOL_WIDTH"],
+                        "height": shipment_data["VOL_HEIGHT"],
+                    },
+                    declared_value=declared_value,
+                    cod_charges=cod_amount,
+                    courier_response=response_data
+                )
+                shipment_obj.add_tracking_event(
+                    status='pending',
+                    location='TPC System',
+                    timestamp=timezone.now(),
+                    description='Shipment created in TPC system'
+                )
+
+                # Update order status and tracking number
+                order.order_status = 'Processing' # Or 'Shipped' if it's immediately shipped
+                order.tracking_number = tracking_number
+                order.save()
+                
+                # Record status history
+                OrderStatusHistory.objects.create(
+                    order=order,
+                    old_status='verified',
+                    new_status='Processing',
+                    changed_by=None, # Admin user should be passed here if available
+                    reason=f'Courier booking successful. Tracking: {tracking_number}'
+                )
+                
+                return {
+                    'success': True,
+                    'shipment': shipment_obj,
+                    'tracking_number': tracking_number,
+                    'message': 'Courier booking successful'
+                }
+            else:
+                error_message = response_data.get('error', response_data.get('Desc', 'Unknown TPC error'))
+                logger.error(f"TPC API booking failed for order {order.id}: {error_message} - Details: {response_data}")
+                return {
+                    'success': False,
+                    'error': f"Courier booking failed: {error_message}"
+                }
             
         except Exception as e:
-            logger.error(f"Error scheduling courier pickup: {str(e)}")
+            logger.exception(f"Error scheduling courier pickup for order {order.id}: {str(e)}")
             return {
                 'success': False,
-                'error': str(e)
+                'error': f"An unexpected error occurred during courier booking: {str(e)}"
             }
     
     @staticmethod

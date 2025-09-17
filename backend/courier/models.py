@@ -5,19 +5,7 @@ import uuid
 
 class CourierPartner(models.Model):
     """Model for courier service providers"""
-    COURIER_TYPES = [
-        ('delhivery', 'Delhivery'),
-        ('bluedart', 'Blue Dart'),
-        ('dtdc', 'DTDC'),
-        ('fedex', 'FedEx'),
-        ('aramex', 'Aramex'),
-        ('ecom', 'Ecom Express'),
-        ('xpressbees', 'XpressBees'),
-        ('professional', 'Professional Courier'),
-    ]
-    
-    name = models.CharField(max_length=100)
-    courier_type = models.CharField(max_length=20, choices=COURIER_TYPES)
+    name = models.CharField(max_length=100, default='TPC') # Default to TPC
     api_endpoint = models.URLField()
     api_key = models.CharField(max_length=255)
     api_secret = models.CharField(max_length=255, blank=True)
@@ -28,7 +16,7 @@ class CourierPartner(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.name} ({self.get_courier_type_display()})"
+        return f"{self.name}"
 
 class CourierShipment(models.Model):
     """Model for tracking courier shipments"""
