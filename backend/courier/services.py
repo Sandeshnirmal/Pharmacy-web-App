@@ -3,84 +3,26 @@ import json
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
-from .models import CourierPartner, CourierShipment, CourierServiceArea, CourierRateCard
 from orders.models import Order
+from courier.models import TPCServiceableArea
 import logging
 
 logger = logging.getLogger(__name__)
 
-class CourierService:
-    """
-    Base class for courier service integration
-
-    This class provides the interface for all courier service implementations.
-    Each courier service (Delhivery, Blue Dart, Professional Courier, etc.)
-    should inherit from this class and implement the required methods.
-    """
-
-    def __init__(self, courier_partner):
-        """
-        Initialize courier service with partner configuration
-
-        Args:
-            courier_partner: CourierPartner model instance
-        """
-        if not courier_partner:
-            raise ValueError("Courier partner is required")
-
-        self.courier_partner = courier_partner
-        self.api_endpoint = courier_partner.api_endpoint
-        self.api_key = courier_partner.api_key
-        self.api_secret = courier_partner.api_secret
-
-        # Validate configuration
-        if not self.api_endpoint:
-            raise ValueError("API endpoint is required for courier service")
-        if not self.api_key:
-            raise ValueError("API key is required for courier service")
-
-    def create_shipment(self, order, pickup_address, delivery_address, shipment_data=None):
-        """Create a new shipment"""
-        raise NotImplementedError("Subclasses must implement create_shipment")
-
-    def track_shipment(self, tracking_identifier, new_version=False, with_contact=False):
-        """Track shipment status. tracking_identifier can be tracking_number or podno."""
-        raise NotImplementedError("Subclasses must implement track_shipment")
-
-    def cancel_shipment(self, tracking_identifier):
-        """Cancel a shipment. tracking_identifier can be tracking_number or podno."""
-        raise NotImplementedError("Subclasses must implement cancel_shipment")
-
-    def schedule_pickup(self, shipment_id, pickup_date):
-        """Schedule pickup for shipment"""
-        raise NotImplementedError("Subclasses must implement schedule_pickup")
-
-    def validate_address(self, address):
-        """Validate address format"""
-        required_fields = ['name', 'phone', 'address_line_1', 'city', 'state', 'pincode']
-
-        if not isinstance(address, dict):
-            raise ValueError("Address must be a dictionary")
-
-        for field in required_fields:
-            if not address.get(field):
-                raise ValueError(f"Missing required address field: {field}")
-
-        return True
-
-class TPCCourierService(CourierService):
+class TPCCourierService:
     """TPC courier service implementation"""
 
-    def __init__(self, courier_partner):
-        super().__init__(courier_partner)
-        self.user_id = self.api_key # Map api_key to TPC UserID
-        self.password = self.api_secret # Map api_secret to TPC Pwd
-        self.base_url = self.api_endpoint.rstrip('/') + '/tpcwebservice/' # Ensure base URL ends with /
+    def __init__(self):
+        self.user_id = settings.TPC_API_KEY
+        self.password = settings.TPC_API_SECRET
+        self.base_url = settings.TPC_API_ENDPOINT.rstrip('/') + '/tpcwebservice/' # Ensure base URL ends with /
 
         if not self.user_id:
-            raise ValueError("TPC UserID (api_key) is required")
+            raise ValueError("TPC UserID (TPC_API_KEY) is required in settings.py")
         if not self.password:
-            raise ValueError("TPC Password (api_secret) is required")
+            raise ValueError("TPC Password (TPC_API_SECRET) is required in settings.py")
+        if not self.base_url:
+            raise ValueError("TPC API Endpoint (TPC_API_ENDPOINT) is required in settings.py")
 
     def _make_request(self, method, endpoint, params=None, json_data=None):
         """Helper to make requests to TPC API"""
@@ -115,9 +57,63 @@ class TPCCourierService(CourierService):
 
     def check_pincode_service(self, pincode):
         """
-        Web API used for PIN code service checking.
-        Before booking the consignments you can check the PIN code is served by TPC or not.
+        Checks if a pincode is serviceable by TPC.
+        First, checks the local database. If not found or outdated,
+        it hits the TPC API and updates the database.
         """
+        try:
+            service_area = TPCServiceableArea.objects.get(pincode=pincode)
+            # Optionally, add logic here to re-check API if last_updated is too old
+            if (timezone.now() - service_area.last_updated) > timedelta(days=7): # Check weekly
+                logger.info(f"Pincode {pincode} data is outdated, re-fetching from TPC API.")
+                api_response = self._fetch_pincode_service_from_api(pincode)
+                if api_response and api_response.get('status') == 'success':
+                    service_area.city = api_response.get('city', service_area.city)
+                    service_area.state = api_response.get('state', service_area.state)
+                    service_area.is_serviceable = True
+                    service_area.last_updated = timezone.now()
+                    service_area.save()
+                    return api_response
+                else:
+                    service_area.is_serviceable = False
+                    service_area.last_updated = timezone.now()
+                    service_area.save()
+                    logger.warning(f"Pincode {pincode} not serviceable via API. Local DB updated.")
+                    return {'status': 'error', 'error': 'Pincode not serviceable via API'}
+            
+            return {'status': 'success' if service_area.is_serviceable else 'error',
+                    'city': service_area.city,
+                    'state': service_area.state,
+                    'is_serviceable': service_area.is_serviceable}
+
+        except TPCServiceableArea.DoesNotExist:
+            logger.info(f"Pincode {pincode} not found in local DB, fetching from TPC API.")
+            api_response = self._fetch_pincode_service_from_api(pincode)
+            if api_response and api_response.get('status') == 'success':
+                TPCServiceableArea.objects.create(
+                    pincode=pincode,
+                    city=api_response.get('city', 'Unknown'),
+                    state=api_response.get('state', 'Unknown'),
+                    is_serviceable=True,
+                    last_updated=timezone.now()
+                )
+                return api_response
+            else:
+                TPCServiceableArea.objects.create(
+                    pincode=pincode,
+                    city=api_response.get('city', 'Unknown'),
+                    state=api_response.get('state', 'Unknown'),
+                    is_serviceable=False,
+                    last_updated=timezone.now()
+                )
+                logger.warning(f"Pincode {pincode} not serviceable via API. Added to local DB as not serviceable.")
+                return {'status': 'error', 'error': 'Pincode not serviceable via API'}
+        except Exception as e:
+            logger.error(f"Error checking pincode {pincode}: {e}")
+            return {'status': 'error', 'error': str(e)}
+
+    def _fetch_pincode_service_from_api(self, pincode):
+        """Internal method to hit the TPC API for pincode service checking."""
         endpoint = "PINcodeService.ashx"
         params = {'pincode': pincode}
         return self._make_request('GET', endpoint, params=params)
@@ -360,15 +356,6 @@ class TPCCourierService(CourierService):
         return f"{self.api_endpoint.rstrip('/')}/{endpoint}?id={consignment_id}&client={self.user_id}&PSWD={self.password}"
 
 
-def get_courier_service(courier_type='TPC'):
-    """Factory method to get courier service instance based on courier_type"""
-    try:
-        courier_partner = CourierPartner.objects.get(
-            name=courier_type,
-            is_active=True
-        )
-        return TPCCourierService(courier_partner)
-            
-    except CourierPartner.DoesNotExist:
-        logger.error(f"No active TPC courier partner named 'TPC' found.")
-        return None
+def get_tpc_courier_service():
+    """Returns a TPC courier service instance"""
+    return TPCCourierService()

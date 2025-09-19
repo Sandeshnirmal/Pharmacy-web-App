@@ -1,26 +1,20 @@
 from django.contrib import admin
-from .models import CourierPartner, CourierShipment, CourierServiceArea, CourierRateCard
-
-@admin.register(CourierPartner)
-class CourierPartnerAdmin(admin.ModelAdmin):
-    list_display = ['name', 'is_active', 'created_at']
-    list_filter = ['is_active']
-    search_fields = ['name']
-    readonly_fields = ['created_at', 'updated_at']
+from django.contrib import admin
+from .models import CourierShipment, TPCRecipient, TPCServiceableArea
 
 @admin.register(CourierShipment)
 class CourierShipmentAdmin(admin.ModelAdmin):
     list_display = [
-        'tracking_number', 'order', 'courier_partner', 'status',
+        'tracking_number', 'order', 'status',
         'pickup_scheduled', 'estimated_delivery', 'created_at'
     ]
-    list_filter = ['status', 'courier_partner', 'created_at']
-    search_fields = ['tracking_number', 'order__id', 'courier_order_id']
+    list_filter = ['status', 'created_at']
+    search_fields = ['tracking_number', 'order__id', 'tpc_order_id']
     readonly_fields = ['id', 'created_at', 'updated_at', 'tracking_history']
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('order', 'courier_partner', 'tracking_number', 'courier_order_id', 'status')
+            'fields': ('order', 'tracking_number', 'tpc_order_id', 'status')
         }),
         ('Addresses', {
             'fields': ('pickup_address', 'delivery_address', 'delivery_contact', 'delivery_instructions')
@@ -35,27 +29,22 @@ class CourierShipmentAdmin(admin.ModelAdmin):
             'fields': ('shipping_charges', 'cod_charges', 'total_charges')
         }),
         ('Tracking', {
-            'fields': ('current_location', 'tracking_history', 'courier_response')
+            'fields': ('current_location', 'tracking_history', 'tpc_response')
         }),
         ('Metadata', {
             'fields': ('id', 'created_at', 'updated_at')
         })
     )
 
-@admin.register(CourierServiceArea)
-class CourierServiceAreaAdmin(admin.ModelAdmin):
-    list_display = [
-        'courier_partner', 'city', 'pincode', 'state',
-        'is_cod_available', 'standard_delivery_days'
-    ]
-    list_filter = ['courier_partner', 'state', 'is_cod_available', 'is_express_available']
-    search_fields = ['city', 'pincode', 'state']
+@admin.register(TPCRecipient)
+class TPCRecipientAdmin(admin.ModelAdmin):
+    list_display = ['recipient_name', 'recipient_mobile', 'recipient_email', 'address']
+    search_fields = ['recipient_name', 'recipient_mobile', 'recipient_email', 'address__city']
+    raw_id_fields = ['address']
 
-@admin.register(CourierRateCard)
-class CourierRateCardAdmin(admin.ModelAdmin):
-    list_display = [
-        'courier_partner', 'zone', 'weight_slab_start', 'weight_slab_end',
-        'rate_per_kg', 'minimum_charge'
-    ]
-    list_filter = ['courier_partner', 'zone']
-    search_fields = ['zone']
+@admin.register(TPCServiceableArea)
+class TPCServiceableAreaAdmin(admin.ModelAdmin):
+    list_display = ['pincode', 'city', 'state', 'is_serviceable', 'last_updated']
+    list_filter = ['is_serviceable', 'state']
+    search_fields = ['pincode', 'city', 'state']
+    readonly_fields = ['last_updated']

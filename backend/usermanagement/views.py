@@ -75,8 +75,21 @@ class UserViewSet(viewsets.ModelViewSet):
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny] # Changed to IsAuthenticated
     authentication_classes = [JWTAuthentication]
+
+    def get_queryset(self):
+        """
+        This view should return a list of all the addresses
+        for the currently authenticated user.
+        """
+        return self.queryset.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        """
+        Save the address instance, associating it with the authenticated user.
+        """
+        serializer.save(user=self.request.user)
 
 # --- Custom Authentication Views (Publicly Accessible for Login/Registration) ---
 
@@ -188,6 +201,9 @@ class LoginView(APIView):
                 user.last_login = timezone.now()
                 user.save(update_fields=['last_login'])
 
+                # Use UserSerializer to get the profile_image_url
+                user_data = UserSerializer(user).data
+
                 return Response({
                     'access': access_token,
                     'refresh': str(refresh),
@@ -199,7 +215,7 @@ class LoginView(APIView):
                         'role': user.role,
                         'is_staff': user.is_staff,
                         'phone_number': user.phone_number or '',
-                        'profile_picture_url': user.profile_picture_url or ''
+                        'profile_picture_url': user.profile_picture_url or '' # Use profile_picture_url directly
                     },
                     'message': 'Login successful'
                 }, status=status.HTTP_200_OK)
@@ -236,26 +252,19 @@ class UserProfileView(APIView):
 
     def get(self, request):
         user = request.user # The authenticated user object is available
-        data = {
-            'id': user.id,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'phone_number': getattr(user, 'phone_number', None),
-            'role': getattr(user, 'role', 'customer'),
-            'is_staff': user.is_staff,
-            'is_active': user.is_active,
-            'date_joined': user.date_joined.isoformat() if user.date_joined else None,
-            'last_login': user.last_login.isoformat() if user.last_login else None,
-        }
-        return Response(data, status=status.HTTP_200_OK)
+        # Use UserSerializer to get all relevant user data, including the consolidated profile_image_url
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request):
         user = request.user
-        serializer = UserSerializer(user, data=request.data, partial=True)
+        # UserUpdateSerializer is more appropriate for partial updates of user fields
+        from .serializers import UserUpdateSerializer
+        serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            # Return full user data after update
+            return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

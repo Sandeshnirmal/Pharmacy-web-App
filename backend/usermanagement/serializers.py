@@ -3,6 +3,8 @@ from django.contrib.auth import authenticate
 from .models import User, Address, UserProfile, UserPreferences, UserActivity
 
 class AddressSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True) # Ensure user is not sent in request body
+
     class Meta:
         model = Address
         fields = '__all__'
@@ -40,9 +42,10 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
             'date_of_birth', 'gender', 'role', 'date_joined', 'registration_date',
-            'profile_picture_url', 'is_active', 'is_staff', 'is_superuser',
+            'profile_picture_url', 'is_active', 'is_staff', 'is_superuser', # Use profile_picture_url
             'last_login', 'addresses'
         ]
+        # Removed exclude = ('profile_image',) as the field no longer exists
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -98,9 +101,14 @@ class EnhancedUserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
             'date_of_birth', 'gender', 'role', 'date_joined', 'registration_date',
-            'profile_picture_url', 'is_active', 'last_login', 'addresses',
+            'profile_picture_url', 'is_active', 'last_login', 'addresses', # Use profile_picture_url
             'profile', 'preferences', 'total_orders', 'total_reviews', 'wishlist_count'
         ]
+        # Removed exclude = ('profile_image',) as the field no longer exists
+
+    def get_total_orders(self, obj):
+        # This will be implemented when orders app is enhanced
+        return 0
 
     def get_total_orders(self, obj):
         # This will be implemented when orders app is enhanced
@@ -120,7 +128,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'phone_number', 'date_of_birth',
-            'gender', 'profile_picture_url'
+            'gender', 'profile_picture_url' # Re-added profile_picture_url for updates
         ]
 
     def update(self, instance, validated_data):

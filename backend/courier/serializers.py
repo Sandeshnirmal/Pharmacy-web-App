@@ -1,24 +1,14 @@
 from rest_framework import serializers
-from .models import CourierPartner, CourierShipment, CourierServiceArea, CourierRateCard
-
-class CourierPartnerSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CourierPartner
-        fields = ['id', 'name', 'api_endpoint', 'api_key', 'api_secret', 'is_active', 'service_areas', 'pricing_config']
-        extra_kwargs = {
-            'api_key': {'write_only': True, 'required': False},
-            'api_secret': {'write_only': True, 'required': False},
-        }
+from .models import CourierShipment, TPCRecipient
 
 class CourierShipmentSerializer(serializers.ModelSerializer):
-    courier_partner_name = serializers.CharField(source='courier_partner.name', read_only=True)
     order_number = serializers.CharField(source='order.id', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     
     class Meta:
         model = CourierShipment
         fields = [
-            'id', 'order_number', 'courier_partner_name', 'tracking_number',
+            'id', 'order_number', 'tracking_number', 'tpc_order_id',
             'status', 'status_display', 'current_location', 'estimated_delivery',
             'actual_delivery', 'pickup_scheduled', 'pickup_completed',
             'delivery_address', 'delivery_contact', 'weight', 'dimensions',
@@ -33,28 +23,6 @@ class CourierTrackingSerializer(serializers.Serializer):
     current_location = serializers.CharField()
     estimated_delivery = serializers.DateTimeField()
     tracking_history = serializers.ListField()
-    
-class CourierServiceAreaSerializer(serializers.ModelSerializer):
-    courier_partner_name = serializers.CharField(source='courier_partner.name', read_only=True)
-    
-    class Meta:
-        model = CourierServiceArea
-        fields = [
-            'id', 'courier_partner_name', 'pincode', 'city', 'state',
-            'is_cod_available', 'is_express_available',
-            'standard_delivery_days', 'express_delivery_days'
-        ]
-
-class CourierRateCardSerializer(serializers.ModelSerializer):
-    courier_partner_name = serializers.CharField(source='courier_partner.name', read_only=True)
-    
-    class Meta:
-        model = CourierRateCard
-        fields = [
-            'id', 'courier_partner_name', 'zone', 'weight_slab_start',
-            'weight_slab_end', 'rate_per_kg', 'minimum_charge',
-            'cod_percentage', 'fuel_surcharge_percentage'
-        ]
 
 class PickupScheduleSerializer(serializers.Serializer):
     shipment_id = serializers.UUIDField()

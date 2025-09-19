@@ -1,5 +1,6 @@
 from django.db import models
-from usermanagement.models import User,Address
+from usermanagement.models import User
+from usermanagement.models import Address
 from product.models import Product,Batch
 
 

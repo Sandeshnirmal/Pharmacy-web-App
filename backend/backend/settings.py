@@ -34,6 +34,11 @@ RAZORPAY_KEY_SECRET = 'Owlg61rwtT7V3RQKoYGKhsUC'  # Test secret
 # RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
 # RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
 
+# TPC Courier Configuration
+TPC_API_ENDPOINT = os.environ.get('TPC_API_ENDPOINT', 'https://www.tpcglobe.com') # Placeholder
+TPC_API_KEY = os.environ.get('TPC_API_KEY', 'YOUR_TPC_USER_ID') # Placeholder
+TPC_API_SECRET = os.environ.get('TPC_API_SECRET', 'YOUR_TPC_PASSWORD') # Placeholder
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 

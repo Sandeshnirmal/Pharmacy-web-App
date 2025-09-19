@@ -270,7 +270,7 @@ def create_paid_order_for_prescription(request):
 
         # Extract and validate request data
         items = request.data.get('items', [])
-        delivery_address_data = request.data.get('delivery_address', {})
+        address_id = request.data.get('address_id') # Expect address_id instead of full delivery_address_data
         payment_data = request.data.get('payment_data', {})
         prescription_image_base64 = request.data.get('prescription_image_base64') # Get directly from request
         prescription_status = request.data.get('prescription_status') # Get directly from request
@@ -283,12 +283,33 @@ def create_paid_order_for_prescription(request):
                 'error': 'Items are required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if not delivery_address_data:
-            logger.error("Delivery address is required for create_paid_order_for_prescription.")
+        if not address_id:
+            logger.error("Address ID is required for create_paid_order_for_prescription.")
             return Response({
                 'success': False,
-                'error': 'Delivery address is required'
+                'error': 'Address ID is required'
             }, status=status.HTTP_400_BAD_REQUEST)
+        
+        from usermanagement.models import Address # Import Address model
+        try:
+            selected_address = Address.objects.get(id=address_id, user=request.user)
+        except Address.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Selected address not found or does not belong to the user.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Populate delivery_address_data from the selected_address for the EnhancedOrderFlow
+        delivery_address_data = {
+            "name": f"{request.user.first_name} {request.user.last_name}", # Assuming user's name for delivery contact
+            "phone": request.user.phone_number,
+            "address_line_1": selected_address.address_line1,
+            "address_line_2": selected_address.address_line2,
+            "city": selected_address.city,
+            "state": selected_address.state,
+            "pincode": selected_address.pincode,
+            "country": "India" # Assuming India as default
+        }
 
         if not payment_data:
             logger.error("Payment data is required for create_paid_order_for_prescription.")
@@ -301,7 +322,8 @@ def create_paid_order_for_prescription(request):
         result = EnhancedOrderFlow.create_paid_order_for_prescription_review(
             user=request.user,
             items=items,
-            delivery_address=delivery_address_data,
+            address=selected_address, # Pass the Address object
+            delivery_address=delivery_address_data, # Pass the JSON snapshot
             payment_data=payment_data,
             prescription_image_base64=prescription_image_base64, # Pass base64 image
             prescription_status=prescription_status # Pass prescription status

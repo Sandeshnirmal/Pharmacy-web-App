@@ -2,6 +2,7 @@
 from rest_framework import serializers
 from .models import Order, OrderItem
 from product.serializers import ProductSerializer
+from usermanagement.models import Address # Import Address model
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
@@ -22,12 +23,23 @@ class OrderSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_phone = serializers.CharField(source='user.phone_number', read_only=True)
     address_full = serializers.SerializerMethodField()
-    prescription_id = serializers.CharField(source='prescription.id', read_only=True)
+    prescription_id = serializers.CharField(source='prescription.id', read_only=True) # Assuming 'prescription' is a ForeignKey
     total_items = serializers.SerializerMethodField()
+
+    # Allow setting address by ID
+    address = serializers.PrimaryKeyRelatedField(queryset=Address.objects.all(), allow_null=True, required=False)
 
     class Meta:
         model = Order
-        fields = '__all__'
+        fields = ['id', 'user', 'user_name', 'user_email', 'user_phone', 'address', 'address_full',
+                  'order_date', 'total_amount', 'discount_amount', 'shipping_fee',
+                  'payment_method', 'payment_status', 'order_status', 'is_prescription_order',
+                  'prescription_image_base64', 'prescription_status', 'delivery_method',
+                  'expected_delivery_date', 'notes', 'delivery_address', 'tracking_number',
+                  'created_at', 'updated_at', 'items', 'prescription_id', 'total_items']
+        read_only_fields = ['user', 'order_date', 'total_amount', 'discount_amount', 'shipping_fee',
+                            'payment_status', 'order_status', 'created_at', 'updated_at',
+                            'tracking_number', 'delivery_address'] # delivery_address might be set by system
 
     def get_address_full(self, obj):
         if obj.address:

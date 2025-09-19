@@ -99,7 +99,6 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
 
     # Profile information
     profile_picture_url = models.URLField(blank=True, null=True)
-    profile_image = models.ImageField(upload_to='profiles/', blank=True, null=True)
 
     # System fields
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -128,22 +127,7 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     def get_short_name(self):
         return self.first_name
     
-class Address(models.Model): # <-- Ensure this class definition exists and is not commented out
-    ADDRESS_TYPES = [('Home', 'Home'), ('Work', 'Work'), ('Other', 'Other')]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses') # Ensure 'User' is correctly referenced
-    address_line1 = models.CharField(max_length=255)
-    address_line2 = models.CharField(max_length=255, blank=True, null=True)
-    city = models.CharField(max_length=100)
-    state = models.CharField(max_length=100)
-    pincode = models.CharField(max_length=10)
-    landmark = models.CharField(max_length=100, blank=True, null=True)
-    address_type = models.CharField(max_length=10, choices=ADDRESS_TYPES)
-    is_default = models.BooleanField(default=False)
-
-    def __str__(self):
-        # Make sure user.email is accessible, this is correct if User is AbstractBaseUser
-        return f"{self.user.email}'s {self.address_type} Address"
 
 
 class UserProfile(models.Model):
@@ -207,3 +191,19 @@ class UserActivity(models.Model):
 
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.activity_type}"
+
+
+class Address(models.Model): 
+    ADDRESS_TYPES = [('Home', 'Home'), ('Work', 'Work'), ('Other', 'Other')]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses')
+    address_line1 = models.CharField(max_length=255)
+    address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100)
+    pincode = models.CharField(max_length=10)
+    landmark = models.CharField(max_length=100, blank=True, null=True)
+    address_type = models.CharField(max_length=10, choices=ADDRESS_TYPES)
+    is_default = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.user.email}'s {self.address_type} Address"

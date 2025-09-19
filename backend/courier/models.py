@@ -1,25 +1,9 @@
 from django.db import models
-from django.contrib.auth.models import User
-from orders.models import Order
+from usermanagement.models import User
 import uuid
 
-class CourierPartner(models.Model):
-    """Model for courier service providers"""
-    name = models.CharField(max_length=100, default='TPC') # Default to TPC
-    api_endpoint = models.URLField()
-    api_key = models.CharField(max_length=255)
-    api_secret = models.CharField(max_length=255, blank=True)
-    is_active = models.BooleanField(default=True)
-    service_areas = models.JSONField(default=list)  # List of pincodes/areas served
-    pricing_config = models.JSONField(default=dict)  # Pricing configuration
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    def __str__(self):
-        return f"{self.name}"
-
 class CourierShipment(models.Model):
-    """Model for tracking courier shipments"""
+    """Model for tracking TPC courier shipments"""
     STATUS_CHOICES = [
         ('pending', 'Pending Pickup'),
         ('picked_up', 'Picked Up'),
@@ -32,12 +16,11 @@ class CourierShipment(models.Model):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='courier_shipment')
-    courier_partner = models.ForeignKey(CourierPartner, on_delete=models.CASCADE)
+    order = models.OneToOneField('orders.Order', on_delete=models.CASCADE, related_name='courier_shipment')
     
-    # Shipment Details
+    # Shipment Details (TPC specific)
     tracking_number = models.CharField(max_length=100, unique=True)
-    courier_order_id = models.CharField(max_length=100, blank=True)
+    tpc_order_id = models.CharField(max_length=100, blank=True) # Renamed from courier_order_id
     
     # Status and Tracking
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -66,14 +49,14 @@ class CourierShipment(models.Model):
     total_charges = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     
     # Metadata
-    courier_response = models.JSONField(default=dict)  # Store API responses
+    tpc_response = models.JSONField(default=dict)  # Store API responses (TPC specific)
     tracking_history = models.JSONField(default=list)  # Track status changes
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"Shipment {self.tracking_number} - Order #{self.order.id}"
+        return f"TPC Shipment {self.tracking_number} - Order #{self.order.id}"
     
     def add_tracking_event(self, status, location, timestamp, description=""):
         """Add a tracking event to history"""
@@ -86,33 +69,32 @@ class CourierShipment(models.Model):
         self.tracking_history.append(event)
         self.save()
 
-class CourierServiceArea(models.Model):
-    """Model for courier service coverage areas"""
-    courier_partner = models.ForeignKey(CourierPartner, on_delete=models.CASCADE)
-    pincode = models.CharField(max_length=10)
-    city = models.CharField(max_length=100)
-    state = models.CharField(max_length=100)
-    is_cod_available = models.BooleanField(default=True)
-    is_express_available = models.BooleanField(default=False)
-    standard_delivery_days = models.IntegerField(default=3)
-    express_delivery_days = models.IntegerField(default=1)
+# This is the new model to store TPC recipient-specific details
+class TPCRecipient(models.Model):
+    # Link to the user's address for location details
+    address = models.ForeignKey('usermanagement.Address', on_delete=models.CASCADE, related_name='tpc_recipients')
     
-    class Meta:
-        unique_together = ['courier_partner', 'pincode']
+    # API-specific fields
+    recipient_name = models.CharField(max_length=255, verbose_name="Recipient Name")
+    recipient_company = models.CharField(max_length=255, blank=True, null=True, verbose_name="Recipient Company")
+    recipient_mobile = models.CharField(max_length=20, verbose_name="Recipient Mobile")
+    recipient_email = models.EmailField(verbose_name="Recipient Email")
+    recipient_gstin = models.CharField(max_length=20, blank=True, null=True, verbose_name="Recipient GSTIN")
     
     def __str__(self):
-        return f"{self.courier_partner.name} - {self.city} ({self.pincode})"
+        return f"{self.recipient_name} at {self.address.city}"
 
-class CourierRateCard(models.Model):
-    """Model for courier pricing"""
-    courier_partner = models.ForeignKey(CourierPartner, on_delete=models.CASCADE)
-    zone = models.CharField(max_length=20)  # Local, Metro, Rest of India
-    weight_slab_start = models.DecimalField(max_digits=5, decimal_places=2)  # in kg
-    weight_slab_end = models.DecimalField(max_digits=5, decimal_places=2)  # in kg
-    rate_per_kg = models.DecimalField(max_digits=8, decimal_places=2)
-    minimum_charge = models.DecimalField(max_digits=8, decimal_places=2)
-    cod_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=2.0)
-    fuel_surcharge_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    
+class TPCServiceableArea(models.Model):
+    """Model to store TPC serviceable pincodes and area names."""
+    pincode = models.CharField(max_length=10, unique=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    is_serviceable = models.BooleanField(default=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'TPC Serviceable Area'
+        verbose_name_plural = 'TPC Serviceable Areas'
+
     def __str__(self):
-        return f"{self.courier_partner.name} - {self.zone} ({self.weight_slab_start}-{self.weight_slab_end}kg)"
+        return f"{self.pincode} - {self.city} ({'Serviceable' if self.is_serviceable else 'Not Serviceable'})"
