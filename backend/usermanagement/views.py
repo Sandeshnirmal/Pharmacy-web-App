@@ -75,7 +75,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
-    permission_classes = [AllowAny] # Changed to IsAuthenticated
+    permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):

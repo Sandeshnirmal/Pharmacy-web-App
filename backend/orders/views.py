@@ -5,6 +5,9 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Count, Sum
 from django.utils import timezone
+from rest_framework_simplejwt.authentication import JWTAuthentication # Import JWTAuthentication
+from django.db import transaction # New import
+from product.models import Product # Moved import
 from .models import Order, OrderItem, OrderTracking, OrderStatusHistory
 from .serializers import OrderSerializer, OrderItemSerializer
 import logging
@@ -14,7 +17,8 @@ logger = logging.getLogger(__name__)
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by('-order_date')
     serializer_class = OrderSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
+    authentication_classes = [JWTAuthentication] # Add JWTAuthentication
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -29,8 +33,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(payment_status=payment_status)
         if is_prescription:
             queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
-        if user_id:
+        # Filter by authenticated user
+        if self.request.user.is_authenticated:
+            queryset = queryset.filter(user=self.request.user)
+        elif user_id: # Allow user_id filter only if not authenticated (e.g., for admin if needed, but generally not for regular users)
             queryset = queryset.filter(user_id=user_id)
+        else:
+            # If no user is authenticated and no user_id is provided, return empty queryset
+            # This prevents accidental exposure of all orders if AllowAny was used
+            return queryset.none()
 
         return queryset
 
@@ -223,60 +234,29 @@ def add_tracking_update(request, order_id):
 @permission_classes([IsAuthenticated])
 def create_paid_order_for_prescription(request):
     """
-    Step 1: Create order after successful payment, before prescription verification
-
-    This endpoint creates an order in 'payment_completed' status after successful payment.
-    The order will wait for prescription upload and verification.
-
-    Request Body:
-    {
-        "items": [
-            {"product_id": 1, "quantity": 2},
-            {"product_id": 2, "quantity": 1}
-        ],
-        "delivery_address": {
-            "name": "John Doe",
-            "phone": "+91-9876543210",
-            "address_line_1": "123 Main Street",
-            "address_line_2": "Apartment 4B",
-            "city": "Mumbai",
-            "state": "Maharashtra",
-            "pincode": "400001",
-            "country": "India"
-        },
-        "payment_data": {
-            "method": "RAZORPAY",
-            "payment_id": "pay_xyz123",
-            "amount": 500.00
-        }
-    }
-
-    Response:
-    {
-        "success": true,
-        "order_id": 123,
-        "order_number": "ORD000123",
-        "status": "payment_completed",
-        "total_amount": 500.00,
-        "message": "Order created successfully. Please upload prescription for verification."
-    }
+    Create a paid order, optionally with prescription image, directly.
+    This endpoint handles the complete order creation for paid orders,
+    integrating prescription upload if provided.
     """
-    from .enhanced_order_flow import EnhancedOrderFlow
-    # Removed: from prescriptions.models import Prescription # No longer needed
+    from usermanagement.models import Address # Import Address model
+    from .enhanced_order_flow import EnhancedOrderFlow # For validation utilities
 
     try:
         logger.info(f"create_paid_order_for_prescription Request - Raw Body: {request.body}")
         logger.info(f"create_paid_order_for_prescription Request - Parsed Data: {request.data}")
 
         # Extract and validate request data
-        items = request.data.get('items', [])
-        address_id = request.data.get('address_id') # Expect address_id instead of full delivery_address_data
+        items_data = request.data.get('items', [])
+        address_id = request.data.get('delivery_address', {}).get('id') # Get address ID from nested delivery_address
         payment_data = request.data.get('payment_data', {})
-        prescription_image_base64 = request.data.get('prescription_image_base64') # Get directly from request
-        prescription_status = request.data.get('prescription_status') # Get directly from request
+        payment_method = request.data.get('payment_method', 'RAZORPAY') # Get payment method from request
+        notes = request.data.get('notes', '')
+
+        prescription_image_base64 = request.data.get('prescription_image_base64')
+        prescription_status_from_request = request.data.get('prescription_status')
 
         # Validate required fields
-        if not items:
+        if not items_data:
             logger.error("Items are required for create_paid_order_for_prescription.")
             return Response({
                 'success': False,
@@ -287,10 +267,9 @@ def create_paid_order_for_prescription(request):
             logger.error("Address ID is required for create_paid_order_for_prescription.")
             return Response({
                 'success': False,
-                'error': 'Address ID is required'
+                'error': 'Address ID is required in delivery_address'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        from usermanagement.models import Address # Import Address model
         try:
             selected_address = Address.objects.get(id=address_id, user=request.user)
         except Address.DoesNotExist:
@@ -299,16 +278,17 @@ def create_paid_order_for_prescription(request):
                 'error': 'Selected address not found or does not belong to the user.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Populate delivery_address_data from the selected_address for the EnhancedOrderFlow
-        delivery_address_data = {
-            "name": f"{request.user.first_name} {request.user.last_name}", # Assuming user's name for delivery contact
+        # Populate delivery_address_data from the selected_address for the Order model
+        delivery_address_json = {
+            "id": selected_address.id,
+            "name": f"{request.user.first_name} {request.user.last_name}",
             "phone": request.user.phone_number,
             "address_line_1": selected_address.address_line1,
             "address_line_2": selected_address.address_line2,
             "city": selected_address.city,
             "state": selected_address.state,
             "pincode": selected_address.pincode,
-            "country": "India" # Assuming India as default
+            "country": "India"
         }
 
         if not payment_data:
@@ -318,19 +298,109 @@ def create_paid_order_for_prescription(request):
                 'error': 'Payment data is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create paid order
-        result = EnhancedOrderFlow.create_paid_order_for_prescription_review(
-            user=request.user,
-            items=items,
-            address=selected_address, # Pass the Address object
-            delivery_address=delivery_address_data, # Pass the JSON snapshot
-            payment_data=payment_data,
-            prescription_image_base64=prescription_image_base64, # Pass base64 image
-            prescription_status=prescription_status # Pass prescription status
-        )
+        # Validate order items and calculate total amount
+        validated_items = []
+        total_amount_calculated = 0.0
+        is_prescription_order = False
 
-        if result['success']:
-            order = result['order']
+        for item in items_data:
+            product_id = item.get('product_id')
+            quantity = item.get('quantity', 1)
+            price_at_order = item.get('price') # Price from frontend, for consistency
+
+            if not product_id or not quantity:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid item data: product_id and quantity are required.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                product = Product.objects.get(id=product_id, is_active=True)
+                if product.stock_quantity < quantity:
+                    raise ValueError(f"Insufficient stock for {product.name}")
+                
+                if product.requires_prescription:
+                    is_prescription_order = True
+
+                # Use product's current price if price_at_order is not provided or invalid
+                unit_price = float(price_at_order) if price_at_order is not None else float(product.price)
+                total_amount_calculated += unit_price * quantity
+
+                validated_items.append({
+                    'product': product,
+                    'quantity': int(quantity),
+                    'unit_price': unit_price,
+                })
+            except Product.DoesNotExist:
+                logger.warning(f"Product with ID {product_id} not found or inactive for order creation.")
+                return Response({
+                    'success': False,
+                    'error': f"Product with ID {product_id} not found or inactive."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except ValueError as e:
+                return Response({
+                    'success': False,
+                    'error': str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        if total_amount_calculated <= 0:
+            return Response({
+                'success': False,
+                'error': 'Order total must be greater than 0'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calculate shipping and discount (simplified for now, can use EnhancedOrderFlow methods)
+        shipping_fee = 50.0 if total_amount_calculated < 500 else 0.0
+        discount_amount = total_amount_calculated * 0.1 if total_amount_calculated > 1000 else 0.0
+        final_amount = total_amount_calculated + shipping_fee - discount_amount
+
+        # Determine initial prescription status
+        actual_prescription_status = None
+        if is_prescription_order and prescription_image_base64:
+            actual_prescription_status = prescription_status_from_request if prescription_status_from_request else 'pending_review'
+        elif is_prescription_order and not prescription_image_base64:
+            # If prescription is required but not uploaded, set a specific status or return error
+            return Response({
+                'success': False,
+                'error': 'Prescription required but not uploaded.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        # If not a prescription order, actual_prescription_status remains None, and default will apply
+
+        with transaction.atomic():
+            order = Order.objects.create(
+                user=request.user,
+                address=selected_address, # Link to Address model
+                order_status='payment_completed',
+                payment_status='Paid',
+                payment_method=payment_method.upper(),
+                total_amount=final_amount,
+                discount_amount=discount_amount,
+                shipping_fee=shipping_fee,
+                is_prescription_order=is_prescription_order,
+                prescription_image_base64=prescription_image_base64,
+                prescription_status=actual_prescription_status, # Use the determined status
+                notes=notes,
+                delivery_address=delivery_address_json,
+            )
+
+            for item_data in validated_items:
+                OrderItem.objects.create(
+                    order=order,
+                    product=item_data['product'],
+                    quantity=item_data['quantity'],
+                    unit_price_at_order=item_data['unit_price'],
+                )
+            
+            OrderStatusHistory.objects.create(
+                order=order,
+                old_status='',
+                new_status='payment_completed',
+                changed_by=request.user,
+                reason='Order created after successful payment with optional prescription'
+            )
+            
+            logger.info(f"Paid order created successfully: {order.id} for user {request.user.id}")
+            
             return Response({
                 'success': True,
                 'order_id': order.id,
@@ -338,26 +408,23 @@ def create_paid_order_for_prescription(request):
                 'status': order.order_status,
                 'total_amount': float(order.total_amount),
                 'delivery_address': order.delivery_address,
-                'prescription_id': order.id, # Return order ID as prescription ID for consistency
-                'message': result['message']
+                'is_prescription_order': order.is_prescription_order,
+                'prescription_status': order.prescription_status,
+                'message': 'Order created successfully.'
             }, status=status.HTTP_201_CREATED)
-        else:
-            logger.error(f"EnhancedOrderFlow.create_paid_order_for_prescription_review failed: {result.get('error', 'Unknown error')}")
-            return Response({
-                'success': False,
-                'error': result['error']
-            }, status=status.HTTP_400_BAD_REQUEST)
-
+                
     except ValueError as e:
+        logger.error(f"Validation error during create_paid_order_for_prescription: {str(e)}")
         return Response({
             'success': False,
             'error': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        logger.error(f"Error creating paid order: {str(e)}")
+        logger.exception("An unexpected error occurred during paid order creation.")
         return Response({
             'success': False,
-            'error': 'An error occurred while creating the order'
+            'error': 'An error occurred while creating the order',
+            'detail': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -606,7 +673,7 @@ def create_pending_order(request):
             total_amount=total_amount,
             delivery_address=delivery_address_data, # Store delivery address as JSON
             prescription_image_base64=prescription_image_base64, # Store base64 image directly
-            prescription_status='pending_review' if prescription_image_base64 else None, # Set initial status
+            prescription_status='pending_review', # Always set to 'pending_review' for prescription orders
             notes="Prescription order pending payment/verification",
         )
 
