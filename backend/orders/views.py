@@ -319,7 +319,7 @@ def create_paid_order_for_prescription(request):
                 if product.stock_quantity < quantity:
                     raise ValueError(f"Insufficient stock for {product.name}")
                 
-                if product.requires_prescription:
+                if product.is_prescription_required:
                     is_prescription_order = True
 
                 # Use product's current price if price_at_order is not provided or invalid

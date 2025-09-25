@@ -119,6 +119,7 @@ class PrescriptionMedicine(models.Model):
     extracted_duration = models.CharField(max_length=100, blank=True)
     extracted_quantity = models.CharField(max_length=50, blank=True)
     extracted_instructions = models.TextField(blank=True)
+    extracted_form = models.CharField(max_length=100, blank=True) # New field to store extracted form
 
     # AI mapping
     suggested_medicine = models.ForeignKey(

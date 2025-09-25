@@ -60,22 +60,23 @@ def upload_prescription(request):
 
                 # Create prescription details from OCR results
                 for i, medicine_data in enumerate(ocr_result['medicines']):
-                    input_brand = medicine_data.get('input_brand', '')
+                    input_medicine_name = medicine_data.get('input_medicine_name', '')
                     generic_name = medicine_data.get('generic_name', '')
                     composition = medicine_data.get('composition', '')
                     form = medicine_data.get('form', '')
+                    strength = medicine_data.get('strength', '')
+                    frequency = medicine_data.get('frequency', '')
                     local_equivalent = medicine_data.get('local_equivalent')
                     match_confidence = medicine_data.get('match_confidence', 0.0)
 
                     detail = PrescriptionDetail.objects.create(
                         prescription=prescription,
                         line_number=i + 1,
-                        recognized_text_raw=f"{input_brand} ({composition})",
-                        extracted_medicine_name=input_brand,
-                        extracted_dosage=medicine_data.get('strength', ''),
-                        extracted_frequency=medicine_data.get('frequency', ''),
-                        extracted_duration=medicine_data.get('duration', ''),
-                        extracted_instructions=medicine_data.get('instructions', ''),
+                        recognized_text_raw=f"{input_medicine_name} ({composition})",
+                        extracted_medicine_name=input_medicine_name,
+                        extracted_dosage=strength,
+                        extracted_frequency=frequency,
+                        extracted_form=form, # Ensure form is saved
                         ai_confidence_score=match_confidence,
                         mapping_status='Mapped' if local_equivalent else 'Pending',
                         is_valid_for_order=local_equivalent is not None
@@ -85,6 +86,7 @@ def upload_prescription(request):
                     if local_equivalent:
                         from product.models import Product
                         try:
+                            # Use the product_name and form from local_equivalent for lookup
                             product = Product.objects.get(name=local_equivalent['product_name'], form=local_equivalent['form'])
                             detail.suggested_products.set([product])
 
@@ -92,12 +94,20 @@ def upload_prescription(request):
                                 detail.mapped_product = product
                                 detail.verified_medicine_name = product.name
                                 detail.verified_dosage = product.strength
+                                detail.verified_form = product.form # Ensure verified form is saved
                                 detail.save()
                         except Product.DoesNotExist:
-                            logger.warning(f"Product not found for local equivalent: {local_equivalent.get('product_name')}")
+                            logger.warning(f"Product not found for local equivalent: {local_equivalent.get('product_name')} (Form: {local_equivalent.get('form')})")
                             detail.mapping_status = 'No_Product_Found'
                             detail.is_valid_for_order = False
                             detail.save()
+                    else:
+                        # If no local equivalent, still save the extracted info
+                        detail.verified_medicine_name = input_medicine_name
+                        detail.verified_dosage = strength
+                        detail.verified_form = form
+                        detail.save()
+
 
                 return Response({
                     'success': True,
@@ -120,14 +130,16 @@ def upload_prescription(request):
 
         except Exception as e:
             # OCR service failed completely
+            logger.error(f"OCR service failed completely for user {request.user.id}: {str(e)}", exc_info=True)
             return Response({
                 'success': False,
-                'prescription_id': prescription.id,
+                'prescription_id': prescription.id if 'prescription' in locals() else None,
                 'error': f'Processing failed: {str(e)}',
                 'message': 'Prescription uploaded but processing failed. Please try again with a clearer image.'
             }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
             
     except Exception as e:
+        logger.error(f"Failed to upload prescription for user {request.user.id}: {str(e)}", exc_info=True)
         return Response({
             'error': f'Failed to upload prescription: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

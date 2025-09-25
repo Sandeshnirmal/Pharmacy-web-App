@@ -121,7 +121,9 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                 prescription.prescription_medicines.all().delete()
 
                 # Create PrescriptionMedicine objects from OCR results
+                print(f"Attempting to create PrescriptionMedicine objects for {len(ocr_result['medicines'])} medicines.")
                 for i, medicine_data in enumerate(ocr_result['medicines']):
+                    print(f"Processing medicine data: {medicine_data}")
                     extracted_name = medicine_data.get('input_medicine_name', '')
                     extracted_dosage = medicine_data.get('strength', '')
                     extracted_frequency = medicine_data.get('frequency', '')
@@ -129,18 +131,50 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                     match_confidence = medicine_data.get('match_confidence', 0.0)
                     local_equivalent = medicine_data.get('local_equivalent')
 
-                    prescription_medicine = PrescriptionMedicine.objects.create(
-                        prescription=prescription,
-                        line_number=i + 1,
-                        extracted_medicine_name=extracted_name,
-                        extracted_dosage=extracted_dosage,
-                        extracted_frequency=extracted_frequency,
-                        extracted_quantity="1", # Default to 1, can be improved with more advanced OCR
-                        extracted_instructions="", # Can be improved with more advanced OCR
-                        ai_confidence_score=match_confidence,
-                        verification_status='pending',
-                        mapping_status='Pending'
-                    )
+                    try:
+                        prescription_medicine = PrescriptionMedicine.objects.create(
+                            prescription=prescription,
+                            line_number=i + 1,
+                            extracted_medicine_name=extracted_name,
+                            extracted_dosage=extracted_dosage,
+                            extracted_frequency=extracted_frequency,
+                            extracted_form=extracted_form, # Added extracted_form
+                            extracted_quantity="1", # Default to 1, can be improved with more advanced OCR
+                            extracted_instructions="", # Can be improved with more advanced OCR
+                            ai_confidence_score=match_confidence,
+                            verification_status='pending',
+                            mapping_status='Pending'
+                        )
+                        print(f"Created PrescriptionMedicine: {prescription_medicine.id} - {extracted_name}")
+
+                        if local_equivalent:
+                            try:
+                                product = Product.objects.get(name=local_equivalent['product_name'])
+                                prescription_medicine.suggested_medicine = product
+                                prescription_medicine.verified_medicine = product
+                                prescription_medicine.mapped_product = product
+                                prescription_medicine.verified_medicine_name = product.name
+                                prescription_medicine.unit_price = product.price
+                                prescription_medicine.total_price = product.price * prescription_medicine.quantity_prescribed
+                                prescription_medicine.is_valid_for_order = True
+                                prescription_medicine.mapping_status = 'Mapped'
+                                print(f"  - Mapped to product: {product.name}")
+                            except Product.DoesNotExist:
+                                prescription_medicine.mapping_status = 'Unmapped'
+                                prescription_medicine.is_valid_for_order = False
+                                print(f"  - Product not found for local equivalent: {local_equivalent['product_name']}")
+                        else:
+                            prescription_medicine.mapping_status = 'Unmapped'
+                            prescription_medicine.is_valid_for_order = False
+                            print(f"  - No local equivalent found for {extracted_name}")
+                        
+                        prescription_medicine.save()
+                        print(f"Saved PrescriptionMedicine: {prescription_medicine.id}")
+
+                    except Exception as create_e:
+                        print(f"Error creating PrescriptionMedicine for {extracted_name}: {create_e}")
+                        import traceback
+                        traceback.print_exc()
 
                     if local_equivalent:
                         try:
@@ -204,6 +238,9 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             print(f"Error during AI processing simulation: {e}")
+            # Log the full traceback for better debugging
+            import traceback
+            traceback.print_exc()
             prescription.status = 'ai_failed'
             prescription.ai_processed = False
             prescription.rejection_reason = f"Internal AI processing error: {str(e)}"
@@ -608,18 +645,36 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                 ocr_service = OCRService()
 
                 # Process prescription with composition-based matching
-                result = ocr_service.extract_composition_based_medicines(full_path)
+                result = ocr_service.process_prescription_image(full_path)
+                print(f"OCR Service Result in mobile_composition_prescription_upload: {result}")
 
                 if result['success']:
                     # Prepare response for frontend
+                    # The 'medicines' key from ocr_service.process_prescription_image contains the analyzed medicines
+                    analyzed_medicines = result.get('medicines', [])
+                    print(f"Analyzed Medicines for response: {analyzed_medicines}")
+
+                    # Extract composition matches for response
+                    composition_matches_for_response = []
+                    for med in analyzed_medicines:
+                        if med.get('local_equivalent'):
+                            composition_matches_for_response.append({
+                                'input_medicine_name': med.get('input_medicine_name'),
+                                'generic_name': med.get('generic_name'),
+                                'composition': med.get('composition'),
+                                'form': med.get('form'),
+                                'local_equivalent': med.get('local_equivalent'),
+                                'match_confidence': med.get('match_confidence')
+                            })
+
                     response_data = {
                         'success': True,
                         'message': 'Prescription processed successfully',
                         'ocr_confidence': result.get('ocr_confidence', 0.8),
-                        'extracted_text': result.get('extracted_text', ''),
+                        'extracted_text': result.get('raw_text', ''), # Corrected key
                         'total_medicines_extracted': result.get('total_medicines_found', 0),
-                        'extracted_medicines': result.get('extracted_medicines', []),
-                        'composition_matches': result.get('composition_matches', []),
+                        'extracted_medicines': analyzed_medicines, # Corrected key
+                        'composition_matches': composition_matches_for_response, # Derived from analyzed_medicines
                         'workflow_info': {
                             'requires_manual_selection': True,
                             'requires_admin_approval': True,
@@ -636,18 +691,15 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                     }
 
                     # Add match statistics
-                    total_matches = sum(len(match['composition_matches']) for match in result.get('composition_matches', []))
+                    total_matches = len(composition_matches_for_response)
                     response_data['match_statistics'] = {
                         'total_composition_matches': total_matches,
-                        'exact_matches': sum(1 for match in result.get('composition_matches', [])
-                                           for comp_match in match['composition_matches']
-                                           if comp_match.get('match_type') == 'exact_match'),
-                        'high_similarity_matches': sum(1 for match in result.get('composition_matches', [])
-                                                     for comp_match in match['composition_matches']
-                                                     if comp_match.get('match_type') == 'high_similarity'),
-                        'average_match_score': sum(comp_match.get('match_score', 0)
-                                                 for match in result.get('composition_matches', [])
-                                                 for comp_match in match['composition_matches']) / max(total_matches, 1)
+                        'exact_matches': sum(1 for match in composition_matches_for_response
+                                           if match.get('local_equivalent', {}).get('confidence', 0) >= 0.95), # Assuming high confidence for exact
+                        'high_similarity_matches': sum(1 for match in composition_matches_for_response
+                                                     if match.get('local_equivalent', {}).get('confidence', 0) >= 0.8 and match.get('local_equivalent', {}).get('confidence', 0) < 0.95),
+                        'average_match_score': sum(match.get('match_confidence', 0)
+                                                 for match in composition_matches_for_response) / max(total_matches, 1)
                     }
 
                     return Response(response_data, status=status.HTTP_200_OK)

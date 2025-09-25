@@ -328,7 +328,7 @@ class PrescriptionOCREngine:
         for comp_name in compositions:
             # Search in product compositions
             products = products.filter(
-                Q(compositions__composition__name__icontains=comp_name) |
+                Q(compositions__name__icontains=comp_name) | # Corrected lookup
                 Q(generic_name__name__icontains=comp_name) |
                 Q(name__icontains=comp_name)
             )
@@ -406,11 +406,11 @@ def prescription_ocr_analysis(request):
                     'match_type': match['match_type'],
                     'compositions': [
                         {
-                            'name': comp.composition.name,
-                            'strength': comp.strength,
-                            'unit': comp.unit
-                        } for comp in product.compositions.all()
-                    ] if hasattr(product, 'compositions') else []
+                            'name': pc.composition.name,
+                            'strength': pc.strength,
+                            'unit': pc.unit
+                        } for pc in product.product_compositions.all()
+                    ] if hasattr(product, 'product_compositions') else []
                 })
 
             formatted_matches.append({
@@ -484,11 +484,11 @@ def intelligent_medicine_search(request):
                     'match_type': match['match_type'],
                     'compositions': [
                         {
-                            'name': comp.composition.name,
-                            'strength': comp.strength,
-                            'unit': comp.unit
-                        } for comp in product.compositions.all()
-                    ] if hasattr(product, 'compositions') else []
+                            'name': pc.composition.name,
+                            'strength': pc.strength,
+                            'unit': pc.unit
+                        } for pc in product.product_compositions.all()
+                    ] if hasattr(product, 'product_compositions') else []
                 })
             
             results.append({
@@ -540,7 +540,7 @@ def search_by_composition(request):
             
             # Filter products that have this composition
             matching_products = matching_products.filter(
-                compositions__composition__name__icontains=comp_name
+                compositions__name__icontains=comp_name # Corrected lookup
             )
             
             if comp_strength:
@@ -565,11 +565,11 @@ def search_by_composition(request):
                 'image_url': product.image_url,
                 'compositions': [
                     {
-                        'name': comp.composition.name,
-                        'strength': comp.strength,
-                        'unit': comp.unit
-                    } for comp in product.compositions.all()
-                ] if hasattr(product, 'compositions') else []
+                        'name': pc.composition.name,
+                        'strength': pc.strength,
+                        'unit': pc.unit
+                    } for pc in product.product_compositions.all()
+                ] if hasattr(product, 'product_compositions') else []
             })
         
         return Response({

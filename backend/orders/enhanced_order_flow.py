@@ -8,7 +8,7 @@ from rest_framework import status
 from .models import Order, OrderItem, OrderStatusHistory
 from prescriptions.models import Prescription
 from product.models import Product
-from courier.services import get_courier_service, TPCCourierService # Import TPCCourierService
+from courier.services import get_tpc_courier_service, TPCCourierService # Import TPCCourierService
 from courier.serializers import TPCPickupRequestSerializer, TPCCODBookingSerializer # Import TPC serializers
 from payment.models import Payment
 import logging
@@ -122,6 +122,9 @@ class EnhancedOrderFlow:
                 discount_amount = total_amount * 0.1 if total_amount > 1000 else 0.0
                 final_amount = total_amount + shipping_fee - discount_amount
                 
+                # Determine if the order requires a prescription based on its products
+                requires_prescription_for_order = any(item['product'].is_prescription_required for item in validated_items)
+
                 # Create order with payment_completed status
                 order = Order.objects.create(
                     user=user,
@@ -131,7 +134,7 @@ class EnhancedOrderFlow:
                     total_amount=final_amount,
                     discount_amount=discount_amount,
                     shipping_fee=shipping_fee,
-                    is_prescription_order=True,
+                    is_prescription_order=requires_prescription_for_order,
                     notes=f'Paid order awaiting prescription verification. Payment ID: {payment_data.get("payment_id", "N/A")}',
                     delivery_address=validated_address
                 )

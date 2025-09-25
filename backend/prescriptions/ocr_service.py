@@ -176,9 +176,15 @@ class OCRService:
 
             response = self.model.generate_content([prompt, image])
             extracted_text = response.text.strip()
-
+            
+            # Log the raw AI response for debugging
+            print(f"Gemini AI Raw Response: {extracted_text}")
+            
             # Parse the JSON response
             medicines = self._parse_json_response(extracted_text)
+            
+            # Log the parsed medicines for debugging
+            print(f"Parsed Medicines: {medicines}")
 
             return {
                 'success': True,
@@ -188,6 +194,7 @@ class OCRService:
             }
 
         except Exception as e:
+            print(f"Error during OCR extraction: {e}")
             return {
                 'success': False,
                 'error': str(e),
@@ -201,42 +208,34 @@ class OCRService:
         Parse JSON response from Gemini AI into medicine objects
         with a robust fallback for non-JSON text.
         """
+        if not text:
+            return []
+
+        # Clean the response text from markdown code blocks
+        text = text.strip()
+        if text.startswith('```json'):
+            text = text.removeprefix('```json')
+        if text.endswith('```'):
+            text = text.removesuffix('```')
+        text = text.strip()
+
         try:
-            if not text:
-                return []
-
-            # Clean the response text from markdown
-            text = text.strip()
-            if text.startswith('```json'):
-                text = text.removeprefix('```json')
-            if text.endswith('```'):
-                text = text.removesuffix('```')
-            text = text.strip()
-
-            # Attempt to parse as JSON
             data = json.loads(text)
             medicines = data.get('medicines', [])
 
-            # Normalize the medicine data
             normalized_medicines = []
             for medicine in medicines:
                 normalized = {
-                    'medicine_name': medicine.get('medicine_name', '').strip(),
-                    'strength': medicine.get('strength', '').strip(),
-                    'form': medicine.get('form', 'tablet').strip().lower(),
-                    'frequency': medicine.get('frequency', '').strip(),
-                    # 'duration': medicine.get('duration', '').strip(), # Removed as per new prompt
-                    # 'instructions': medicine.get('instructions', '').strip(), # Removed as per new prompt
-                    # 'generic_mentioned': medicine.get('generic_mentioned', '').strip() # Removed as per new prompt
+                    'medicine_name': (medicine.get('medicine_name') or '').strip(),
+                    'strength': (medicine.get('strength') or '').strip(),
+                    'form': (medicine.get('form') or '').strip().lower(),
+                    'frequency': (medicine.get('frequency') or '').strip(),
                 }
-
                 if normalized['medicine_name']:
                     normalized_medicines.append(normalized)
-
             return normalized_medicines
-
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}. Falling back to text-based parsing.")
+            print(f"JSON decode error: {e}. Attempting text-based parsing as fallback.")
             return self._find_medicines_in_text(text)
         except Exception as e:
             print(f"Error parsing JSON response: {e}. Returning empty list.")
@@ -244,41 +243,72 @@ class OCRService:
 
     def _find_medicines_in_text(self, text: str) -> List[Dict[str, Any]]:
         """
-        A robust fallback parser for non-JSON responses.
-        Searches for medicine names and other medicine-related keywords using more general regex.
+        A more robust fallback parser for non-JSON responses.
+        Uses a combination of keyword matching and regex to identify medicines.
         """
         medicines = []
-        full_text = text.lower()
-
-        # General patterns for medicine name, strength, form, frequency
-        # This is a simplified approach; a more advanced NLP library would be better for complex cases.
-        medicine_name_pattern = r'\b(?:paracetamol|ibuprofen|amoxicillin|azithromycin|omeprazole|metformin|cetirizine|amlodipine|aspirin)\b'
-        strength_pattern = r'(\d+(?:\.\d+)?)\s*(mg|ml|g|mcg|iu|units?)'
-        form_pattern = r'\b(tablet|capsule|syrup|injection|cream|ointment|drops|inhaler|patch)\b'
-        frequency_pattern = r'\b(once daily|twice daily|thrice daily|four times daily|bid|tid|qid|od|bd|tds)\b'
-
-        # Find all potential medicine mentions
-        for match in re.finditer(medicine_name_pattern, full_text):
-            medicine_name = match.group(0)
-            
-            # Search for strength, form, frequency around the medicine name
-            # This is a very basic proximity search; could be improved with windowing
-            context_start = max(0, match.start() - 50)
-            context_end = min(len(full_text), match.end() + 50)
-            context = full_text[context_start:context_end]
-
-            strength_match = re.search(strength_pattern, context)
-            form_match = re.search(form_pattern, context)
-            frequency_match = re.search(frequency_pattern, context)
-
-            medicines.append({
-                'medicine_name': medicine_name,
-                'strength': strength_match.group(0) if strength_match else '',
-                'form': form_match.group(0) if form_match else '',
-                'frequency': frequency_match.group(0) if frequency_match else ''
-            })
+        lines = text.lower().split('\n')
         
-        return medicines
+        # Compile regex patterns for common medicine components
+        strength_pattern = re.compile(r'(\d+(?:\.\d+)?)\s*(mg|ml|g|mcg|iu|units?)\b')
+        form_pattern = re.compile(r'\b(tablet|capsule|syrup|injection|cream|ointment|drops|inhaler|patch)\b')
+        frequency_pattern = re.compile(r'\b(once daily|twice daily|thrice daily|four times daily|bid|tid|qid|od|bd|tds|daily)\b')
+        
+        # Combine all known brand and generic names for a comprehensive search
+        all_known_medicine_names = set(self.brand_to_generic_mapping.keys())
+        for generic_name_obj in GenericName.objects.all():
+            all_known_medicine_names.add(generic_name_obj.name.lower())
+        for product_obj in Product.objects.all():
+            all_known_medicine_names.add(product_obj.name.lower())
+
+        # Sort by length to match longer names first
+        sorted_medicine_names = sorted(list(all_known_medicine_names), key=len, reverse=True)
+
+        for line in lines:
+            if not line.strip():
+                continue
+
+            found_medicine_name = None
+            for med_name in sorted_medicine_names:
+                if med_name in line:
+                    found_medicine_name = med_name
+                    break
+            
+            if found_medicine_name:
+                strength = ''
+                form = ''
+                frequency = ''
+
+                # Search for strength, form, frequency in the same line
+                strength_match = strength_pattern.search(line)
+                if strength_match:
+                    strength = strength_match.group(0)
+                
+                form_match = form_pattern.search(line)
+                if form_match:
+                    form = form_match.group(0)
+                
+                frequency_match = frequency_pattern.search(line)
+                if frequency_match:
+                    frequency = frequency_match.group(0)
+
+                medicines.append({
+                    'medicine_name': found_medicine_name,
+                    'strength': strength,
+                    'form': form,
+                    'frequency': frequency
+                })
+        
+        # Remove duplicates based on medicine_name, strength, form, frequency
+        unique_medicines = []
+        seen = set()
+        for med in medicines:
+            med_tuple = tuple(med.items())
+            if med_tuple not in seen:
+                unique_medicines.append(med)
+                seen.add(med_tuple)
+
+        return unique_medicines
 
     def _calculate_confidence(self, medicines: List[Dict]) -> float:
         """
@@ -294,10 +324,12 @@ class OCRService:
                 score += 0.2
             if medicine.get('frequency'):
                 score += 0.2
-            # Removed duration and instructions from confidence calculation as per new prompt
+            if medicine.get('form'): # Added form to confidence calculation
+                score += 0.1
             total_score += score
         
-        return min(total_score / len(medicines), 1.0)
+        # Max score per medicine is 0.7 (name + strength + frequency + form)
+        return min(total_score / (len(medicines) * 0.7), 1.0) if medicines else 0.0
 
     def match_medicines_by_composition(self, extracted_medicines: List[Dict]) -> List[Dict[str, Any]]:
         """
@@ -456,9 +488,23 @@ class OCRService:
         normalized_composition = self._normalize_composition(composition)
 
         # Search in local database by composition
+        # Filter products that have at least one composition matching a part of the normalized_composition
+        # This is a more robust way to search for products by composition
+        
+        # First, get all active compositions that are part of the normalized_composition
+        composition_names_in_query = [comp.strip() for comp in normalized_composition.replace('+', ' ').split()]
+        
+        # Filter for products that have any of these compositions
+        # Using Q objects to build a dynamic OR query for composition names
+        composition_filters = Q()
+        for comp_name in composition_names_in_query:
+            composition_filters |= Q(compositions__name__icontains=comp_name)
+
         matching_products = Product.objects.filter(
-            stock_quantity__gt=0  # Only in-stock items
-        )
+            composition_filters,
+            stock_quantity__gt=0,  # Only in-stock items
+            is_active=True
+        ).distinct() # Use distinct to avoid duplicate products if they have multiple matching compositions
 
         best_match = None
         best_score = 0.0
@@ -537,18 +583,23 @@ class OCRService:
         """
         Build composition string from product data
         """
-        # Try to get composition from product fields
-        if hasattr(product, 'composition') and product.composition:
-            return product.composition
-
-        # Build from generic name and strength
+        # Build composition string from related ProductComposition objects
+        compositions_list = []
+        for pc in product.product_compositions.all().order_by('-is_primary', 'composition__name'):
+            comp_str = f"{pc.composition.name.title()} {pc.strength}{pc.unit}"
+            compositions_list.append(comp_str)
+        
+        if compositions_list:
+            return ' + '.join(compositions_list)
+        
+        # Fallback to generic name and strength if no detailed compositions are found
         generic_name = product.generic_name.name if product.generic_name else product.name
         strength = product.strength or ''
 
         if strength:
-            return f"{generic_name} {strength}"
+            return f"{generic_name.title()} {strength}"
         else:
-            return generic_name
+            return generic_name.title()
 
     def _calculate_composition_similarity(self, comp1: str, comp2: str) -> float:
         """

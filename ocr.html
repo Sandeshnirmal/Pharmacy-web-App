@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prescription OCR Analysis Test</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        input[type="file"] { margin-bottom: 10px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background-color: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .error { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Prescription OCR Analysis Test</h1>
+        <p>Upload a prescription image to analyze it with the OCR service.</p>
+
+        <input type="file" id="imageUpload" accept="image/*">
+        <button id="analyzeButton">Analyze Prescription</button>
+
+        <h2>Response:</h2>
+        <pre id="responseOutput"></pre>
+    </div>
+
+    <script>
+        document.getElementById('analyzeButton').addEventListener('click', async () => {
+            const imageInput = document.getElementById('imageUpload');
+            const responseOutput = document.getElementById('responseOutput');
+            responseOutput.textContent = 'Processing...';
+            responseOutput.classList.remove('error');
+
+            if (!imageInput.files || imageInput.files.length === 0) {
+                responseOutput.textContent = 'Please select an image file.';
+                responseOutput.classList.add('error');
+                return;
+            }
+
+            const file = imageInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = async (event) => {
+                const base64Image = event.target.result.split(',')[1]; // Get base64 part
+                
+                try {
+                    const response = await fetch('http://localhost:8000/api/prescriptions/mobile/upload/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            // Add CSRF token if needed for Django (not strictly required for AllowAny, but good practice)
+                            // 'X-CSRFToken': getCookie('csrftoken') 
+                        },
+                        body: JSON.stringify({ image: base64Image })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        responseOutput.textContent = JSON.stringify(data, null, 2);
+                    } else {
+                        responseOutput.textContent = `Error: ${response.status} - ${JSON.stringify(data, null, 2)}`;
+                        responseOutput.classList.add('error');
+                    }
+                } catch (error) {
+                    responseOutput.textContent = `Network error: ${error.message}`;
+                    responseOutput.classList.add('error');
+                }
+            };
+
+            reader.onerror = (error) => {
+                responseOutput.textContent = `File reading error: ${error}`;
+                responseOutput.classList.add('error');
+            };
+
+            reader.readAsDataURL(file);
+        });
+
+        // Function to get CSRF token (if needed)
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.startsWith(name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</body>
+</html>
