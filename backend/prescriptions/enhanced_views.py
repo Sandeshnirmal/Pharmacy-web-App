@@ -54,7 +54,9 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Temporarily remove filtering to debug 404 issue."""
         # For debugging, return all prescriptions without filtering
-        return Prescription.objects.all().order_by('-upload_date')
+        queryset = Prescription.objects.all().order_by('-upload_date')
+        print(f"EnhancedPrescriptionViewSet.get_queryset returning {queryset.count()} prescriptions.")
+        return queryset
     
     def perform_create(self, serializer):
         """Create prescription with workflow logging"""
@@ -175,26 +177,6 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                         print(f"Error creating PrescriptionMedicine for {extracted_name}: {create_e}")
                         import traceback
                         traceback.print_exc()
-
-                    if local_equivalent:
-                        try:
-                            product = Product.objects.get(name=local_equivalent['product_name'])
-                            prescription_medicine.suggested_medicine = product
-                            prescription_medicine.verified_medicine = product
-                            prescription_medicine.mapped_product = product
-                            prescription_medicine.verified_medicine_name = product.name
-                            prescription_medicine.unit_price = product.price
-                            prescription_medicine.total_price = product.price * prescription_medicine.quantity_prescribed
-                            prescription_medicine.is_valid_for_order = True
-                            prescription_medicine.mapping_status = 'Mapped'
-                        except Product.DoesNotExist:
-                            prescription_medicine.mapping_status = 'Unmapped'
-                            prescription_medicine.is_valid_for_order = False
-                    else:
-                        prescription_medicine.mapping_status = 'Unmapped'
-                        prescription_medicine.is_valid_for_order = False
-                    
-                    prescription_medicine.save()
 
                 # Update status to pending verification
                 prescription.status = 'pending_verification'
@@ -448,21 +430,22 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
         queryset = PrescriptionMedicine.objects.all()
         print(f"PrescriptionMedicineViewSet.get_queryset called. Initial queryset count: {queryset.count()}")
 
-        # Temporarily disable filtering for debugging remapping 404
-        # if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
-        #     queryset = queryset.filter(prescription__user=user)
-        #     print(f"  - After customer filter: {queryset.count()}")
+        # Re-enable customer filtering
+        if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
+            queryset = queryset.filter(prescription__user=user)
+            print(f"  - After customer filter: {queryset.count()}")
 
-        # prescription_id = self.request.query_params.get('prescription')
-        # if prescription_id:
-        #     queryset = queryset.filter(prescription_id=prescription_id)
-        #     print(f"  - After prescription_id filter ({prescription_id}): {queryset.count()}")
+        prescription_id = self.request.query_params.get('prescription')
+        if prescription_id:
+            queryset = queryset.filter(prescription_id=prescription_id)
+            print(f"  - After prescription_id filter ({prescription_id}): {queryset.count()}")
 
-        # verification_status = self.request.query_params.get('verification_status')
-        # if verification_status:
-        #     queryset = queryset.filter(verification_status=verification_status)
-        #     print(f"  - After verification_status filter ({verification_status}): {queryset.count()}")
-
+        verification_status = self.request.query_params.get('verification_status')
+        if verification_status:
+            queryset = queryset.filter(verification_status=verification_status)
+            print(f"  - After verification_status filter ({verification_status}): {queryset.count()}")
+        
+        print(f"PrescriptionMedicineViewSet.get_queryset returning {queryset.count()} medicines.")
         return queryset.order_by('prescription__upload_date', 'line_number')
 
     @action(detail=True, methods=['post'], permission_classes=[IsVerifierOrAbove])

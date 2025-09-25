@@ -846,9 +846,11 @@ def get_user_prescriptions_mobile(request):
 
         prescriptions = Prescription.objects.filter(user=request.user).order_by('-upload_date')
         serializer = PrescriptionSerializer(prescriptions, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        serialized_data = serializer.data
+        logger.info(f"Raw serialized data for get_user_prescriptions_mobile: {serialized_data}")
+        return Response(serialized_data, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Error fetching user prescriptions: {e}")
+        logger.error(f"Error fetching user prescriptions: {e}", exc_info=True)
         return Response({
             'success': False,
             'error': f'Failed to retrieve user prescriptions: {str(e)}'
