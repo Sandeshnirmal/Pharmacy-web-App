@@ -118,6 +118,10 @@ class CartService:
                     delivery_address=delivery_address
                 )
                 
+                # Create invoice for the new order
+                from .invoice_service import InvoiceService
+                InvoiceService.create_invoice_for_order(order)
+                
                 # Create order items
                 for item_data in validated_items:
                     OrderItem.objects.create(

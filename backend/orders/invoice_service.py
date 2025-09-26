@@ -5,6 +5,12 @@ from decimal import Decimal
 import uuid
 from .models import Order
 from django.contrib.auth import get_user_model
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+import io
 
 User = get_user_model()
 
@@ -238,7 +244,92 @@ Terms and Conditions:
     
     @staticmethod
     def generate_invoice_pdf(invoice: Invoice) -> bytes:
-        """Generate PDF invoice (placeholder for future implementation)"""
-        # This would integrate with a PDF generation library like ReportLab
-        # For now, return placeholder
-        return b"PDF invoice content would be generated here"
+        """Generate PDF invoice"""
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        styles = getSampleStyleSheet()
+        
+        story = []
+
+        # Header
+        story.append(Paragraph("<b>INVOICE</b>", styles['h1']))
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Invoice Details
+        story.append(Paragraph(f"<b>Invoice Number:</b> {invoice.invoice_number}", styles['Normal']))
+        story.append(Paragraph(f"<b>Invoice Date:</b> {invoice.invoice_date.strftime('%Y-%m-%d')}", styles['Normal']))
+        story.append(Paragraph(f"<b>Due Date:</b> {invoice.due_date.strftime('%Y-%m-%d')}", styles['Normal']))
+        story.append(Paragraph(f"<b>Status:</b> {invoice.status.capitalize()}", styles['Normal']))
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Customer Details
+        story.append(Paragraph("<b>Bill To:</b>", styles['h3']))
+        story.append(Paragraph(f"<b>Name:</b> {invoice.order.user.get_full_name() or invoice.order.user.username}", styles['Normal']))
+        story.append(Paragraph(f"<b>Email:</b> {invoice.order.user.email}", styles['Normal']))
+        if invoice.order.delivery_address:
+            story.append(Paragraph(f"<b>Address:</b> {invoice.order.delivery_address.get('address_line1', '')}, {invoice.order.delivery_address.get('city', '')}, {invoice.order.delivery_address.get('state', '')} - {invoice.order.delivery_address.get('pincode', '')}", styles['Normal']))
+            story.append(Paragraph(f"<b>Phone:</b> {invoice.order.delivery_address.get('phone', '')}", styles['Normal']))
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Items Table
+        data = [['Product', 'Description', 'Quantity', 'Unit Price', 'Total Price', 'Tax Rate', 'Tax Amount']]
+        for item in invoice.items.all():
+            data.append([
+                item.product_name,
+                item.product_description,
+                str(item.quantity),
+                f"₹{item.unit_price:.2f}",
+                f"₹{item.total_price:.2f}",
+                f"{item.tax_rate:.2f}%",
+                f"₹{item.tax_amount:.2f}"
+            ])
+        
+        table_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ])
+        
+        col_widths = [1.5*inch, 2*inch, 0.7*inch, 1*inch, 1*inch, 0.8*inch, 1*inch]
+        item_table = Table(data, colWidths=col_widths)
+        item_table.setStyle(table_style)
+        story.append(item_table)
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Financial Summary
+        story.append(Paragraph(f"<b>Subtotal:</b> ₹{invoice.subtotal:.2f}", styles['Normal']))
+        story.append(Paragraph(f"<b>Tax Amount:</b> ₹{invoice.tax_amount:.2f}", styles['Normal']))
+        story.append(Paragraph(f"<b>Shipping Fee:</b> ₹{invoice.shipping_fee:.2f}", styles['Normal']))
+        story.append(Paragraph(f"<b>Discount Amount:</b> ₹{invoice.discount_amount:.2f}", styles['Normal']))
+        story.append(Paragraph(f"<b>Total Amount:</b> ₹{invoice.total_amount:.2f}", styles['h2']))
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Payment Details
+        story.append(Paragraph("<b>Payment Details:</b>", styles['h3']))
+        story.append(Paragraph(f"<b>Method:</b> {invoice.payment_method}", styles['Normal']))
+        if invoice.payment_date:
+            story.append(Paragraph(f"<b>Payment Date:</b> {invoice.payment_date.strftime('%Y-%m-%d %H:%M')}", styles['Normal']))
+        if invoice.razorpay_payment_id:
+            story.append(Paragraph(f"<b>Razorpay Payment ID:</b> {invoice.razorpay_payment_id}", styles['Normal']))
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Terms and Conditions
+        story.append(Paragraph("<b>Terms and Conditions:</b>", styles['h3']))
+        for line in invoice.terms_and_conditions.split('\n'):
+            if line.strip():
+                story.append(Paragraph(line.strip(), styles['Normal']))
+        story.append(Spacer(1, 0.2 * inch))
+
+        try:
+            doc.build(story)
+        except Exception as e:
+            logger.error(f"Error building PDF document: {str(e)}")
+            raise # Re-raise to be caught by the view's exception handler
+
+        buffer.seek(0)
+        return buffer.getvalue()

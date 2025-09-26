@@ -9,7 +9,12 @@ from product.models import Product,Batch
 # Create your models here.
 class Order(models.Model):
     PAYMENT_METHODS = [('UPI', 'UPI'), ('Card', 'Card'), ('COD', 'COD')]
-    PAYMENT_STATUS = [('Pending', 'Pending'), ('Paid', 'Paid'), ('Refunded', 'Refunded')]
+    PAYMENT_STATUS = [
+        ('Pending', 'Pending'),
+        ('Paid', 'Paid'),
+        ('Refunded', 'Refunded'),
+        ('Aborted', 'Aborted'), # New status
+    ]
     ORDER_STATUS = [
         ('Pending', 'Pending'),
         ('payment_completed', 'Payment Completed'),
@@ -20,6 +25,7 @@ class Order(models.Model):
         ('Shipped', 'Shipped'),
         ('Delivered', 'Delivered'),
         ('Cancelled', 'Cancelled'),
+        ('Aborted', 'Aborted'), # New status
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')

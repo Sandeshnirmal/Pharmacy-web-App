@@ -298,6 +298,17 @@ def create_paid_order_for_prescription(request):
                 'error': 'Payment data is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Check if an existing order_id is provided to update an existing pending order
+        existing_order_id = request.data.get('order_id')
+        order = None
+        if existing_order_id:
+            try:
+                order = Order.objects.get(id=existing_order_id, user=request.user, order_status='Pending')
+                logger.info(f"Found existing pending order {existing_order_id} for user {request.user.id}. Updating it.")
+            except Order.DoesNotExist:
+                logger.warning(f"Existing pending order {existing_order_id} not found or not in 'Pending' status for user {request.user.id}. Creating a new order.")
+                order = None # Ensure order is None if not found or not pending
+
         # Validate order items and calculate total amount
         validated_items = []
         total_amount_calculated = 0.0
@@ -354,52 +365,108 @@ def create_paid_order_for_prescription(request):
         discount_amount = total_amount_calculated * 0.1 if total_amount_calculated > 1000 else 0.0
         final_amount = total_amount_calculated + shipping_fee - discount_amount
 
-        # Determine initial prescription status
-        actual_prescription_status = None
-        if is_prescription_order and prescription_image_base64:
-            actual_prescription_status = prescription_status_from_request if prescription_status_from_request else 'pending_review'
-        elif is_prescription_order and not prescription_image_base64:
-            # If prescription is required but not uploaded, set a specific status or return error
-            return Response({
-                'success': False,
-                'error': 'Prescription required but not uploaded.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        # If not a prescription order, actual_prescription_status remains None, and default will apply
+        # Determine initial prescription status and image data
+        prescription_status_to_set = None
+        prescription_image_to_set = None
+
+        if is_prescription_order:
+            if prescription_image_base64:
+                prescription_image_to_set = prescription_image_base64
+                prescription_status_to_set = prescription_status_from_request if prescription_status_from_request else 'pending_review'
+            else:
+                # If prescription is required but not uploaded, return error
+                logger.error("Prescription required but not uploaded for a prescription order.")
+                return Response({
+                    'success': False,
+                    'error': 'Prescription required but not uploaded.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        # If not a prescription order, prescription_status_to_set and prescription_image_to_set remain None,
+        # allowing the model's defaults/nullability to apply.
 
         with transaction.atomic():
-            order = Order.objects.create(
-                user=request.user,
-                address=selected_address, # Link to Address model
-                order_status='payment_completed',
-                payment_status='Paid',
-                payment_method=payment_method.upper(),
-                total_amount=final_amount,
-                discount_amount=discount_amount,
-                shipping_fee=shipping_fee,
-                is_prescription_order=is_prescription_order,
-                prescription_image_base64=prescription_image_base64,
-                prescription_status=actual_prescription_status, # Use the determined status
-                notes=notes,
-                delivery_address=delivery_address_json,
-            )
+            if order:
+                # Update existing order
+                order.address = selected_address
+                order.order_status = 'payment_completed'
+                order.payment_status = 'Paid'
+                order.payment_method = payment_method.upper()
+                order.total_amount = final_amount
+                order.discount_amount = discount_amount
+                order.shipping_fee = shipping_fee
+                order.is_prescription_order = is_prescription_order
+                order.notes = notes
+                order.delivery_address = delivery_address_json
 
-            for item_data in validated_items:
-                OrderItem.objects.create(
+                # Only set prescription fields if it's a prescription order
+                if is_prescription_order:
+                    order.prescription_image_base64 = prescription_image_to_set
+                    order.prescription_status = prescription_status_to_set
+                else:
+                    # If it's no longer a prescription order, clear these fields
+                    order.prescription_image_base64 = None
+                    order.prescription_status = 'pending_review' # Reset to default or a non-prescription specific status
+
+                order.save()
+
+                # Clear existing order items and add new ones
+                order.items.all().delete()
+                for item_data in validated_items:
+                    OrderItem.objects.create(
+                        order=order,
+                        product=item_data['product'],
+                        quantity=item_data['quantity'],
+                        unit_price_at_order=item_data['unit_price'],
+                    )
+                
+                OrderStatusHistory.objects.create(
                     order=order,
-                    product=item_data['product'],
-                    quantity=item_data['quantity'],
-                    unit_price_at_order=item_data['unit_price'],
+                    old_status='Pending', # Assuming it was pending
+                    new_status='payment_completed',
+                    changed_by=request.user,
+                    reason='Existing order updated after successful payment with optional prescription'
                 )
-            
-            OrderStatusHistory.objects.create(
-                order=order,
-                old_status='',
-                new_status='payment_completed',
-                changed_by=request.user,
-                reason='Order created after successful payment with optional prescription'
-            )
-            
-            logger.info(f"Paid order created successfully: {order.id} for user {request.user.id}")
+                logger.info(f"Existing pending order {order.id} updated successfully for user {request.user.id}")
+
+            else:
+                # Create new order
+                order_kwargs = {
+                    'user': request.user,
+                    'address': selected_address, # Link to Address model
+                    'order_status': 'payment_completed',
+                    'payment_status': 'Paid',
+                    'payment_method': payment_method.upper(),
+                    'total_amount': final_amount,
+                    'discount_amount': discount_amount,
+                    'shipping_fee': shipping_fee,
+                    'is_prescription_order': is_prescription_order,
+                    'notes': notes,
+                    'delivery_address': delivery_address_json,
+                }
+
+                # Only add prescription fields to kwargs if it's a prescription order
+                if is_prescription_order:
+                    order_kwargs['prescription_image_base64'] = prescription_image_to_set
+                    order_kwargs['prescription_status'] = prescription_status_to_set
+                # If not a prescription order, these fields are omitted, and model defaults apply.
+
+                order = Order.objects.create(**order_kwargs)
+
+                for item_data in validated_items:
+                    OrderItem.objects.create(
+                        order=order,
+                        product=item_data['product'],
+                        quantity=item_data['quantity'],
+                        unit_price_at_order=item_data['unit_price'],
+                    )
+                
+                OrderStatusHistory.objects.create(
+                    order=order,
+                    old_status='',
+                    new_status='payment_completed',
+                    changed_by=request.user,
+                    reason='Order created after successful payment with optional prescription'
+                )
+                logger.info(f"New paid order created successfully: {order.id} for user {request.user.id}")
             
             return Response({
                 'success': True,
@@ -410,7 +477,7 @@ def create_paid_order_for_prescription(request):
                 'delivery_address': order.delivery_address,
                 'is_prescription_order': order.is_prescription_order,
                 'prescription_status': order.prescription_status,
-                'message': 'Order created successfully.'
+                'message': 'Order created/updated successfully.'
             }, status=status.HTTP_201_CREATED)
                 
     except ValueError as e:
@@ -420,10 +487,10 @@ def create_paid_order_for_prescription(request):
             'error': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        logger.exception("An unexpected error occurred during paid order creation.")
+        logger.exception("An unexpected error occurred during paid order creation/update.")
         return Response({
             'success': False,
-            'error': 'An error occurred while creating the order',
+            'error': 'An error occurred while creating/updating the order',
             'detail': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -641,78 +708,206 @@ def get_order_status_history(request, order_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_pending_order(request):
+    """
+    Get the most recent pending order for the authenticated user.
+    This is used by the frontend to check if a payment attempt is a retry for an existing order.
+    """
+    try:
+        order = Order.objects.filter(
+            user=request.user,
+            order_status='Pending',
+            payment_status='Pending'
+        ).order_by('-created_at').first()
+
+        if order:
+            return Response({
+                'success': True,
+                'order_id': order.id,
+                'order_number': f'ORD{order.id:06d}',
+                'total_amount': float(order.total_amount),
+                'message': 'Found existing pending order.'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'success': False,
+                'message': 'No pending order found for the user.'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        logger.exception("Error fetching user's pending order.")
+        return Response({
+            'success': False,
+            'error': f'Failed to fetch pending order: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated]) # Require authentication
 def create_pending_order(request):
     """
-    Create a pending order before prescription verification
-    Payment happens first, then prescription upload and verification
+    Create a pending order before prescription verification, or re-use/abort existing one.
+    Payment happens first, then prescription upload and verification.
     """
     try:
         from product.models import Product
+        from django.forms.models import model_to_dict # For comparing order items
 
-        items = request.data.get('items', [])
+        logger.info(f"create_pending_order Request - Raw Body: {request.body}")
+        logger.info(f"create_pending_order Request - Parsed Data: {request.data}")
+
+        items_data = request.data.get('items', [])
         delivery_address_data = request.data.get('delivery_address', {})
-        payment_method = request.data.get('payment_method', 'COD')  # Match model choices
+        payment_method = request.data.get('payment_method', '')  # Match model choices
         total_amount = request.data.get('total_amount', 0)
         prescription_image_base64 = request.data.get('prescription_image')
+        notes = request.data.get('notes', '')
 
-        if not items:
+        if not items_data:
+            logger.error("create_pending_order: No items provided in request.")
             return Response({
+                'success': False,
                 'error': 'No items provided'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create pending order using existing model fields
-        order = Order.objects.create(
-            user=request.user,  # Associate with the authenticated user
-            address=None,  # Address will be stored in delivery_address JSON field
-            order_status='Pending',  # Use existing status choices
-            payment_status='Pending',  # Use existing status choices
-            payment_method=payment_method.upper(),  # Ensure uppercase
-            is_prescription_order=True,
-            total_amount=total_amount,
-            delivery_address=delivery_address_data, # Store delivery address as JSON
-            prescription_image_base64=prescription_image_base64, # Store base64 image directly
-            prescription_status='pending_review', # Always set to 'pending_review' for prescription orders
-            notes="Prescription order pending payment/verification",
-        )
+        # --- Check for existing pending order ---
+        existing_pending_order = Order.objects.filter(
+            user=request.user,
+            order_status='Pending',
+            payment_status='Pending'
+        ).order_by('-created_at').first()
 
-        # Add order items
-        for item in items:
-            try:
-                product = Product.objects.get(id=item['product_id'])
-                OrderItem.objects.create(
-                    order=order,
-                    product=product,
-                    quantity=item['quantity'],
-                    unit_price_at_order=item.get('price', product.price),
-                )
-            except Product.DoesNotExist:
-                # Log and skip invalid products, or return an error if strict
-                logger.warning(f"Product with ID {item['product_id']} not found for order {order.id}")
-                continue
-            except Exception as e:
-                logger.error(f"Error creating order item for product {item.get('product_id')}: {str(e)}")
-                continue
+        if existing_pending_order:
+            # Compare items of the existing pending order with the new cart items
+            existing_order_items = sorted([
+                {'product_id': item.product.id, 'quantity': item.quantity}
+                for item in existing_pending_order.items.all()
+            ], key=lambda x: x['product_id'])
 
-        # Generate a simple order number
-        order_number = f"ORD{order.id:06d}"
+            current_cart_items = sorted([
+                {'product_id': int(item['product_id']), 'quantity': int(item['quantity'])}
+                for item in items_data
+            ], key=lambda x: x['product_id'])
 
-        return Response({
-            'success': True,
-            'order_id': order.id,
-            'order_number': order_number,
-            'status': order.order_status,
-            'payment_method': payment_method,
-            'total_amount': float(order.total_amount),
-            'prescription_id': order.id, # Return order ID as prescription ID for consistency
-            'message': 'Pending order created successfully'
-        }, status=status.HTTP_201_CREATED)
+            # Ensure product_id and quantity are integers for existing_order_items as well
+            existing_order_items_cleaned = sorted([
+                {'product_id': int(item.product.id), 'quantity': int(item.quantity)}
+                for item in existing_pending_order.items.all()
+            ], key=lambda x: x['product_id'])
+
+            logger.debug(f"Existing order items (cleaned): {existing_order_items_cleaned}")
+            logger.debug(f"Current cart items (from request): {current_cart_items}")
+
+            if existing_order_items_cleaned == current_cart_items:
+                # Cart items are the same, re-use the existing pending order
+                logger.info(f"Re-using existing pending order {existing_pending_order.id} for user {request.user.id} as cart items are unchanged.")
+                return Response({
+                    'success': True,
+                    'order_id': existing_pending_order.id,
+                    'order_number': f"ORD{existing_pending_order.id:06d}",
+                    'status': existing_pending_order.order_status,
+                    'payment_method': existing_pending_order.payment_method,
+                    'total_amount': float(existing_pending_order.total_amount),
+                    'prescription_id': existing_pending_order.id,
+                    'message': 'Re-using existing pending order as cart items are unchanged.'
+                }, status=status.HTTP_200_OK)
+            else:
+                # Cart items are different, abort the old order
+                with transaction.atomic():
+                    existing_pending_order.order_status = 'Aborted'
+                    existing_pending_order.payment_status = 'Aborted'
+                    existing_pending_order.notes = 'Order aborted due to cart modification before payment completion.'
+                    existing_pending_order.save()
+                    OrderStatusHistory.objects.create(
+                        order=existing_pending_order,
+                        old_status='Pending',
+                        new_status='Aborted',
+                        changed_by=request.user,
+                        reason='Cart modified, previous pending order aborted.'
+                    )
+                    logger.info(f"Existing pending order {existing_pending_order.id} aborted for user {request.user.id} due to cart change.")
+        
+        # --- Create new pending order (if no existing or if existing was aborted) ---
+        with transaction.atomic():
+            order = Order.objects.create(
+                user=request.user,  # Associate with the authenticated user
+                address=None,  # Address will be stored in delivery_address JSON field
+                order_status='Pending',  # Use existing status choices
+                payment_status='Pending',  # Use existing status choices
+                payment_method=payment_method.upper(),  # Ensure uppercase
+                is_prescription_order=True, # Assuming all pending orders might be prescription related initially
+                total_amount=total_amount,
+                delivery_address=delivery_address_data, # Store delivery address as JSON
+                prescription_image_base64=prescription_image_base64, # Store base64 image directly
+                prescription_status='pending_review', # Always set to 'pending_review' for prescription orders
+                notes=notes,
+            )
+
+            # Add order items
+            for item in items_data:
+                product_id = item.get('product_id')
+                quantity = item.get('quantity')
+                price = item.get('price')
+
+                if not product_id or not quantity:
+                    logger.error(f"create_pending_order: Invalid item data - product_id or quantity missing for item: {item}")
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid item data: product_id and quantity are required for all items.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                try:
+                    product = Product.objects.get(id=product_id)
+                    OrderItem.objects.create(
+                        order=order,
+                        product=product,
+                        quantity=quantity,
+                        unit_price_at_order=price if price is not None else product.price,
+                    )
+                    logger.debug(f"OrderItem created for product {product_id} (Order {order.id})")
+                except Product.DoesNotExist:
+                    logger.error(f"create_pending_order: Product with ID {product_id} not found for order {order.id}.")
+                    return Response({
+                        'success': False,
+                        'error': f"Product with ID {product_id} not found."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    logger.exception(f"create_pending_order: Error creating order item for product {product_id} (Order {order.id}).")
+                    return Response({
+                        'success': False,
+                        'error': f"Error processing item {product_id}: {str(e)}"
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Generate a simple order number
+            order_number = f"ORD{order.id:06d}"
+
+            OrderStatusHistory.objects.create(
+                order=order,
+                old_status='',
+                new_status='Pending',
+                changed_by=request.user,
+                reason='New pending order created.'
+            )
+
+            logger.info(f"New pending order created successfully: {order.id} for user {request.user.id}")
+
+            return Response({
+                'success': True,
+                'order_id': order.id,
+                'order_number': order_number,
+                'status': order.order_status,
+                'payment_method': payment_method,
+                'total_amount': float(order.total_amount),
+                'prescription_id': order.id, # Return order ID as prescription ID for consistency
+                'message': 'Pending order created successfully'
+            }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        logger.exception("An unexpected error occurred during pending order creation.")
+        logger.exception("An unexpected error occurred during pending order creation/management.")
         return Response({
-            'error': f'Failed to create pending order: {str(e)}',
+            'error': f'Failed to create/manage pending order: {str(e)}',
             'detail': 'An unexpected server error occurred. Please try again later.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

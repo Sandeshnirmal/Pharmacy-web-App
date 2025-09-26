@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import Payment
 from orders.models import Order
+from orders.invoice_service import InvoiceService
 
 logger = logging.getLogger(__name__)
 
@@ -137,15 +138,24 @@ def verify_payment(request):
             order.payment_status = 'Paid'
             order.order_status = 'payment_completed'
             order.save()
+
+            # Create and mark invoice as paid
+            invoice = InvoiceService.create_invoice_for_order(order)
+            payment_data = {
+                'razorpay_payment_id': payment_id,
+                'razorpay_order_id': order_id,
+            }
+            InvoiceService.mark_invoice_as_paid(invoice, payment_data)
             
-            logger.info(f"Payment verified successfully for order {order.id}")
+            logger.info(f"Payment verified successfully and invoice generated for order {order.id}")
             
             return Response({
                 'success': True,
-                'message': 'Payment verified successfully',
+                'message': 'Payment verified successfully and invoice generated',
                 'payment_id': payment.id,
                 'order_id': order.id,
-                'order_status': order.order_status
+                'order_status': order.order_status,
+                'invoice_number': invoice.invoice_number
             }, status=status.HTTP_200_OK)
             
         except Payment.DoesNotExist:

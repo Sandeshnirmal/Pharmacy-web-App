@@ -125,6 +125,9 @@ class EnhancedOrderFlow:
                 # Determine if the order requires a prescription based on its products
                 requires_prescription_for_order = any(item['product'].is_prescription_required for item in validated_items)
 
+                # Set initial prescription status
+                initial_prescription_status = 'pending_review' if requires_prescription_for_order else 'verified'
+
                 # Create order with payment_completed status
                 order = Order.objects.create(
                     user=user,
@@ -135,6 +138,7 @@ class EnhancedOrderFlow:
                     discount_amount=discount_amount,
                     shipping_fee=shipping_fee,
                     is_prescription_order=requires_prescription_for_order,
+                    prescription_status=initial_prescription_status, # Explicitly set prescription status
                     notes=f'Paid order awaiting prescription verification. Payment ID: {payment_data.get("payment_id", "N/A")}',
                     delivery_address=validated_address
                 )

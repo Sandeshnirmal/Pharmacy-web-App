@@ -19,7 +19,7 @@ class Payment(models.Model):
         ('wallet', 'Wallet'),
     ]
 
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment')
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='payments') # Changed to ForeignKey, related_name to 'payments'
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     
     # Razorpay fields
