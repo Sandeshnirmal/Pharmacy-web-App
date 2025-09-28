@@ -107,6 +107,20 @@ class EnhancedOrderFlow:
         """
         try:
             with transaction.atomic():
+                # Check for existing pending or payment_completed orders for the user
+                existing_order = Order.objects.filter(
+                    user=user,
+                    order_status__in=['Pending', 'payment_completed']
+                ).first()
+
+                if existing_order:
+                    logger.warning(f"Existing order {existing_order.id} found for user {user.id} with status {existing_order.order_status}. Returning existing order.")
+                    return {
+                        'success': True,
+                        'order': existing_order,
+                        'message': f'Existing order {existing_order.id} found. No new order created.'
+                    }
+
                 # Validate inputs
                 validated_items = EnhancedOrderFlow.validate_order_items(items)
                 validated_address = EnhancedOrderFlow.validate_delivery_address(delivery_address)

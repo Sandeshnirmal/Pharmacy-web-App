@@ -27,21 +27,47 @@ class TPCCourierService:
     def _make_request(self, method, endpoint, params=None, json_data=None):
         """Helper to make requests to TPC API"""
         url = f"{self.base_url}{endpoint}"
-        headers = {'Content-Type': 'application/json'}
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36', # Mimic a common browser
+            'Accept': 'application/json',
+        }
         
+        logger.debug(f"Making {method} request to TPC API: {url}")
+        logger.debug(f"Params: {params}, JSON Data: {json_data}")
+        logger.debug(f"Headers: {headers}")
+
         try:
             if method.upper() == 'GET':
-                response = requests.get(url, params=params, headers=headers)
+                response = requests.get(url, params=params, headers=headers, verify=False) # Temporarily disable SSL verification
             elif method.upper() == 'POST':
-                response = requests.post(url, params=params, json=json_data, headers=headers)
+                response = requests.post(url, params=params, json=json_data, headers=headers, verify=False) # Temporarily disable SSL verification
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
+            logger.debug(f"TPC API Response Status: {response.status_code}")
+            logger.debug(f"TPC API Response Text: {response.text}")
+
             response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-            return response.json()
+            
+            # Attempt to parse JSON, but handle cases where it might not be JSON
+            try:
+                json_response = response.json()
+                if isinstance(json_response, list):
+                    logger.warning(f"TPC API returned a list for {url}. Expected a dictionary. Response: {json_response}")
+                    # Return a standardized error dictionary if a list is received
+                    return {'status': 'error', 'error': 'Unexpected list response from TPC API', 'raw_response': json_response}
+                return json_response
+            except json.JSONDecodeError:
+                logger.error(f"Failed to decode JSON response from {url}. Raw Response: {response.text}")
+                # If the API returns non-JSON but a 200 status, it might be a valid non-JSON response
+                # or an error that's not a 4xx/5xx HTTP status.
+                return {'status': 'error', 'error': 'Invalid JSON response from TPC API', 'raw_response': response.text}
+
         except requests.exceptions.HTTPError as http_err:
             logger.error(f"HTTP error occurred: {http_err} - Response: {response.text}")
-            raise
+            # Return a standardized error dictionary for HTTP errors
+            return {'status': 'error', 'error': f"HTTP error: {http_err}", 'raw_response': response.text}
         except requests.exceptions.ConnectionError as conn_err:
             logger.error(f"Connection error occurred: {conn_err}")
             raise
@@ -49,11 +75,13 @@ class TPCCourierService:
             logger.error(f"Timeout error occurred: {timeout_err}")
             raise
         except requests.exceptions.RequestException as req_err:
-            logger.error(f"An unexpected error occurred: {req_err}")
+            logger.error(f"An unexpected request error occurred: {req_err}")
             raise
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON response from {url}. Response: {response.text}")
-            raise ValueError("Invalid JSON response from TPC API")
+        except ValueError as val_err: # Catch the custom ValueError from JSONDecodeError
+            raise val_err
+        except Exception as e:
+            logger.error(f"An unexpected error occurred in _make_request: {e}")
+            raise
 
     def check_pincode_service(self, pincode):
         """
@@ -67,19 +95,23 @@ class TPCCourierService:
             if (timezone.now() - service_area.last_updated) > timedelta(days=7): # Check weekly
                 logger.info(f"Pincode {pincode} data is outdated, re-fetching from TPC API.")
                 api_response = self._fetch_pincode_service_from_api(pincode)
+                logger.debug(f"API response for outdated pincode {pincode}: {api_response}")
                 if api_response and api_response.get('status') == 'success':
                     service_area.city = api_response.get('city', service_area.city)
                     service_area.state = api_response.get('state', service_area.state)
                     service_area.is_serviceable = True
                     service_area.last_updated = timezone.now()
                     service_area.save()
-                    return api_response
+                    logger.info(f"Pincode {pincode} updated from API: serviceable.")
+                    return {'status': 'success', 'city': service_area.city, 'state': service_area.state, 'is_serviceable': True}
                 else:
                     service_area.is_serviceable = False
                     service_area.last_updated = timezone.now()
                     service_area.save()
-                    logger.warning(f"Pincode {pincode} not serviceable via API. Local DB updated.")
+                    logger.warning(f"Pincode {pincode} not serviceable via API. Local DB updated to not serviceable.")
                     return {'status': 'error', 'error': 'Pincode not serviceable via API'}
+            else:
+                logger.info(f"Pincode {pincode} found in local DB and is up-to-date. Serviceable: {service_area.is_serviceable}")
             
             return {'status': 'success' if service_area.is_serviceable else 'error',
                     'city': service_area.city,
@@ -89,6 +121,7 @@ class TPCCourierService:
         except TPCServiceableArea.DoesNotExist:
             logger.info(f"Pincode {pincode} not found in local DB, fetching from TPC API.")
             api_response = self._fetch_pincode_service_from_api(pincode)
+            logger.debug(f"API response for new pincode {pincode}: {api_response}")
             if api_response and api_response.get('status') == 'success':
                 TPCServiceableArea.objects.create(
                     pincode=pincode,
@@ -97,7 +130,8 @@ class TPCCourierService:
                     is_serviceable=True,
                     last_updated=timezone.now()
                 )
-                return api_response
+                logger.info(f"Pincode {pincode} added to local DB: serviceable.")
+                return {'status': 'success', 'city': api_response.get('city', 'Unknown'), 'state': api_response.get('state', 'Unknown'), 'is_serviceable': True}
             else:
                 TPCServiceableArea.objects.create(
                     pincode=pincode,
@@ -109,14 +143,39 @@ class TPCCourierService:
                 logger.warning(f"Pincode {pincode} not serviceable via API. Added to local DB as not serviceable.")
                 return {'status': 'error', 'error': 'Pincode not serviceable via API'}
         except Exception as e:
-            logger.error(f"Error checking pincode {pincode}: {e}")
+            logger.error(f"Error checking pincode {pincode}: {e}", exc_info=True) # Added exc_info for full traceback
             return {'status': 'error', 'error': str(e)}
 
     def _fetch_pincode_service_from_api(self, pincode):
         """Internal method to hit the TPC API for pincode service checking."""
         endpoint = "PINcodeService.ashx"
         params = {'pincode': pincode}
-        return self._make_request('GET', endpoint, params=params)
+        api_response = self._make_request('GET', endpoint, params=params)
+
+        # Check if the response is an error dictionary due to unexpected list
+        if api_response and api_response.get('status') == 'error' and 'Unexpected list response' in api_response.get('error', ''):
+            raw_list_response = api_response.get('raw_response')
+            if isinstance(raw_list_response, list) and raw_list_response:
+                # Assuming the first item in the list contains the serviceability info
+                pincode_data = raw_list_response[0]
+                is_serviceable = False
+                if pincode_data.get('DOC_DELIVERY') == 'YES' or \
+                   pincode_data.get('PARCEL_DELIVERY') == 'YES' or \
+                   pincode_data.get('PROPREMIUM_DELIVERY') == 'YES':
+                    is_serviceable = True
+                
+                return {
+                    'status': 'success' if is_serviceable else 'error',
+                    'city': pincode_data.get('AREANAME', 'Unknown'), # TPC API returns AREANAME as city
+                    'state': 'Unknown', # TPC API response doesn't seem to have state directly in this endpoint
+                    'is_serviceable': is_serviceable
+                }
+            else:
+                logger.error(f"Unexpected raw_response format for pincode {pincode}: {raw_list_response}")
+                return {'status': 'error', 'error': 'Failed to parse TPC API list response'}
+        
+        # If it's not an unexpected list error, return the original API response
+        return api_response
 
     def search_area_name(self, area_name):
         """This API used for Areaname search."""

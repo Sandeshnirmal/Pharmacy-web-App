@@ -281,3 +281,50 @@ REST_FRAMEWORK = {
 #     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5), # For sliding tokens, if you use them
 #     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # For sliding tokens
 # }
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple' if not DEBUG else 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'courier': { # Logger for your courier app
+            'handlers': ['console'],
+            'level': 'DEBUG', # Set to DEBUG to see detailed API requests/responses
+            'propagate': False,
+        },
+        'requests': { # Logger for the requests library
+            'handlers': ['console'],
+            'level': 'DEBUG', # Set to DEBUG to see detailed HTTP requests
+            'propagate': False,
+        },
+        'urllib3': { # Logger for urllib3, used by requests
+            'handlers': ['console'],
+            'level': 'DEBUG', # Set to DEBUG to see detailed HTTP requests
+            'propagate': False,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+}

@@ -22,8 +22,8 @@ The order placement process is designed to be robust, handling both Cash on Deli
 
 #### 2. Backend: Pending Order Management (`create_pending_order` endpoint in `backend/orders/views.py`)
 
-*   **Purpose**: This endpoint is now responsible for intelligently managing pending orders to prevent duplication.
-*   **Logic**:
+*   **Purpose**: This endpoint is responsible for creating an initial "pending" order and intelligently managing existing pending orders to prevent duplication. It sets `order_status='Pending'` and `payment_status='Pending'`.
+*   **Logic for Duplication Prevention**:
     *   When called, it first checks for an existing 'Pending' order for the authenticated user.
     *   It then compares the items in the current request's cart with the items of any found existing pending order.
     *   **If cart items are IDENTICAL**: The existing pending order's details are returned. This allows the frontend to re-attempt payment for the *same* order, preventing a new order from being created.
@@ -33,7 +33,7 @@ The order placement process is designed to be robust, handling both Cash on Deli
 #### 3. Payment Processing (Conditional based on Payment Method)
 
 *   **A. Cash on Delivery (COD)**:
-    *   If "Cash on Delivery" is selected, after the pending order is successfully created (or re-used) on the backend, the frontend immediately calls `_placeOrderAfterPayment` (which is `OrderService.finalizeOrderWithPaymentDetails`) with `paymentId`, `razorpayOrderId`, and `razorpaySignature` set to 'COD'.
+    *   If "Cash on Delivery" is selected, after the pending order is successfully created (or re-used) on the backend, the frontend immediately calls `_placeOrderAfterPayment` (which internally uses `create_paid_order_for_prescription` to update the order).
     *   The backend then finalizes this order, marking it as 'Paid' and 'payment_completed'.
 
 *   **B. UPI (Razorpay Integration)**:
@@ -52,15 +52,34 @@ The order placement process is designed to be robust, handling both Cash on Deli
         *   **On Success**: It calls `_placeOrderAfterPayment` (i.e., `OrderService.finalizeOrderWithPaymentDetails`), passing the backend's `_currentBackendOrderId` and the Razorpay payment details (`paymentId`, `razorpayOrderId`, `razorpaySignature`). This finalizes the order on the backend.
         *   **On Failure**: It displays a toast message indicating payment failure. The `_currentBackendOrderId` remains set, allowing the user to retry payment for the same pending order.
 
-#### 4. Frontend: Post-Payment Actions
+#### 4. Backend: Order Finalization (`create_paid_order_for_prescription` endpoint in `backend/orders/views.py`)
 
-*   **Order Finalization (`_placeOrderAfterPayment` method)**:
-    *   This method calls `_orderService.finalizeOrderWithPaymentDetails` on the backend.
-    *   **Backend (`create_paid_order_for_prescription` endpoint in `backend/orders/views.py`)**: This endpoint now *updates* the existing `order_id` (passed from frontend) with payment details, setting its status to `payment_completed` and `payment_status` to `Paid`. It records the payment information and clears existing order items to add new ones (in case of any discrepancy, though frontend should ensure consistency).
+*   **Purpose**: This endpoint is responsible for updating an existing pending order to a 'Paid' and 'payment_completed' status after successful payment (or COD selection), or creating a new paid order if no pending order was initiated.
+*   **Logic for Duplication Prevention**:
+    *   If an `order_id` is provided (typically from a `create_pending_order` call), the endpoint attempts to retrieve an existing order for the user that is in 'Pending' or 'Aborted' status with a 'Pending' payment status.
+    *   If such an order is found, it *updates* that existing order with the final payment details, sets its `order_status` to 'payment_completed', and `payment_status` to 'Paid'. It also clears and recreates the order's items to reflect the current cart.
+    *   If no `order_id` is provided, or if the existing order doesn't meet the criteria (e.g., already paid), a *new* order is created with the status 'payment_completed' and 'Paid'.
 *   **Clear Cart**: Upon successful order finalization, the user's cart is cleared.
 *   **Navigate to Confirmation**: The user is navigated to the `OrderConfirmationScreen`, displaying the details of their newly placed order.
 
-#### 5. Backend: Order Lifecycle
+#### 5. Order Duplication Prevention Summary
+
+The system employs several mechanisms to prevent order duplications:
+
+*   **`create_pending_order` (for initial pending orders)**:
+    *   Actively checks for existing 'Pending' orders for the user.
+    *   If an existing pending order with *identical* cart items is found, it is re-used.
+    *   If an existing pending order with *different* cart items is found, the old order is 'Aborted', and a new one is created.
+*   **`create_paid_order_for_prescription` (for finalizing paid orders)**:
+    *   When an `order_id` (from a pending order) is provided, it attempts to *update* that existing order to a 'Paid' and 'payment_completed' status, rather than creating a new one.
+    *   This handles scenarios where a user retries payment for an existing pending order.
+*   **Razorpay Integration**:
+    *   The Razorpay payment gateway itself has internal checks to prevent double payments for the same transaction.
+    *   The `verify_payment` endpoint in `backend/payment/views.py` ensures that a payment is verified and processed only once by checking the `razorpay_order_id` and `payment_id`.
+
+These combined strategies significantly reduce the risk of duplicate orders in the system.
+
+#### 6. Backend: Order Lifecycle
 
 *   **Order Status History**: Throughout the process, `OrderStatusHistory` records are created to track changes in the order's status (e.g., from 'Pending' to 'payment_completed', or to 'Aborted').
 *   **Prescription Status**: For prescription orders, the `prescription_status` field in the `Order` model is initially set to 'pending_review' and is updated as the prescription is verified by an admin.

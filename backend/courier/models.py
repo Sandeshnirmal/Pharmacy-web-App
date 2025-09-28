@@ -87,9 +87,23 @@ class TPCRecipient(models.Model):
 class TPCServiceableArea(models.Model):
     """Model to store TPC serviceable pincodes and area names."""
     pincode = models.CharField(max_length=10, unique=True)
-    city = models.CharField(max_length=100)
+    area_name = models.CharField(max_length=255, blank=True, null=True) # Corresponds to AREANAME
+    city = models.CharField(max_length=100, blank=True, null=True) # Keeping for potential future use or if AREANAME is not always city
     state = models.CharField(max_length=100, blank=True, null=True)
-    is_serviceable = models.BooleanField(default=True)
+    
+    station_code = models.CharField(max_length=50, blank=True, null=True)
+    sub_branch_code = models.CharField(max_length=50, blank=True, null=True)
+    
+    doc_delivery = models.CharField(max_length=10, blank=True, null=True) # YES/NO
+    parcel_delivery = models.CharField(max_length=10, blank=True, null=True) # YES/NO
+    propremium_delivery = models.CharField(max_length=10, blank=True, null=True) # YES/NO
+    
+    doc_delivery_schedule = models.CharField(max_length=50, blank=True, null=True)
+    parcel_delivery_schedule = models.CharField(max_length=50, blank=True, null=True)
+    prodlyschedule = models.CharField(max_length=50, blank=True, null=True) # Assuming this is PRODLYSCHEDULE
+    cod_delivery = models.CharField(max_length=10, blank=True, null=True) # YES/NO
+
+    is_serviceable = models.BooleanField(default=True) # Derived field
     last_updated = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -97,4 +111,4 @@ class TPCServiceableArea(models.Model):
         verbose_name_plural = 'TPC Serviceable Areas'
 
     def __str__(self):
-        return f"{self.pincode} - {self.city} ({'Serviceable' if self.is_serviceable else 'Not Serviceable'})"
+        return f"{self.pincode} - {self.area_name} ({'Serviceable' if self.is_serviceable else 'Not Serviceable'})"

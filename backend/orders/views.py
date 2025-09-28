@@ -245,6 +245,11 @@ def create_paid_order_for_prescription(request):
         logger.info(f"create_paid_order_for_prescription Request - Raw Body: {request.body}")
         logger.info(f"create_paid_order_for_prescription Request - Parsed Data: {request.data}")
 
+        # Initialize variables at the beginning to avoid UnboundLocalError
+        is_prescription_order = False
+        prescription_image_to_set = None
+        prescription_status_to_set = None
+
         # Extract and validate request data
         items_data = request.data.get('items', [])
         address_id = request.data.get('delivery_address', {}).get('id') # Get address ID from nested delivery_address
@@ -298,21 +303,82 @@ def create_paid_order_for_prescription(request):
                 'error': 'Payment data is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if an existing order_id is provided to update an existing pending order
+        # Determine if it's a prescription order based on items_data
+        for item in items_data:
+            product_id = item.get('product_id')
+            try:
+                product = Product.objects.get(id=product_id, is_active=True)
+                if product.is_prescription_required:
+                    is_prescription_order = True
+                    break # Found a prescription item, no need to check further
+            except Product.DoesNotExist:
+                # Handle this error later in item validation, for now just determine prescription status
+                pass
+
+        # Determine initial prescription status and image data if it's a prescription order
+        if is_prescription_order:
+            if prescription_image_base64:
+                prescription_image_to_set = prescription_image_base64
+                prescription_status_to_set = prescription_status_from_request if prescription_status_from_request else 'pending_review'
+            else:
+                # If prescription is required but not uploaded, return error
+                logger.error("Prescription required but not uploaded for a prescription order.")
+                return Response({
+                    'success': False,
+                    'error': 'Prescription required but not uploaded.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        # If not a prescription order, prescription_status_to_set and prescription_image_to_set remain None,
+        # allowing the model's defaults/nullability to apply.
+
+        # Explicitly capture the state of variables derived from the request
+        # to avoid potential UnboundLocalError in nested blocks.
+        _is_prescription_order_from_request = is_prescription_order
+        _prescription_image_to_set_from_request = prescription_image_to_set
+        _prescription_status_to_set_from_request = prescription_status_to_set
+
+        # Check if an existing order_id is provided to update an existing pending or aborted order
         existing_order_id = request.data.get('order_id')
         order = None
         if existing_order_id:
             try:
-                order = Order.objects.get(id=existing_order_id, user=request.user, order_status='Pending')
-                logger.info(f"Found existing pending order {existing_order_id} for user {request.user.id}. Updating it.")
+                order = Order.objects.get(id=existing_order_id, user=request.user)
+
+                # If the order is already paid and completed, just return it (or update prescription if needed)
+                if order.payment_status == 'Paid' and order.order_status == 'payment_completed':
+                    logger.info(f"Existing order {existing_order_id} for user {request.user.id} is already paid and completed. Returning it.")
+                    # Potentially update prescription details if they are sent again
+                    if _is_prescription_order_from_request: # Use the explicitly bound variable
+                        order.prescription_image_base64 = _prescription_image_to_set_from_request
+                        order.prescription_status = _prescription_status_to_set_from_request
+                        order.save() # Save only if prescription details were updated
+                    
+                    return Response({
+                        'success': True,
+                        'order_id': order.id,
+                        'order_number': f'ORD{order.id:06d}',
+                        'status': order.order_status,
+                        'total_amount': float(order.total_amount),
+                        'delivery_address': order.delivery_address,
+                        'is_prescription_order': order.is_prescription_order,
+                        'prescription_status': order.prescription_status,
+                        'message': 'Order already paid and finalized.'
+                    }, status=status.HTTP_200_OK)
+                
+                # If the order is pending or aborted, proceed to update it to paid
+                elif order.order_status in ['Pending', 'Aborted'] and order.payment_status == 'Pending':
+                    logger.info(f"Found existing order {existing_order_id} for user {request.user.id} with status {order.order_status}. Proceeding to update it to paid.")
+                else:
+                    # This case means an order exists but is in an unexpected state (e.g., 'Cancelled', 'Processing' but not 'Paid')
+                    logger.warning(f"Existing order {existing_order_id} for user {request.user.id} is in an unexpected state ({order.order_status}/{order.payment_status}). Creating a new order.")
+                    order = None # Force creation of a new order
             except Order.DoesNotExist:
-                logger.warning(f"Existing pending order {existing_order_id} not found or not in 'Pending' status for user {request.user.id}. Creating a new order.")
-                order = None # Ensure order is None if not found or not pending
+                logger.warning(f"Existing order {existing_order_id} not found for user {request.user.id}. Creating a new order.")
+                order = None # Ensure order is None if not found
 
         # Validate order items and calculate total amount
         validated_items = []
         total_amount_calculated = 0.0
-        is_prescription_order = False
+        # is_prescription_order is already determined above
 
         for item in items_data:
             product_id = item.get('product_id')
@@ -330,8 +396,9 @@ def create_paid_order_for_prescription(request):
                 if product.stock_quantity < quantity:
                     raise ValueError(f"Insufficient stock for {product.name}")
                 
-                if product.is_prescription_required:
-                    is_prescription_order = True
+                # is_prescription_order is already determined above
+                # if product.is_prescription_required:
+                #     is_prescription_order = True
 
                 # Use product's current price if price_at_order is not provided or invalid
                 unit_price = float(price_at_order) if price_at_order is not None else float(product.price)
@@ -366,20 +433,19 @@ def create_paid_order_for_prescription(request):
         final_amount = total_amount_calculated + shipping_fee - discount_amount
 
         # Determine initial prescription status and image data
-        prescription_status_to_set = None
-        prescription_image_to_set = None
+        # prescription_status_to_set and prescription_image_to_set are already determined above
 
-        if is_prescription_order:
-            if prescription_image_base64:
-                prescription_image_to_set = prescription_image_base64
-                prescription_status_to_set = prescription_status_from_request if prescription_status_from_request else 'pending_review'
-            else:
-                # If prescription is required but not uploaded, return error
-                logger.error("Prescription required but not uploaded for a prescription order.")
-                return Response({
-                    'success': False,
-                    'error': 'Prescription required but not uploaded.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+        # if is_prescription_order:
+        #     if prescription_image_base64:
+        #         prescription_image_to_set = prescription_image_base64
+        #         prescription_status_to_set = prescription_status_from_request if prescription_status_from_request else 'pending_review'
+        #     else:
+        #         # If prescription is required but not uploaded, return error
+        #         logger.error("Prescription required but not uploaded for a prescription order.")
+        #         return Response({
+        #             'success': False,
+        #             'error': 'Prescription required but not uploaded.'
+        #         }, status=status.HTTP_400_BAD_REQUEST)
         # If not a prescription order, prescription_status_to_set and prescription_image_to_set remain None,
         # allowing the model's defaults/nullability to apply.
 
@@ -393,18 +459,42 @@ def create_paid_order_for_prescription(request):
                 order.total_amount = final_amount
                 order.discount_amount = discount_amount
                 order.shipping_fee = shipping_fee
-                order.is_prescription_order = is_prescription_order
+                order.is_prescription_order = _is_prescription_order_from_request # Use the explicitly bound variable
                 order.notes = notes
                 order.delivery_address = delivery_address_json
 
                 # Only set prescription fields if it's a prescription order
-                if is_prescription_order:
-                    order.prescription_image_base64 = prescription_image_to_set
-                    order.prescription_status = prescription_status_to_set
+                if _is_prescription_order_from_request: # Use the explicitly bound variable
+                    order.prescription_image_base64 = _prescription_image_to_set_from_request
+                    order.prescription_status = _prescription_status_to_set_from_request
                 else:
                     # If it's no longer a prescription order, clear these fields
                     order.prescription_image_base64 = None
                     order.prescription_status = 'pending_review' # Reset to default or a non-prescription specific status
+
+                # Determine old status for history
+                old_status_for_history = order.order_status
+                
+                # Update existing order
+                order.address = selected_address
+                order.order_status = 'payment_completed'
+                order.payment_status = 'Paid'
+                order.payment_method = payment_method.upper()
+                order.total_amount = final_amount
+                order.discount_amount = discount_amount
+                order.shipping_fee = shipping_fee
+                order.is_prescription_order = _is_prescription_order_from_request # Use the explicitly bound variable
+                order.notes = notes
+                order.delivery_address = delivery_address_json
+
+                # Only set prescription fields if it's a prescription order
+                if _is_prescription_order_from_request: # Use the explicitly bound variable
+                    order.prescription_image_base64 = _prescription_image_to_set_from_request
+                    order.prescription_status = _prescription_status_to_set_from_request
+                else:
+                    # If it's no longer a prescription order, clear these fields
+                    order.prescription_image_base64 = None
+                    order.prescription_status = 'verified' # Reset to default or a non-prescription specific status
 
                 order.save()
 
@@ -420,12 +510,12 @@ def create_paid_order_for_prescription(request):
                 
                 OrderStatusHistory.objects.create(
                     order=order,
-                    old_status='Pending', # Assuming it was pending
+                    old_status=old_status_for_history,
                     new_status='payment_completed',
                     changed_by=request.user,
                     reason='Existing order updated after successful payment with optional prescription'
                 )
-                logger.info(f"Existing pending order {order.id} updated successfully for user {request.user.id}")
+                logger.info(f"Existing order {order.id} updated successfully for user {request.user.id}")
 
             else:
                 # Create new order
@@ -438,15 +528,15 @@ def create_paid_order_for_prescription(request):
                     'total_amount': final_amount,
                     'discount_amount': discount_amount,
                     'shipping_fee': shipping_fee,
-                    'is_prescription_order': is_prescription_order,
+                    'is_prescription_order': _is_prescription_order_from_request, # Use the explicitly bound variable
                     'notes': notes,
                     'delivery_address': delivery_address_json,
                 }
 
                 # Only add prescription fields to kwargs if it's a prescription order
-                if is_prescription_order:
-                    order_kwargs['prescription_image_base64'] = prescription_image_to_set
-                    order_kwargs['prescription_status'] = prescription_status_to_set
+                if _is_prescription_order_from_request: # Use the explicitly bound variable
+                    order_kwargs['prescription_image_base64'] = _prescription_image_to_set_from_request
+                    order_kwargs['prescription_status'] = _prescription_status_to_set_from_request
                 # If not a prescription order, these fields are omitted, and model defaults apply.
 
                 order = Order.objects.create(**order_kwargs)
@@ -688,7 +778,7 @@ def get_order_status_history(request, order_id):
                 'id': history.id,
                 'old_status': history.old_status,
                 'new_status': history.new_status,
-                'changed_by': history.changed_by.username if history.changed_by else 'System',
+                'changed_by': history.changed_by.email if history.changed_by else 'System', # Changed to .email
                 'reason': history.reason,
                 'timestamp': history.timestamp,
             })
@@ -703,6 +793,7 @@ def get_order_status_history(request, order_id):
             'error': 'Order not found'
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(f"An unexpected error occurred while getting order status history for order {order_id}.")
         return Response({
             'error': f'Failed to get status history: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
