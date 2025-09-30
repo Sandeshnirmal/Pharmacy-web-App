@@ -129,9 +129,9 @@ const fetchGericname = async () => {
   const [newProduct, setNewProduct] = useState({
     name: "",
     category_id: "",
-    generic_name_id: "",
+    generic_name: "",
     strength: "",
-    form: "",
+    dosage_form: "",
     manufacturer: "MedCorp",
     price: "",
     mrp: "",
@@ -156,81 +156,106 @@ const fetchGericname = async () => {
   const getGenericName = (id) =>
     genericNames.find((g) => g.id === id)?.name || "N/A";
 
-  const handleAddBatch = (e) => {
+  const handleAddBatch = async (e) => {
     e.preventDefault();
     if (!selectedProduct) {
       setError("Please select a product first to add a batch.");
       return;
     }
-    const batchToAdd = {
-      ...newBatch,
-      id: Date.now(), // simple unique id
-      product: selectedProduct.id,
-      current_quantity: newBatch.quantity,
-    };
-    setBatches((prev) => [...prev, batchToAdd]);
-
-    // Update product stock
-    setProducts((prevProducts) =>
-      prevProducts.map((p) =>
-        p.id === selectedProduct.id
-          ? {
-              ...p,
-              stock_quantity:
-                p.stock_quantity + parseInt(newBatch.quantity, 10),
-            }
-          : p
-      )
-    );
-
-    setShowBatchModal(false);
-    setNewBatch({
-      product: "",
-      batch_number: "",
-      quantity: "",
-      expiry_date: "",
-      cost_price: "",
-      selling_price: "",
-    });
+    try {
+      await productAPI.updateStock(selectedProduct.id, newBatch);
+      setShowBatchModal(false);
+      setNewBatch({
+        product: "",
+        batch_number: "",
+        quantity: "",
+        expiry_date: "",
+        cost_price: "",
+        selling_price: "",
+      });
+      fetchMedicines(); // Refetch medicines to update stock
+      setSelectedProduct(null);
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error adding stock:", error);
+    }
   };
 
-  const handleAddProduct = (e) => {
+  const handleAddProduct = async (e) => {
     e.preventDefault();
-    const productToAdd = { ...newProduct, id: Date.now() };
-    setProducts((prev) => [...prev, productToAdd]);
-    setShowProductModal(false);
-    setNewProduct({
-      name: "",
-      category_id: "",
-      generic_name_id: "",
-      strength: "",
-      form: "",
-      manufacturer: "MedCorp",
-      price: "",
-      mrp: "",
-      is_prescription_required: false,
-      hsn_code: "30041000",
-      packaging_unit: "",
-      pack_size: "",
-      stock_quantity: "",
-      min_stock_level: "10",
-    });
+    try {
+      const productData = {
+        name: newProduct.name,
+        strength: newProduct.strength,
+        manufacturer: newProduct.manufacturer,
+        price: newProduct.price,
+        mrp: newProduct.mrp,
+        is_prescription_required: newProduct.is_prescription_required,
+        pack_size: newProduct.pack_size,
+        stock_quantity: newProduct.stock_quantity,
+        min_stock_level: newProduct.min_stock_level,
+        category: newProduct.category_id,
+        generic_name: newProduct.generic_name,
+        dosage_form: newProduct.dosage_form,
+        brand_name: newProduct.name, // Defaulting brand_name to name
+        medicine_type: 'tablet', // Default
+        prescription_type: newProduct.is_prescription_required ? 'prescription' : 'otc',
+        hsn_code: newProduct.hsn_code,
+      };
+
+      await productAPI.createProduct(productData);
+      
+      setShowProductModal(false);
+      setNewProduct({
+        name: "",
+        category_id: "",
+        generic_name: "",
+        strength: "",
+        form: "",
+        manufacturer: "MedCorp",
+        price: "",
+        mrp: "",
+        is_prescription_required: false,
+        hsn_code: "30041000",
+        pack_size: "",
+        stock_quantity: "",
+        min_stock_level: "10",
+      });
+      fetchMedicines(); // Refetch products
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error adding product:", error);
+    }
   };
 
-  const handleAddCategory = (e) => {
+  const handleAddCategory = async (e) => {
     e.preventDefault();
-    const categoryToAdd = { ...newCategory, id: Date.now() };
-    setCategories((prev) => [...prev, categoryToAdd]);
-    setShowCategoryModal(false);
-    setNewCategory({ name: "", description: "" });
+    try {
+      await productAPI.createCategory(newCategory);
+      setShowCategoryModal(false);
+      setNewCategory({ name: "", description: "" });
+      fetchCategory(); // Refetch categories
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error adding category:", error);
+    }
   };
 
-  const handleAddGenericName = (e) => {
+  const handleAddGenericName = async (e) => {
     e.preventDefault();
-    const genericNameToAdd = { ...newGenericName, id: Date.now() };
-    setGenericNames((prev) => [...prev, genericNameToAdd]);
-    setShowGenericNameModal(false);
-    setNewGenericName({ name: "", description: "" });
+    try {
+      await productAPI.createGenericName(newGenericName);
+      setShowGenericNameModal(false);
+      setNewGenericName({ name: "", description: "" });
+      fetchGericname(); // Refetch generic names
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error adding generic name:", error);
+    }
   };
 
   const getStockStatus = (product) => {
@@ -277,7 +302,7 @@ const fetchGericname = async () => {
   };
 
   const filteredProducts = products.filter((product) => {
-    const genericName = getGenericName(product.generic_name_id);
+    const genericName = getGenericName(product.generic_name);
     const matchesSearch =
       !searchTerm ||
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -450,7 +475,7 @@ const fetchGericname = async () => {
                       {getCategoryName(product.category_name)}
                     </td>
                     <td className="px-6 py-4">
-                      {getGenericName(product.generic_name_id)}
+                      {getGenericName(product.generic_name)}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
                       {product.stock_quantity}
@@ -562,8 +587,8 @@ const fetchGericname = async () => {
                   required
                   value={newBatch.expiry_date}
                   onChange={(e) =>
-                    setNewBatch({ ...newBatch, expiry_date: e.target.value })
-                  }
+                      setNewBatch({ ...newBatch, expiry_date: e.target.value })
+                    }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -688,11 +713,11 @@ const fetchGericname = async () => {
                   </label>
                   <select
                     required
-                    value={newProduct.generic_name_id}
+                    value={newProduct.generic_name}
                     onChange={(e) =>
                       setNewProduct({
                         ...newProduct,
-                        generic_name_id: e.target.value,
+                        generic_name: e.target.value,
                       })
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
@@ -730,6 +755,49 @@ const fetchGericname = async () => {
                     value={newProduct.form}
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, form: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newProduct.price}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, price: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    MRP
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newProduct.mrp}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, mrp: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Pack Size
+                  </label>
+                  <input
+                    type="text"
+                    value={newProduct.pack_size}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, pack_size: e.target.value })
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />

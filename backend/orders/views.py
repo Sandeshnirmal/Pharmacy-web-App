@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by('-order_date')
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
-    authentication_classes = [JWTAuthentication] # Add JWTAuthentication
+    # permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
+    # authentication_classes = [JWTAuthentication] # Add JWTAuthentication
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -27,21 +27,21 @@ class OrderViewSet(viewsets.ModelViewSet):
         is_prescription = self.request.query_params.get('is_prescription_order', None)
         user_id = self.request.query_params.get('user_id', None)
 
-        if status_filter:
-            queryset = queryset.filter(order_status=status_filter)
-        if payment_status:
-            queryset = queryset.filter(payment_status=payment_status)
-        if is_prescription:
-            queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
-        # Filter by authenticated user
-        if self.request.user.is_authenticated:
-            queryset = queryset.filter(user=self.request.user)
-        elif user_id: # Allow user_id filter only if not authenticated (e.g., for admin if needed, but generally not for regular users)
-            queryset = queryset.filter(user_id=user_id)
-        else:
-            # If no user is authenticated and no user_id is provided, return empty queryset
-            # This prevents accidental exposure of all orders if AllowAny was used
-            return queryset.none()
+        # if status_filter:
+        #     queryset = queryset.filter(order_status=status_filter)
+        # if payment_status:
+        #     queryset = queryset.filter(payment_status=payment_status)
+        # if is_prescription:
+        #     queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
+        # # Filter by authenticated user
+        # if self.request.user.is_authenticated:
+        #     queryset = queryset.filter(user=self.request.user)
+        # elif user_id: # Allow user_id filter only if not authenticated (e.g., for admin if needed, but generally not for regular users)
+        #     queryset = queryset.filter(user_id=user_id)
+        # else:
+        #     # If no user is authenticated and no user_id is provided, return empty queryset
+        #     # This prevents accidental exposure of all orders if AllowAny was used
+        #     return queryset.none()
 
         return queryset
 

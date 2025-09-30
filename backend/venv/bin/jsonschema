@@ -1,4 +1,6 @@
-#!/home/santhakumar/Documents/Pharmacy-web-App/backend/venv/bin/python3
+#!/bin/sh
+'''exec' "/home/sandesh-nirmal/Documents/GreenEFX project/pharmacy /Pharmacy-web-App/backend/venv/bin/python3" "$0" "$@"
+' '''
 # -*- coding: utf-8 -*-
 import re
 import sys

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import axiosInstance from '../api/axiosInstance';
+import { orderAPI } from "../api/apiService";
 
 const OrderDetails = () => {
   const [searchParams] = useSearchParams();
@@ -25,7 +26,9 @@ const OrderDetails = () => {
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
-      const orderRes = await axiosInstance.get(`order/orders/${orderId}/`);
+      const orderRes = await axiosInstance.get(
+        `/order/orders/${orderId}/`
+      );
 
       setOrder(orderRes.data);
       setOrderItems(orderRes.data.items || []);
@@ -40,7 +43,7 @@ const OrderDetails = () => {
   const handleStatusUpdate = async (newStatus) => {
     try {
       setStatusUpdating(true);
-      await axiosInstance.patch(`order/orders/${orderId}/`, {
+      await axiosInstance.patch(`/order/orders/${orderId}/`, {
         order_status: newStatus,
       });
       fetchOrderDetails(); // Refresh data

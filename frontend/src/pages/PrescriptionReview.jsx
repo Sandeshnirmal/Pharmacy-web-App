@@ -168,7 +168,7 @@ const PrescriptionReview = () => {
         setShowProductModal(false);
         setSelectedProduct(null);
         alert(result.message);
-        fetchPrescriptionData(); // Refresh data after remapping
+        navigate("/Prescription"); // Refresh data after remapping
       } else {
         alert(`Failed to map product: ${result.error}`);
       }
@@ -254,7 +254,7 @@ const PrescriptionReview = () => {
     <div className="bg-gray-50 min-h-screen font-sans">
       <header className="bg-white border-b p-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <button onClick={() => navigate("/prescriptions")}>
+          <button onClick={() => navigate("/Prescription")}>
             <ArrowLeft className="text-gray-600" />
           </button>
           <h1 className="text-xl font-bold text-gray-800">
@@ -273,12 +273,14 @@ const PrescriptionReview = () => {
         <div className="lg:col-span-1 lg:sticky lg:top-8 self-start space-y-6">
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="relative group">
-              <img
-                src={`${API_BASE_URL}${prescription?.image_url}`}
-                alt="Prescription"
-                className="w-full rounded-md shadow-sm cursor-pointer"
-                onClick={openImagePopup}
-              />
+              {prescription && prescription.image_url && (
+                <img
+                  src={`${API_BASE_URL}${prescription.image_url}`}
+                  alt="Prescription"
+                  className="w-full rounded-md shadow-sm cursor-pointer"
+                  onClick={openImagePopup}
+                />
+              )}
               <div
                 className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-opacity duration-300"
                 onClick={openImagePopup}
@@ -289,7 +291,7 @@ const PrescriptionReview = () => {
 
             <div className="mt-6 space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="font-semibold text-gray-600">Patient:</span>
+                <span className="font-semibold text-gray-600">Customer:</span>
                 <span className="text-gray-800">
                   {prescription?.user_name || "N/A"}
                 </span>
@@ -363,7 +365,9 @@ const PrescriptionReview = () => {
                         "N/A"}
                     </p>
                   </div>
-                  <ConfidenceIndicator confidence={detail.ai_confidence_score} />
+                  <ConfidenceIndicator
+                    confidence={detail.ai_confidence_score}
+                  />
                 </div>
                 <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                   <p className="text-xs font-semibold text-yellow-800">
@@ -395,9 +399,15 @@ const PrescriptionReview = () => {
                     <button
                       onClick={() => {
                         setCurrentDetailId(detail.id);
-                        setSearchTerm(detail.mapped_product_name || detail.ai_extracted_medicine_name);
+                        setSearchTerm(
+                          detail.mapped_product_name ||
+                            detail.ai_extracted_medicine_name
+                        );
                         setShowProductModal(true);
-                        console.log("Change button clicked for detailId:", detail.id);
+                        console.log(
+                          "Change button clicked for detailId:",
+                          detail.id
+                        );
                       }}
                       className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
                     >
@@ -561,7 +571,12 @@ const PrescriptionReview = () => {
               </button>
               <button
                 onClick={() => {
-                  console.log("Attempting to map product. currentDetailId:", currentDetailId, "selectedProduct:", selectedProduct);
+                  console.log(
+                    "Attempting to map product. currentDetailId:",
+                    currentDetailId,
+                    "selectedProduct:",
+                    selectedProduct
+                  );
                   handleMapProduct(currentDetailId, selectedProduct);
                 }}
                 disabled={!selectedProduct}
@@ -635,7 +650,9 @@ const PrescriptionReview = () => {
                       id="quantity"
                       value={medicineQuantity}
                       onChange={(e) =>
-                        setMedicineQuantity(Math.max(1, parseInt(e.target.value) || 1))
+                        setMedicineQuantity(
+                          Math.max(1, parseInt(e.target.value) || 1)
+                        )
                       }
                       min="1"
                       className="w-20 p-2 border rounded-lg"

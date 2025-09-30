@@ -196,8 +196,12 @@ const PendingPrescriptionsTable = () => {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-800">📱 Pending Prescriptions</h1>
-          <p className="text-sm text-gray-600">Review and verify prescriptions uploaded by customers via mobile app</p>
+          <h1 className="text-3xl font-semibold text-gray-800">
+            📱 Pending Prescriptions
+          </h1>
+          <p className="text-sm text-gray-600">
+            Review and verify prescriptions uploaded by customers via mobile app
+          </p>
           <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded inline-block">
             Prescriptions uploaded from customer mobile app
           </div>
@@ -212,11 +216,21 @@ const PendingPrescriptionsTable = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
-            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            <svg
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              ></path>
             </svg>
           </div>
-          
+
           {/* Status Filter */}
           <select
             value={statusFilter}
@@ -238,16 +252,44 @@ const PendingPrescriptionsTable = () => {
         {(() => {
           const stats = getStatistics();
           return [
-            { label: 'Total', value: stats.total, color: 'bg-gray-100 text-gray-800' },
-            { label: 'Uploaded', value: stats.uploaded, color: 'bg-blue-100 text-blue-800' },
-            { label: 'AI Processed', value: stats.aiProcessed, color: 'bg-purple-100 text-purple-800' },
-            { label: 'Pending Review', value: stats.pendingReview, color: 'bg-yellow-100 text-yellow-800' },
-            { label: 'Verified', value: stats.verified, color: 'bg-green-100 text-green-800' },
-            { label: 'Rejected', value: stats.rejected, color: 'bg-red-100 text-red-800' },
+            {
+              label: "Total",
+              value: stats.total,
+              color: "bg-gray-100 text-gray-800",
+            },
+            {
+              label: "Uploaded",
+              value: stats.uploaded,
+              color: "bg-blue-100 text-blue-800",
+            },
+            {
+              label: "AI Processed",
+              value: stats.aiProcessed,
+              color: "bg-purple-100 text-purple-800",
+            },
+            {
+              label: "Pending Review",
+              value: stats.pendingReview,
+              color: "bg-yellow-100 text-yellow-800",
+            },
+            {
+              label: "Verified",
+              value: stats.verified,
+              color: "bg-green-100 text-green-800",
+            },
+            {
+              label: "Rejected",
+              value: stats.rejected,
+              color: "bg-red-100 text-red-800",
+            },
           ].map((stat, index) => (
             <div key={index} className="bg-white rounded-lg shadow p-4">
-              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-              <div className={`text-sm px-2 py-1 rounded-full inline-block mt-1 ${stat.color}`}>
+              <div className="text-2xl font-bold text-gray-900">
+                {stat.value}
+              </div>
+              <div
+                className={`text-sm px-2 py-1 rounded-full inline-block mt-1 ${stat.color}`}
+              >
                 {stat.label}
               </div>
             </div>
@@ -274,13 +316,13 @@ const PendingPrescriptionsTable = () => {
             </div>
             <div className="flex space-x-2">
               <button
-                onClick={() => handleBulkStatusUpdate('Verified')}
+                onClick={() => handleBulkStatusUpdate("Verified")}
                 className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
               >
                 Bulk Verify
               </button>
               <button
-                onClick={() => handleBulkStatusUpdate('Rejected')}
+                onClick={() => handleBulkStatusUpdate("Rejected")}
                 className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
               >
                 Bulk Reject
@@ -302,10 +344,17 @@ const PendingPrescriptionsTable = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   <input
                     type="checkbox"
-                    checked={selectedPrescriptions.length === filteredPrescriptions.length && filteredPrescriptions.length > 0}
+                    checked={
+                      selectedPrescriptions.length ===
+                        filteredPrescriptions.length &&
+                      filteredPrescriptions.length > 0
+                    }
                     onChange={(e) => handleSelectAll(e.target.checked)}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
@@ -313,30 +362,33 @@ const PendingPrescriptionsTable = () => {
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('id')}
+                  onClick={() => handleSort("id")}
                 >
                   <div className="flex items-center">
                     Prescription ID
-                    {sortBy === 'id' && (
+                    {sortBy === "id" && (
                       <span className="ml-1">
-                        {sortOrder === 'asc' ? '↑' : '↓'}
+                        {sortOrder === "asc" ? "↑" : "↓"}
                       </span>
                     )}
                   </div>
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Patient
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('upload_date')}
+                  onClick={() => handleSort("upload_date")}
                 >
                   <div className="flex items-center">
                     Upload Date
-                    {sortBy === 'upload_date' && (
+                    {sortBy === "upload_date" && (
                       <span className="ml-1">
-                        {sortOrder === 'asc' ? '↑' : '↓'}
+                        {sortOrder === "asc" ? "↑" : "↓"}
                       </span>
                     )}
                   </div>
@@ -344,63 +396,87 @@ const PendingPrescriptionsTable = () => {
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('verification_status')}
+                  onClick={() => handleSort("verification_status")}
                 >
                   <div className="flex items-center">
                     Status
-                    {sortBy === 'verification_status' && (
+                    {sortBy === "verification_status" && (
                       <span className="ml-1">
-                        {sortOrder === 'asc' ? '↑' : '↓'}
+                        {sortOrder === "asc" ? "↑" : "↓"}
                       </span>
                     )}
                   </div>
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Order ID
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredPrescriptions.map((prescription) => (
-                <tr key={prescription.id} className="hover:bg-gray-50">
+                <tr key={prescription.line_number} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     <input
                       type="checkbox"
-                      checked={selectedPrescriptions.includes(prescription.id)}
-                      onChange={(e) => handleSelectPrescription(prescription.id, e.target.checked)}
+                      checked={selectedPrescriptions.includes(
+                        prescription.line_number
+                      )}
+                      onChange={(e) =>
+                        handleSelectPrescription(
+                          prescription.line_number,
+                          e.target.checked
+                        )
+                      }
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     <div className="flex items-center">
-                      {getPriorityIndicator(prescription)}
-                      #{prescription.id}
+                      {getPriorityIndicator(prescription)}#
+                      {prescription.line_number}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div>
                       <div className="font-medium text-gray-900">
-                        {prescription.user?.first_name} {prescription.user?.last_name}
+                        {prescription.user?.first_name}{" "}
+                        {prescription.user?.last_name}
                       </div>
-                      <div className="text-gray-500">{prescription.user?.email}</div>
+                      <div className="text-gray-500">
+                        {prescription.user?.email}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div>
-                      <div>{new Date(prescription.upload_date).toLocaleDateString()}</div>
+                      <div>
+                        {new Date(
+                          prescription.upload_date
+                        ).toLocaleDateString()}
+                      </div>
                       <div className="text-xs text-gray-400">
-                        {new Date(prescription.upload_date).toLocaleTimeString()}
+                        {new Date(
+                          prescription.upload_date
+                        ).toLocaleTimeString()}
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {getStatusBadge(prescription.status || prescription.verification_status)}
+                    {getStatusBadge(
+                      prescription.status || prescription.verification_status
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {prescription.order ? `#${prescription.order}` : 'N/A'}
+                    {prescription.order ? `#${prescription.order}` : "N/A"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
@@ -409,17 +485,21 @@ const PendingPrescriptionsTable = () => {
                     >
                       Review
                     </button>
-                    
-                    {prescription.status === 'pending_verification' && (
+
+                    {prescription.status === "pending_verification" && (
                       <>
                         <button
-                          onClick={() => handleQuickStatusUpdate(prescription.id, 'verified')}
+                          onClick={() =>
+                            handleQuickStatusUpdate(prescription.id, "verified")
+                          }
                           className="text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-md transition duration-150"
                         >
                           Quick Verify
                         </button>
                         <button
-                          onClick={() => handleQuickStatusUpdate(prescription.id, 'rejected')}
+                          onClick={() =>
+                            handleQuickStatusUpdate(prescription.id, "rejected")
+                          }
                           className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition duration-150"
                         >
                           Reject
@@ -436,11 +516,25 @@ const PendingPrescriptionsTable = () => {
         {/* Empty State */}
         {filteredPrescriptions.length === 0 && !loading && (
           <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No prescriptions found</h3>
-            <p className="mt-1 text-sm text-gray-500">No prescriptions match your current filters.</p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No prescriptions found
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              No prescriptions match your current filters.
+            </p>
           </div>
         )}
       </div>
@@ -453,14 +547,16 @@ const PendingPrescriptionsTable = () => {
           </div>
           <div className="flex space-x-2">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
               Previous
             </button>
             <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+              }
               disabled={currentPage === totalPages}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
             >

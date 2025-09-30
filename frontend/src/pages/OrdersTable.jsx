@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from "react-router-dom";
 import axiosInstance from '../api/axiosInstance';
+import { orderAPI } from '../api/apiService';
 
 const OrdersTable = () => {
 
@@ -36,8 +37,10 @@ const OrdersTable = () => {
         params.append('search', searchTerm);
       }
 
-      const response = await axiosInstance.get(`order/orders/?${params}`);
+      const response = await orderAPI.getOrders(params);
+
       const data = response.data;
+      console.log('Fetched orders:', response);
 
       setOrders(data.results || data);
       setTotalPages(Math.ceil((data.count || data.length) / itemsPerPage));
@@ -51,8 +54,8 @@ const OrdersTable = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      await axiosInstance.patch(`order/orders/${orderId}/`, {
-        order_status: newStatus
+      await axiosInstance.patch(`/order/order-items/${orderId}/`, {
+        order_status: newStatus,
       });
       await fetchOrders(); // Refresh the list
     } catch (err) {
@@ -63,9 +66,9 @@ const OrdersTable = () => {
 
   const handleBulkStatusUpdate = async (newStatus) => {
     try {
-      const updatePromises = selectedOrders.map(id =>
-        axiosInstance.patch(`order/orders/${id}/`, {
-          order_status: newStatus
+      const updatePromises = selectedOrders.map((id) =>
+        axiosInstance.patch(`/order/order-items/${id}/`, {
+          order_status: newStatus,
         })
       );
 
@@ -154,8 +157,12 @@ const OrdersTable = () => {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-800">📱 Order Management</h1>
-          <p className="text-sm text-gray-600">Manage and track orders placed by customers via mobile app</p>
+          <h1 className="text-3xl font-semibold text-gray-800">
+            📱 Order Management
+          </h1>
+          <p className="text-sm text-gray-600">
+            Manage and track orders placed by customers via mobile app
+          </p>
           <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded inline-block">
             Orders from mobile e-commerce app
           </div>
@@ -170,8 +177,18 @@ const OrdersTable = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
-            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            <svg
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              ></path>
             </svg>
           </div>
 
@@ -210,19 +227,19 @@ const OrdersTable = () => {
             </div>
             <div className="flex space-x-2">
               <button
-                onClick={() => handleBulkStatusUpdate('Processing')}
+                onClick={() => handleBulkStatusUpdate("Processing")}
                 className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
               >
                 Mark Processing
               </button>
               <button
-                onClick={() => handleBulkStatusUpdate('Shipped')}
+                onClick={() => handleBulkStatusUpdate("Shipped")}
                 className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
               >
                 Mark Shipped
               </button>
               <button
-                onClick={() => handleBulkStatusUpdate('Delivered')}
+                onClick={() => handleBulkStatusUpdate("Delivered")}
                 className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
               >
                 Mark Delivered
@@ -244,33 +261,60 @@ const OrdersTable = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   <input
                     type="checkbox"
-                    checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
+                    checked={
+                      selectedOrders.length === filteredOrders.length &&
+                      filteredOrders.length > 0
+                    }
                     onChange={(e) => handleSelectAll(e.target.checked)}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Order ID
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Customer
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Order Date
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Total Amount
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Order Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Prescription Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Actions
                 </th>
               </tr>
@@ -282,7 +326,9 @@ const OrdersTable = () => {
                     <input
                       type="checkbox"
                       checked={selectedOrders.includes(order.id)}
-                      onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
+                      onChange={(e) =>
+                        handleSelectOrder(order.id, e.target.checked)
+                      }
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                   </td>
@@ -292,7 +338,7 @@ const OrdersTable = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div>
                       <div className="font-medium text-gray-900">
-                        {order.user_name} 
+                        {order.user_name}
                       </div>
                       <div className="text-gray-500">{order.user_email}</div>
                     </div>
@@ -317,18 +363,20 @@ const OrdersTable = () => {
                       View
                     </Link>
 
-                    {order.order_status === 'Pending' && (
+                    {order.order_status === "Pending" && (
                       <button
-                        onClick={() => handleStatusUpdate(order.id, 'Processing')}
+                        onClick={() =>
+                          handleStatusUpdate(order.id, "Processing")
+                        }
                         className="text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-md transition duration-150"
                       >
                         Process
                       </button>
                     )}
 
-                    {order.order_status === 'Processing' && (
+                    {order.order_status === "Processing" && (
                       <button
-                        onClick={() => handleStatusUpdate(order.id, 'Shipped')}
+                        onClick={() => handleStatusUpdate(order.id, "Shipped")}
                         className="text-purple-600 hover:text-purple-900 bg-purple-100 hover:bg-purple-200 px-3 py-1 rounded-md transition duration-150"
                       >
                         Ship
@@ -344,11 +392,25 @@ const OrdersTable = () => {
         {/* Empty State */}
         {filteredOrders.length === 0 && !loading && (
           <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No orders found</h3>
-            <p className="mt-1 text-sm text-gray-500">No orders match your current filters.</p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No orders found
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              No orders match your current filters.
+            </p>
           </div>
         )}
       </div>
@@ -361,14 +423,16 @@ const OrdersTable = () => {
           </div>
           <div className="flex space-x-2">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
               Previous
             </button>
             <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+              }
               disabled={currentPage === totalPages}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
             >

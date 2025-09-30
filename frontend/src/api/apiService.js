@@ -210,11 +210,12 @@ export const courierAPI = {
 // ============================================================================
 
 export const orderAPI = {
-  getOrders: (params = {}) => axiosInstance.get('/api/orders/', { params }),
-  getOrder: (id) => axiosInstance.get(`/api/orders/${id}/`),
-  createOrder: (orderData) => axiosInstance.post('/api/orders/', orderData),
-  updateOrder: (id, orderData) => axiosInstance.patch(`/api/orders/${id}/`, orderData),
-  deleteOrder: (id) => axiosInstance.delete(`/api/orders/${id}/`),
+  getOrders: (params = {}) => axiosInstance.get("/order/orders/", { params }),
+  getOrder: (id) => axiosInstance.get(`/order/orders//${id}/`),
+  createOrder: (orderData) => axiosInstance.post("/order/orders//", orderData),
+  updateOrder: (id, orderData) =>
+    axiosInstance.patch(`/order/orders/${id}/`, orderData),
+  deleteOrder: (id) => axiosInstance.delete(`/order/orders/${id}/`),
 };
 
 // ============================================================================

@@ -285,7 +285,7 @@ const PrescriptionUploadsTable = () => {
                 </th>
                 {/* Table Header: Patient */}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Patient
+                  Coustomers
                 </th>
                 {/* Table Header: Upload Date (sortable) */}
                 <th
@@ -333,7 +333,7 @@ const PrescriptionUploadsTable = () => {
               {/* Map through filtered prescriptions to render table rows */}
               {filteredPrescriptions.map((prescription) => (
                 <tr
-                  key={prescription.id}
+                  key={prescription.line_number}
                   className="hover:bg-gray-50 transition-colors duration-150"
                 >
                   {/* Prescription ID */}
