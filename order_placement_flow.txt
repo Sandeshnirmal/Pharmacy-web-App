@@ -1,0 +1,89 @@
+Here is a detailed explanation of the order placement flow in the Pharmacy web application, covering both the Flutter mobile frontend and the Django backend, with a focus on the Razorpay integration and prescription handling.
+
+### Order Placement Flow
+
+The order placement process is designed to be robust, handling both Cash on Delivery (COD) and online payments (via Razorpay), as well as optional prescription uploads. It now includes enhanced logic to prevent duplicate orders and manage aborted payment attempts.
+
+#### 1. Frontend: User Initiates Checkout (`CheckoutScreen.dart`)
+
+*   **Cart & Address Selection**: The user adds items to their cart and proceeds to the `CheckoutScreen`. Here, they select a delivery address from their saved addresses.
+*   **Prescription Requirement Check**: The system checks if any items in the cart require a prescription. If so, the user is prompted to upload a prescription image. This image is converted to a Base64 string for transmission.
+*   **Payment Method Selection**: The user chooses between "Cash on Delivery" (COD) and "UPI" (which integrates with Razorpay).
+*   **Initial Load (`initState` method)**:
+    *   The `CheckoutScreen` now calls `OrderService.getUserPendingOrder` on initialization.
+    *   **Purpose**: This checks the backend for any existing 'Pending' orders for the authenticated user that might be from a previous, uncompleted payment attempt.
+    *   **Frontend Storage**: If a pending order is found, its `order_id` is stored in the `_currentBackendOrderId` state variable. This allows the system to re-use the existing order for a payment retry.
+*   **Initiate Order Placement (`_placeOrder` method)**:
+    *   **Validation**: Before proceeding, the system validates that a delivery address is selected and, if required, a prescription image is uploaded.
+    *   **Intelligent Order Creation/Re-use**:
+        *   If `_currentBackendOrderId` is already set (meaning an existing pending order was found on load or created in a previous attempt), the frontend proceeds with payment initiation (for UPI) or order finalization (for COD) using this existing `order_id`.
+        *   If `_currentBackendOrderId` is `null`, the frontend calls `OrderService.createPendingOrder` to create a new initial "pending" order.
+        *   **Frontend Storage**: The `order_id` returned from `createPendingOrder` is stored in `_currentBackendOrderId`.
+
+#### 2. Backend: Pending Order Management (`create_pending_order` endpoint in `backend/orders/views.py`)
+
+*   **Purpose**: This endpoint is responsible for creating an initial "pending" order and intelligently managing existing pending orders to prevent duplication. It sets `order_status='Pending'` and `payment_status='Pending'`.
+*   **Logic for Duplication Prevention**:
+    *   When called, it first checks for an existing 'Pending' order for the authenticated user.
+    *   It then compares the items in the current request's cart with the items of any found existing pending order.
+    *   **If cart items are IDENTICAL**: The existing pending order's details are returned. This allows the frontend to re-attempt payment for the *same* order, preventing a new order from being created.
+    *   **If cart items are DIFFERENT**: The existing pending order is marked with `order_status='Aborted'` and `payment_status='Aborted'`. A new 'Pending' order is then created for the new cart contents.
+    *   **If NO pending order exists**: A new 'Pending' order is created.
+
+#### 3. Payment Processing (Conditional based on Payment Method)
+
+*   **A. Cash on Delivery (COD)**:
+    *   If "Cash on Delivery" is selected, after the pending order is successfully created (or re-used) on the backend, the frontend immediately calls `_placeOrderAfterPayment` (which internally uses `create_paid_order_for_prescription` to update the order).
+    *   The backend then finalizes this order, marking it as 'Paid' and 'payment_completed'.
+
+*   **B. UPI (Razorpay Integration)**:
+    *   If "UPI" is selected, after the pending order is successfully created (or re-used) and its `order_id` is obtained, the frontend calls `PaymentService.processOrderPayment`.
+    *   **`PaymentService.processOrderPayment`**:
+        *   This method first calls the backend endpoint `ApiConfig.createPaymentUrl` (which maps to `backend/payment/views.py::create_payment_order`). It passes the `amount`, `currency`, and the **backend's numeric `order_id`** (from the pending order).
+        *   **Backend (`create_payment_order` endpoint)**: This endpoint receives the `order_id`, retrieves the corresponding `Order` object, and then interacts with the Razorpay API to create a new Razorpay order. It returns the `razorpay_order_id` (Razorpay's unique ID for the transaction) to the frontend. A new `Payment` record is created for each Razorpay order attempt, linked to the same backend `Order`.
+        *   **Initiate Razorpay UI**: Upon receiving the `razorpay_order_id` from the backend, `PaymentService.processOrderPayment` then uses the `Razorpay` Flutter plugin to open the Razorpay payment gateway UI. It pre-fills user details (name, email, phone) obtained from the `_user` model in `CheckoutScreen.dart`.
+    *   **Razorpay Callbacks (`_handlePaymentResult` method)**:
+        *   The `PaymentService` listens for events from the Razorpay UI (success, error, external wallet).
+        *   **Payment Success**: If the payment is successful, Razorpay returns `paymentId`, `orderId` (Razorpay's order ID), and `signature`. `PaymentService` immediately calls its own `verifyPayment` method, which sends these details to the backend endpoint `ApiConfig.verifyPaymentUrl` (mapping to `backend/payment/views.py::verify_payment`).
+            *   **Backend (`verify_payment` endpoint)**: This endpoint verifies the `signature` using Razorpay's secret key. If verified, it updates the specific `Payment` record to 'completed' and updates the associated `Order`'s `payment_status` to 'Paid' and `order_status` to 'payment_completed'. It also creates and marks the invoice as paid.
+            *   **Frontend Notification**: After successful verification, `PaymentService` emits a `PaymentResult` (success) through its `onPaymentResult` stream.
+        *   **Payment Failure**: If the payment fails, `PaymentService` emits a `PaymentResult` (failure) with an error message.
+    *   **Frontend Handles Result**: The `_handlePaymentResult` listener in `CheckoutScreen.dart` receives the `PaymentResult`.
+        *   **On Success**: It calls `_placeOrderAfterPayment` (i.e., `OrderService.finalizeOrderWithPaymentDetails`), passing the backend's `_currentBackendOrderId` and the Razorpay payment details (`paymentId`, `razorpayOrderId`, `razorpaySignature`). This finalizes the order on the backend.
+        *   **On Failure**: It displays a toast message indicating payment failure. The `_currentBackendOrderId` remains set, allowing the user to retry payment for the same pending order.
+
+#### 4. Backend: Order Finalization (`create_paid_order_for_prescription` endpoint in `backend/orders/views.py`)
+
+*   **Purpose**: This endpoint is responsible for updating an existing pending order to a 'Paid' and 'payment_completed' status after successful payment (or COD selection), or creating a new paid order if no pending order was initiated.
+*   **Logic for Duplication Prevention**:
+    *   If an `order_id` is provided (typically from a `create_pending_order` call), the endpoint attempts to retrieve an existing order for the user that is in 'Pending' or 'Aborted' status with a 'Pending' payment status.
+    *   If such an order is found, it *updates* that existing order with the final payment details, sets its `order_status` to 'payment_completed', and `payment_status` to 'Paid'. It also clears and recreates the order's items to reflect the current cart.
+    *   If no `order_id` is provided, or if the existing order doesn't meet the criteria (e.g., already paid), a *new* order is created with the status 'payment_completed' and 'Paid'.
+*   **Clear Cart**: Upon successful order finalization, the user's cart is cleared.
+*   **Navigate to Confirmation**: The user is navigated to the `OrderConfirmationScreen`, displaying the details of their newly placed order.
+
+#### 5. Order Duplication Prevention Summary
+
+The system employs several mechanisms to prevent order duplications:
+
+*   **`create_pending_order` (for initial pending orders)**:
+    *   Actively checks for existing 'Pending' orders for the user.
+    *   If an existing pending order with *identical* cart items is found, it is re-used.
+    *   If an existing pending order with *different* cart items is found, the old order is 'Aborted', and a new one is created.
+*   **`create_paid_order_for_prescription` (for finalizing paid orders)**:
+    *   When an `order_id` (from a pending order) is provided, it attempts to *update* that existing order to a 'Paid' and 'payment_completed' status, rather than creating a new one.
+    *   This handles scenarios where a user retries payment for an existing pending order.
+*   **Razorpay Integration**:
+    *   The Razorpay payment gateway itself has internal checks to prevent double payments for the same transaction.
+    *   The `verify_payment` endpoint in `backend/payment/views.py` ensures that a payment is verified and processed only once by checking the `razorpay_order_id` and `payment_id`.
+
+These combined strategies significantly reduce the risk of duplicate orders in the system.
+
+#### 6. Backend: Order Lifecycle
+
+*   **Order Status History**: Throughout the process, `OrderStatusHistory` records are created to track changes in the order's status (e.g., from 'Pending' to 'payment_completed', or to 'Aborted').
+*   **Prescription Status**: For prescription orders, the `prescription_status` field in the `Order` model is initially set to 'pending_review' and is updated as the prescription is verified by an admin.
+*   **Order Tracking**: Further backend processes (e.g., admin verification, courier scheduling) will update the order's status and tracking information, which can be retrieved by the frontend.
+*   **New Order Statuses**: The `Order` model now includes 'Aborted' in both `ORDER_STATUS` and `PAYMENT_STATUS` to explicitly mark orders that were abandoned or superseded by a new order due to cart changes.
+
+This revised flow ensures that an order is only fully confirmed and processed after a successful payment (or explicit COD selection), that all necessary details are linked correctly, and that duplicate orders are prevented by intelligently re-using or aborting previous pending orders.

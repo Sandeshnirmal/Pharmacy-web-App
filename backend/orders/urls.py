@@ -1,9 +1,42 @@
-# Example of product/urls.py if you have one:
-# backend/product/urls.py
-from django.urls import path, include # <-- Make sure you're not including yourself!
-from . import views # or from .views import some_view
+# order/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    OrderViewSet, OrderItemViewSet, get_order_tracking, add_tracking_update,
+    get_order_status_history, create_pending_order, confirm_prescription_order,
+    create_paid_order_for_prescription, link_prescription_to_order,
+    verify_prescription_and_confirm_order, get_orders_for_prescription_review,
+    get_paid_orders_awaiting_prescription, get_user_pending_order # Import the new view
+)
+from .invoice_views import download_invoice_pdf # Import the new view
+
+router = DefaultRouter()
+router.register(r'orders', OrderViewSet)
+router.register(r'order-items', OrderItemViewSet)
 
 urlpatterns = [
-    # path('some-route/', views.some_view),
-    # AVOID: path('products/', include('product.urls')),  <--- This would cause a recursion!
+    path('', include(router.urls)),
+
+    # Order tracking endpoints
+    path('tracking/<int:order_id>/', get_order_tracking, name='get_order_tracking'),
+    path('tracking/<int:order_id>/add/', add_tracking_update, name='add_tracking_update'),
+    path('status-history/<int:order_id>/', get_order_status_history, name='get_order_status_history'),
+    path('orders/<int:order_id>/status-updates/', get_order_status_history, name='order_status_updates'), # Added to resolve 404
+
+    # Prescription order flow (Legacy)
+    path('pending/', create_pending_order, name='create_pending_order'),
+    path('confirm-prescription/<int:order_id>/', confirm_prescription_order, name='confirm_prescription_order'),
+
+    # Enhanced Order Flow - Payment First Approach
+    path('enhanced/create-paid-order/', create_paid_order_for_prescription, name='create_paid_order_for_prescription'),
+    path('enhanced/<int:order_id>/link-prescription/', link_prescription_to_order, name='link_prescription_to_order'),
+    path('enhanced/<int:order_id>/verify-prescription/', verify_prescription_and_confirm_order, name='verify_prescription_and_confirm_order'),
+    path('enhanced/prescription-review/', get_orders_for_prescription_review, name='get_orders_for_prescription_review'),
+    path('enhanced/awaiting-prescription/', get_paid_orders_awaiting_prescription, name='get_paid_orders_awaiting_prescription'),
+
+    # Invoice endpoints
+    path('invoices/<int:order_id>/download/', download_invoice_pdf, name='download_invoice_pdf'),
+
+    # Pending order retrieval for frontend
+    path('pending-order/', get_user_pending_order, name='get_user_pending_order'),
 ]

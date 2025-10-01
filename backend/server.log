@@ -1,0 +1,4 @@
+Watching for file changes with StatReloader
+/home/santhakumar/Documents/project/Pharmacy-web-App/.venv/lib/python3.12/site-packages/razorpay/client.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+Error: That port is already in use.

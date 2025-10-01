@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-// Import icons from lucide-react
-import { Home as HomeIcon, Pill as PillIcon, Link as LinkIcon, FileText as FileTextIcon, Package as PackageIcon, Truck as TruckIcon, Users as UsersIcon, Box as BoxIcon, Tag as TagIcon, BarChart2 as BarChart2Icon, Settings as SettingsIcon, ChevronDown, ChevronUp } from 'lucide-react';
 // Import Link and useLocation from react-router-dom for navigation
-import { Link, useLocation } from "react-router-dom"; // BrowserRouter is removed from here
+import { Link, useLocation } from "react-router-dom";
 
 // Sidebar Item Component - Handles individual links and dropdown parents
 // This component now uses react-router-dom's Link and useLocation for active state management
-const SidebarItem = ({ icon, label, to, children }) => {
+const SidebarItem = ({ label, to, children }) => {
   const [isOpenByClick, setIsOpenByClick] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const isDropdown = !!children;
@@ -55,6 +53,8 @@ const SidebarItem = ({ icon, label, to, children }) => {
   // Use Link for navigation, button for dropdown parents
   const Tag = isDropdown ? 'button' : Link;
 
+
+
   return (
     <div
       className="w-full relative"
@@ -62,19 +62,15 @@ const SidebarItem = ({ icon, label, to, children }) => {
       onMouseLeave={handleMouseLeave}
     >
       <Tag
-        to={isDropdown ? '#' : to} // Link to '#' for buttons, actual 'to' for links
+        to={isDropdown ? '#' : to}
         onClick={handleClick}
-        className={`flex items-center justify-between w-full gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-200
-          ${isActive ? "bg-blue-50 text-blue-700 font-semibold shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}
-          ${isDropdown ? 'focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}
+        className={`flex items-center justify-between w-full px-3 py-2 rounded cursor-pointer transition-colors
+          ${isActive ? "bg-gray-200 text-gray-900 font-medium" : "text-gray-700 hover:bg-gray-100"}
+          ${isDropdown ? 'focus:outline-none' : ''}
         `}
         aria-expanded={isDropdown ? shouldDropdownBeOpen : undefined}
       >
-        <div className="flex items-center gap-3">
-          <span className="text-lg">{icon}</span>
-          <span>{label}</span>
-        </div>
-        {isDropdown && (shouldDropdownBeOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
+        <span>{label}</span>
       </Tag>
 
       {isDropdown && shouldDropdownBeOpen && (
@@ -91,74 +87,28 @@ const SidebarItem = ({ icon, label, to, children }) => {
 
 // Full Sidebar Component - Now uses useLocation internally for active state
 const SidebarNavbar = () => {
-  const location = useLocation(); // useLocation hook is used here for active link highlighting
-
   return (
-    <aside className="w-64 bg-white p-6 shadow-md flex flex-col justify-between rounded-xl m-4">
+    <aside className="w-64 bg-white border-r border-gray-200 p-6 flex flex-col justify-between">
       <div>
-        <h2 className="text-xl font-bold mb-8 text-gray-900">Admin Panel</h2>
-        <nav className="space-y-4">
-          <SidebarItem
-            icon={<HomeIcon />}
-            label="Dashboard"
-            to="/Dashboard" // Path for Dashboard
-          />
-          <SidebarItem
-            icon={<PillIcon />}
-            label="Medicines"
-            to="/medicines" // Path for Medicines
-          />
-          <SidebarItem
-            icon={<LinkIcon />}
-            label="Generic Mappings"
-            to="/generic-mappings"
-          />
-          <SidebarItem
-            icon={<FileTextIcon />}
-            label="Prescriptions"
-            to="/prescriptions"
-          />
-          <SidebarItem
-            icon={<PackageIcon />}
-            label="Orders"
-            to="/orders"
-          />
-          <SidebarItem
-            icon={<TruckIcon />}
-            label="Delivery Tracking"
-            to="/delivery-tracking"
-          />
-          <SidebarItem
-            icon={<UsersIcon />}
-            label="Users & Customers"
-            to="/users-customers"
-          />
-          <SidebarItem
-            icon={<BoxIcon />}
-            label="Inventory"
-            to="/inventory"
-          />
-          <SidebarItem
-            icon={<TagIcon />}
-            label="Promotions"
-            to="/promotions"
-          />
-          <SidebarItem
-            icon={<BarChart2Icon />}
-            label="Reports & Analytics"
-            to="/reports-analytics"
-          />
+        <h2 className="text-lg font-semibold mb-8 text-gray-900">
+          Admin Panel
+        </h2>
+      
+        <nav className="space-y-2">
+          <SidebarItem label="Dashboard" to="/Dashboard" />
+          {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
+          
+          <SidebarItem label="Inventory Management" to="/Inventory" />
+          <SidebarItem label="Prescriptions" to="/Prescription" />
+          {/* <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" /> */}
+          {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
+          <SidebarItem label="Orders" to="/Orders" />
+          <SidebarItem label="Customers" to="/Customers" />
+          <SidebarItem label="User Management" to="/Users" />
+          <SidebarItem label="Reports & Analytics" to="/Reports" />
         </nav>
       </div>
-      <div className="mt-8">
-        <Link
-          to="/settings" // Example path for settings
-          className="flex items-center p-3 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors duration-200"
-        >
-          <SettingsIcon className="w-5 h-5 mr-3" />
-          <span>Settings</span>
-        </Link>
-      </div>
+      <img className="pt-3" src="/src/assets/full_logo.png" alt="logo" />
     </aside>
   );
 };
