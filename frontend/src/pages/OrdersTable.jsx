@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from "react-router-dom";
 import axiosInstance from '../api/axiosInstance';
+import { orderAPI } from '../api/apiService';
 
 const OrdersTable = () => {
 
@@ -36,8 +37,9 @@ const OrdersTable = () => {
         params.append('search', searchTerm);
       }
 
-      const response = await axiosInstance.get(`order/orders/?${params}`);
+      const response = orderAPI.getOrder(params);
       const data = response.data;
+      console.log(data)
 
       setOrders(data.results || data);
       setTotalPages(Math.ceil((data.count || data.length) / itemsPerPage));

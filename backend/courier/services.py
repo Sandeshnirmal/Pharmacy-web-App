@@ -5,6 +5,7 @@ from django.conf import settings
 from django.utils import timezone
 from orders.models import Order
 from courier.models import TPCServiceableArea
+from company_details.models import CompanyDetails # Import CompanyDetails model
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ class TPCCourierService:
         self.user_id = settings.TPC_API_KEY
         self.password = settings.TPC_API_SECRET
         self.base_url = settings.TPC_API_ENDPOINT.rstrip('/') + '/tpcwebservice/' # Ensure base URL ends with /
+        self.company_details = self._get_company_details() # Fetch company details on initialization
 
         if not self.user_id:
             raise ValueError("TPC UserID (TPC_API_KEY) is required in settings.py")
@@ -23,6 +25,15 @@ class TPCCourierService:
             raise ValueError("TPC Password (TPC_API_SECRET) is required in settings.py")
         if not self.base_url:
             raise ValueError("TPC API Endpoint (TPC_API_ENDPOINT) is required in settings.py")
+
+    def _get_company_details(self):
+        """Retrieves the primary company details from the database."""
+        try:
+            # Assuming there's only one company or we take the first one
+            return CompanyDetails.objects.first()
+        except Exception as e:
+            logger.error(f"Error fetching company details: {e}")
+            return None
 
     def _make_request(self, method, endpoint, params=None, json_data=None):
         """Helper to make requests to TPC API"""
@@ -53,10 +64,6 @@ class TPCCourierService:
             # Attempt to parse JSON, but handle cases where it might not be JSON
             try:
                 json_response = response.json()
-                if isinstance(json_response, list):
-                    logger.warning(f"TPC API returned a list for {url}. Expected a dictionary. Response: {json_response}")
-                    # Return a standardized error dictionary if a list is received
-                    return {'status': 'error', 'error': 'Unexpected list response from TPC API', 'raw_response': json_response}
                 return json_response
             except json.JSONDecodeError:
                 logger.error(f"Failed to decode JSON response from {url}. Raw Response: {response.text}")
@@ -91,60 +98,67 @@ class TPCCourierService:
         """
         try:
             service_area = TPCServiceableArea.objects.get(pincode=pincode)
-            # Optionally, add logic here to re-check API if last_updated is too old
-            if (timezone.now() - service_area.last_updated) > timedelta(days=7): # Check weekly
-                logger.info(f"Pincode {pincode} data is outdated, re-fetching from TPC API.")
+            # Check if the local data is outdated (e.g., older than 7 days)
+            if (timezone.now() - service_area.last_updated) > timedelta(days=7):
+                logger.info(f"Pincode {pincode} data in local DB is outdated, re-fetching from TPC API.")
                 api_response = self._fetch_pincode_service_from_api(pincode)
-                logger.debug(f"API response for outdated pincode {pincode}: {api_response}")
-                if api_response and api_response.get('status') == 'success':
+                
+                if api_response and api_response.get('is_serviceable') is not None:
                     service_area.city = api_response.get('city', service_area.city)
                     service_area.state = api_response.get('state', service_area.state)
-                    service_area.is_serviceable = True
+                    service_area.is_serviceable = api_response['is_serviceable']
                     service_area.last_updated = timezone.now()
                     service_area.save()
-                    logger.info(f"Pincode {pincode} updated from API: serviceable.")
-                    return {'status': 'success', 'city': service_area.city, 'state': service_area.state, 'is_serviceable': True}
+                    logger.info(f"Pincode {pincode} updated from API. Serviceable: {service_area.is_serviceable}.")
+                    return {
+                        'status': 'success' if service_area.is_serviceable else 'error',
+                        'city': service_area.city,
+                        'state': service_area.state,
+                        'is_serviceable': service_area.is_serviceable
+                    }
                 else:
-                    service_area.is_serviceable = False
-                    service_area.last_updated = timezone.now()
-                    service_area.save()
-                    logger.warning(f"Pincode {pincode} not serviceable via API. Local DB updated to not serviceable.")
-                    return {'status': 'error', 'error': 'Pincode not serviceable via API'}
+                    logger.warning(f"Failed to get valid serviceability response from TPC API for outdated pincode {pincode}. Keeping existing local data.")
+                    # If API call fails or returns invalid data, use existing local data
+                    return {
+                        'status': 'success' if service_area.is_serviceable else 'error',
+                        'city': service_area.city,
+                        'state': service_area.state,
+                        'is_serviceable': service_area.is_serviceable
+                    }
             else:
                 logger.info(f"Pincode {pincode} found in local DB and is up-to-date. Serviceable: {service_area.is_serviceable}")
-            
-            return {'status': 'success' if service_area.is_serviceable else 'error',
+                return {
+                    'status': 'success' if service_area.is_serviceable else 'error',
                     'city': service_area.city,
                     'state': service_area.state,
-                    'is_serviceable': service_area.is_serviceable}
+                    'is_serviceable': service_area.is_serviceable
+                }
 
         except TPCServiceableArea.DoesNotExist:
             logger.info(f"Pincode {pincode} not found in local DB, fetching from TPC API.")
             api_response = self._fetch_pincode_service_from_api(pincode)
-            logger.debug(f"API response for new pincode {pincode}: {api_response}")
-            if api_response and api_response.get('status') == 'success':
-                TPCServiceableArea.objects.create(
-                    pincode=pincode,
-                    city=api_response.get('city', 'Unknown'),
-                    state=api_response.get('state', 'Unknown'),
-                    is_serviceable=True,
-                    last_updated=timezone.now()
-                )
-                logger.info(f"Pincode {pincode} added to local DB: serviceable.")
-                return {'status': 'success', 'city': api_response.get('city', 'Unknown'), 'state': api_response.get('state', 'Unknown'), 'is_serviceable': True}
-            else:
-                TPCServiceableArea.objects.create(
-                    pincode=pincode,
-                    city=api_response.get('city', 'Unknown'),
-                    state=api_response.get('state', 'Unknown'),
-                    is_serviceable=False,
-                    last_updated=timezone.now()
-                )
-                logger.warning(f"Pincode {pincode} not serviceable via API. Added to local DB as not serviceable.")
-                return {'status': 'error', 'error': 'Pincode not serviceable via API'}
+            
+            is_serviceable = api_response.get('is_serviceable', False)
+            city = api_response.get('city', 'Unknown')
+            state = api_response.get('state', 'Unknown')
+            
+            TPCServiceableArea.objects.create(
+                pincode=pincode,
+                city=city,
+                state=state,
+                is_serviceable=is_serviceable,
+                last_updated=timezone.now()
+            )
+            logger.info(f"Pincode {pincode} added to local DB. Serviceable: {is_serviceable}.")
+            return {
+                'status': 'success' if is_serviceable else 'error',
+                'city': city,
+                'state': state,
+                'is_serviceable': is_serviceable
+            }
         except Exception as e:
-            logger.error(f"Error checking pincode {pincode}: {e}", exc_info=True) # Added exc_info for full traceback
-            return {'status': 'error', 'error': str(e)}
+            logger.error(f"Error checking pincode {pincode}: {e}", exc_info=True)
+            return {'status': 'error', 'error': str(e), 'is_serviceable': False}
 
     def _fetch_pincode_service_from_api(self, pincode):
         """Internal method to hit the TPC API for pincode service checking."""
@@ -152,30 +166,29 @@ class TPCCourierService:
         params = {'pincode': pincode}
         api_response = self._make_request('GET', endpoint, params=params)
 
-        # Check if the response is an error dictionary due to unexpected list
-        if api_response and api_response.get('status') == 'error' and 'Unexpected list response' in api_response.get('error', ''):
-            raw_list_response = api_response.get('raw_response')
-            if isinstance(raw_list_response, list) and raw_list_response:
-                # Assuming the first item in the list contains the serviceability info
-                pincode_data = raw_list_response[0]
-                is_serviceable = False
-                if pincode_data.get('DOC_DELIVERY') == 'YES' or \
-                   pincode_data.get('PARCEL_DELIVERY') == 'YES' or \
-                   pincode_data.get('PROPREMIUM_DELIVERY') == 'YES':
-                    is_serviceable = True
-                
-                return {
-                    'status': 'success' if is_serviceable else 'error',
-                    'city': pincode_data.get('AREANAME', 'Unknown'), # TPC API returns AREANAME as city
-                    'state': 'Unknown', # TPC API response doesn't seem to have state directly in this endpoint
-                    'is_serviceable': is_serviceable
-                }
-            else:
-                logger.error(f"Unexpected raw_response format for pincode {pincode}: {raw_list_response}")
-                return {'status': 'error', 'error': 'Failed to parse TPC API list response'}
+        # TPC API can return a list of dictionaries or a single dictionary
+        # We need to normalize the response to a consistent format
+        if isinstance(api_response, list) and api_response:
+            pincode_data = api_response[0] # Assuming the first item contains the relevant data
+        elif isinstance(api_response, dict):
+            pincode_data = api_response
+        else:
+            logger.error(f"Unexpected raw_response format from TPC API for pincode {pincode}: {api_response}")
+            return {'status': 'error', 'error': 'Failed to parse TPC API response', 'is_serviceable': False}
+
+        is_serviceable = False
+        # Check various delivery options to determine serviceability
+        if pincode_data.get('DOC_DELIVERY', 'NO').upper() == 'YES' or \
+           pincode_data.get('PARCEL_DELIVERY', 'NO').upper() == 'YES' or \
+           pincode_data.get('PROPREMIUM_DELIVERY', 'NO').upper() == 'YES':
+            is_serviceable = True
         
-        # If it's not an unexpected list error, return the original API response
-        return api_response
+        return {
+            'status': 'success' if is_serviceable else 'error',
+            'city': pincode_data.get('AREANAME', 'Unknown'), # TPC API returns AREANAME as city
+            'state': pincode_data.get('STATE', 'Unknown'), # TPC API might have state, or it might be 'Unknown'
+            'is_serviceable': is_serviceable
+        }
 
     def search_area_name(self, area_name):
         """This API used for Areaname search."""
@@ -231,17 +244,26 @@ class TPCCourierService:
         # The order and address details can be used to populate this.
         
         # Example mapping (adjust as per actual data structure in your system)
+        # Use company_details for sender information if available
+        sender_name = self.company_details.name if self.company_details else pickup_address.get("name", "")
+        sender_address1 = self.company_details.address_line1 if self.company_details else pickup_address.get("address_line_1", "")
+        sender_city = self.company_details.city if self.company_details else pickup_address.get("city", "")
+        sender_pincode = self.company_details.postal_code if self.company_details else pickup_address.get("pincode", "")
+        sender_phone = self.company_details.phone_number if self.company_details else pickup_address.get("phone", "")
+        sender_email = self.company_details.email if self.company_details else pickup_address.get("email", "")
+        sender_gstin = self.company_details.gstin if self.company_details else shipment_data.get("GSTIN", "")
+
         request_data = {
             "REF_NO": shipment_data.get("REF_NO", str(order.id)),
             "BDATE": shipment_data.get("BDATE", timezone.now().strftime("%Y-%m-%d")),
-            "SENDER": pickup_address.get("name", ""),
+            "SENDER": sender_name,
             "SENDER_CODE": shipment_data.get("SENDER_CODE", ""), # Assuming a default or configured sender code
-            "SENDER_ADDRESS": pickup_address.get("address_line_1", ""),
-            "SENDER_CITY": pickup_address.get("city", ""),
-            "SENDER_PINCODE": pickup_address.get("pincode", ""),
-            "SENDER_MOB": pickup_address.get("phone", ""),
-            "SENDER_EMAIL": pickup_address.get("email", ""),
-            "GSTIN": shipment_data.get("GSTIN", ""), # Sender's GSTIN
+            "SENDER_ADDRESS": sender_address1,
+            "SENDER_CITY": sender_city,
+            "SENDER_PINCODE": sender_pincode,
+            "SENDER_MOB": sender_phone,
+            "SENDER_EMAIL": sender_email,
+            "GSTIN": sender_gstin, # Sender's GSTIN
             "RECIPIENT": delivery_address.get("name", ""),
             "RECIPIENT_COMPANY": delivery_address.get("company", ""),
             "RECIPIENT_ADDRESS": delivery_address.get("address_line_1", ""),
@@ -282,17 +304,26 @@ class TPCCourierService:
             'tpcpwd': self.password
         }
 
+        # Use company_details for sender information if available
+        sender_name = self.company_details.name if self.company_details else pickup_address.get("name", "")
+        sender_address1 = self.company_details.address_line1 if self.company_details else pickup_address.get("address_line_1", "")
+        sender_city = self.company_details.city if self.company_details else pickup_address.get("city", "")
+        sender_pincode = self.company_details.postal_code if self.company_details else pickup_address.get("pincode", "")
+        sender_phone = self.company_details.phone_number if self.company_details else pickup_address.get("phone", "")
+        sender_email = self.company_details.email if self.company_details else pickup_address.get("email", "")
+        sender_gstin = self.company_details.gstin if self.company_details else cod_data.get("GSTIN", "")
+
         request_data = {
             "REF_NO": cod_data.get("REF_NO", str(order.id)),
             "BDATE": cod_data.get("BDATE", timezone.now().strftime("%Y-%m-%d")),
-            "SENDER": pickup_address.get("name", ""),
+            "SENDER": sender_name,
             "SENDER_CODE": cod_data.get("SENDER_CODE", ""),
-            "SENDER_ADDRESS": pickup_address.get("address_line_1", ""),
-            "SENDER_CITY": pickup_address.get("city", ""),
-            "SENDER_PINCODE": pickup_address.get("pincode", ""),
-            "SENDER_MOB": pickup_address.get("phone", ""),
-            "SENDER_EMAIL": pickup_address.get("email", ""),
-            "GSTIN": cod_data.get("GSTIN", ""),
+            "SENDER_ADDRESS": sender_address1,
+            "SENDER_CITY": sender_city,
+            "SENDER_PINCODE": sender_pincode,
+            "SENDER_MOB": sender_phone,
+            "SENDER_EMAIL": sender_email,
+            "GSTIN": sender_gstin,
             "RECIPIENT": delivery_address.get("name", ""),
             "RECIPIENT_COMPANY": delivery_address.get("company", ""),
             "RECIPIENT_ADDRESS": delivery_address.get("address_line_1", ""),
@@ -398,7 +429,26 @@ class TPCCourierService:
             'client': self.user_id,
             'tpcpwd': self.password
         }
-        return self._make_request('GET', endpoint, params=params)
+        
+        api_response = self._make_request('GET', endpoint, params=params)
+
+        if api_response and isinstance(api_response, list) and api_response:
+            try:
+                from courier.models import CourierShipment # Import here to avoid circular dependency
+                shipment = CourierShipment.objects.get(tracking_number=podno)
+                self._process_tracking_data(shipment, api_response)
+                return {'status': 'success', 'message': 'Tracking data updated successfully', 'tracking_data': shipment.tracking_history}
+            except CourierShipment.DoesNotExist:
+                logger.warning(f"No CourierShipment found for tracking number {podno}. Cannot update tracking history.")
+                return {'status': 'error', 'error': f"No shipment found for tracking number {podno}", 'raw_response': api_response}
+            except Exception as e:
+                logger.error(f"Error processing tracking data for {podno}: {e}", exc_info=True)
+                return {'status': 'error', 'error': f"Failed to process tracking data: {e}", 'raw_response': api_response}
+        elif api_response and api_response.get('status') == 'error':
+            return api_response # Return the error dictionary from _make_request
+        else:
+            logger.warning(f"TPC API returned unexpected response for tracking number {podno}: {api_response}")
+            return {'status': 'error', 'error': 'Unexpected API response', 'raw_response': api_response}
 
     def get_tracking_webpage_url(self, consignment_id):
         """
@@ -412,7 +462,92 @@ class TPCCourierService:
             'PSWD': self.password # Note: documentation uses PSWD here, not tpcpwd
         }
         # This API returns an ASPX page, not JSON. So, we just return the URL.
-        return f"{self.api_endpoint.rstrip('/')}/{endpoint}?id={consignment_id}&client={self.user_id}&PSWD={self.password}"
+        return f"{self.base_url.rstrip('/')}/{endpoint}?id={consignment_id}&client={self.user_id}&PSWD={self.password}"
+
+    def _process_tracking_data(self, shipment, tracking_data):
+        """
+        Processes raw tracking data from TPC API and updates CourierShipment.
+        """
+        if not isinstance(tracking_data, list):
+            logger.error(f"Expected tracking_data to be a list, but got {type(tracking_data)}")
+            return
+
+        # Clear existing history if we're getting a fresh set
+        shipment.tracking_history = []
+        
+        latest_event = None
+        for event_data in tracking_data:
+            try:
+                # Convert date and time strings to datetime objects
+                date_str = event_data.get('Date')
+                time_str = event_data.get('Time')
+                
+                event_datetime = None
+                if date_str and time_str:
+                    try:
+                        # Assuming date format DD/MM/YYYY and time format HH:MM
+                        event_datetime = datetime.strptime(f"{date_str} {time_str}", "%d/%m/%Y %H:%M")
+                        # Make it timezone-aware, assuming it's in the local timezone and then converting to UTC
+                        event_datetime = timezone.make_aware(event_datetime, timezone.get_current_timezone())
+                    except ValueError:
+                        logger.warning(f"Could not parse datetime for tracking event: {date_str} {time_str}")
+                        event_datetime = None # Keep it None if parsing fails
+
+                event = {
+                    'Date': event_data.get('Date'),
+                    'Time': event_data.get('Time'),
+                    'City': event_data.get('City'),
+                    'Activity': event_data.get('Activity'),
+                    'Forwardingno': event_data.get('Forwardingno'),
+                    'Pod_no': event_data.get('Pod_no'),
+                    'Remarks': event_data.get('Remarks'),
+                    'Pieces': event_data.get('Pieces'),
+                    'Weight': event_data.get('Weight'),
+                    'Receiver': event_data.get('Receiver'),
+                    'Receiver Phno': event_data.get('Receiver Phno'),
+                    'Stamp': event_data.get('Stamp'),
+                    'Refno': event_data.get('Refno'),
+                    'Idproof': event_data.get('Idproof'),
+                    'Type': event_data.get('Type'),
+                    'timestamp_iso': event_datetime.isoformat() if event_datetime else None
+                }
+                shipment.tracking_history.append(event)
+
+                # Determine the latest event for status update
+                if not latest_event or (event_datetime and event_datetime > latest_event['datetime']):
+                    latest_event = {
+                        'datetime': event_datetime,
+                        'activity': event_data.get('Activity'),
+                        'city': event_data.get('City'),
+                        'type': event_data.get('Type')
+                    }
+            except Exception as e:
+                logger.error(f"Error processing tracking event: {event_data}. Error: {e}", exc_info=True)
+                continue
+
+        if latest_event:
+            shipment.current_location = latest_event['city']
+            # Map TPC activity to internal status choices
+            if "Delivered" in latest_event['activity']:
+                shipment.status = 'delivered'
+                if latest_event['datetime']:
+                    shipment.actual_delivery = latest_event['datetime']
+            elif "Out for Delivery" in latest_event['activity']:
+                shipment.status = 'out_for_delivery'
+            elif "In Transit" in latest_event['type'] or "Despatched" in latest_event['activity'] or "Received at" in latest_event['activity']:
+                shipment.status = 'in_transit'
+            elif "Picked Up" in latest_event['activity'] or "Booking Completed" in latest_event['activity']:
+                shipment.status = 'picked_up'
+            elif "Cancelled" in latest_event['activity']:
+                shipment.status = 'cancelled'
+            elif "Exception" in latest_event['activity']:
+                shipment.status = 'exception'
+            else:
+                shipment.status = 'in_transit' # Default to in_transit if not explicitly matched
+
+        shipment.updated_at = timezone.now()
+        shipment.save()
+        logger.info(f"CourierShipment {shipment.tracking_number} updated with tracking data.")
 
 
 def get_tpc_courier_service():
