@@ -36,8 +36,8 @@ RAZORPAY_KEY_SECRET = 'Owlg61rwtT7V3RQKoYGKhsUC'  # Test secret
 
 # TPC Courier Configuration
 TPC_API_ENDPOINT = os.environ.get('TPC_API_ENDPOINT', 'https://www.tpcglobe.com') # Placeholder
-TPC_API_KEY = os.environ.get('TPC_API_KEY', 'YOUR_TPC_USER_ID') # Placeholder
-TPC_API_SECRET = os.environ.get('TPC_API_SECRET', 'YOUR_TPC_PASSWORD') # Placeholder
+TPC_API_KEY = os.environ.get('TPC_API_KEY', '0236') # Placeholder
+TPC_API_SECRET = os.environ.get('TPC_API_SECRET', 'Admin@123') # Placeholder
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'authentication',  # Authentication app for mobile API
     'payment',  # Payment app for Razorpay integration
     'courier',  # Professional courier integration
+    'company_details', # App to store company details
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App

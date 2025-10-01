@@ -71,6 +71,7 @@ const PrescriptionReview = () => {
   const [showAddMedicineModal, setShowAddMedicineModal] = useState(false); // New state for add medicine modal
   const [selectedMedicineToAdd, setSelectedMedicineToAdd] = useState(null); // New state for selected medicine in add modal
   const [medicineQuantity, setMedicineQuantity] = useState(1); // New state for medicine quantity
+  const [addMedicineSearchTerm, setAddMedicineSearchTerm] = useState(""); // New state for add medicine search term
 
   const allItemsMapped =
     prescriptionDetails.length > 0 &&
@@ -88,6 +89,7 @@ const PrescriptionReview = () => {
         setPrescription(prescriptionRes.data);
         setNotes(prescriptionRes.data.pharmacist_notes || "");
         setPrescriptionDetails(prescriptionRes.data.prescription_medicines);
+        console.log("Fetched prescription details:", prescriptionRes.data.prescription_medicines);
       } else {
         setError(prescriptionRes.error);
       }
@@ -99,10 +101,16 @@ const PrescriptionReview = () => {
     }
   }, [prescriptionId]);
 
-  const fetchProducts = useCallback(async () => {
+  useEffect(() => {
+    if (prescriptionId) {
+      fetchPrescriptionData();
+    }
+  }, [prescriptionId, fetchPrescriptionData]);
+
+  const fetchProducts = useCallback(async (term) => {
     setIsFetchingProducts(true);
     try {
-      const result = await prescriptionService.searchProducts(searchTerm);
+      const result = await prescriptionService.searchProducts(term);
       if (result.success) {
         setProducts(result.data);
       } else {
@@ -114,26 +122,23 @@ const PrescriptionReview = () => {
     } finally {
       setIsFetchingProducts(false);
     }
-  }, [searchTerm]);
+  }, []);
 
   useEffect(() => {
-    if (prescriptionId) {
-      fetchPrescriptionData();
-    }
-  }, [prescriptionId, fetchPrescriptionData]);
+    // Trigger product search when either modal is open and searchTerm or addMedicineSearchTerm is present
+    const currentSearchTerm = showProductModal ? searchTerm : addMedicineSearchTerm;
+    const currentModalOpen = showProductModal || showAddMedicineModal;
 
-  useEffect(() => {
-    // Trigger product search when either modal is open and searchTerm is present
-    if ((showProductModal || showAddMedicineModal) && searchTerm) {
+    if (currentModalOpen && currentSearchTerm) {
       const handler = setTimeout(() => {
-        fetchProducts();
+        fetchProducts(currentSearchTerm); // Pass the specific search term
       }, 300);
       return () => clearTimeout(handler);
-    } else if ((showProductModal || showAddMedicineModal) && !searchTerm) {
+    } else if (currentModalOpen && !currentSearchTerm) {
       // Clear products if no search term and a modal is open
       setProducts([]);
     }
-  }, [showProductModal, showAddMedicineModal, searchTerm, fetchProducts]);
+  }, [showProductModal, showAddMedicineModal, searchTerm, addMedicineSearchTerm, fetchProducts]);
 
   const handleMapProduct = async (detailId, product) => {
     console.log("handleMapProduct called with:", { detailId, product });
@@ -144,7 +149,7 @@ const PrescriptionReview = () => {
     try {
       const result = await prescriptionService.remapMedicine(
         detailId,
-        product.id
+        product.id // Pass product.id directly
       );
       if (result.success) {
         setPrescriptionDetails((prevDetails) =>
@@ -168,7 +173,7 @@ const PrescriptionReview = () => {
         setShowProductModal(false);
         setSelectedProduct(null);
         alert(result.message);
-        navigate("/Prescription"); // Refresh data after remapping
+        fetchPrescriptionData(); // Re-fetch data to ensure UI is in sync with backend
       } else {
         alert(`Failed to map product: ${result.error}`);
       }
@@ -547,6 +552,7 @@ const PrescriptionReview = () => {
                       onClick={() => {
                         setSelectedProduct(product);
                         console.log("Selected product for remapping:", product);
+                        console.log("Selected product details (strength, form):", product.strength, product.form);
                       }}
                     >
                       <p className="font-semibold">{product.name}</p>
@@ -604,8 +610,8 @@ const PrescriptionReview = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  value={searchTerm} // Reuse searchTerm for now, might need a dedicated one
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={addMedicineSearchTerm}
+                  onChange={(e) => setAddMedicineSearchTerm(e.target.value)}
                   placeholder="Search for product name, generic name..."
                   className="w-full pl-10 pr-4 py-2.5 border rounded-lg"
                 />

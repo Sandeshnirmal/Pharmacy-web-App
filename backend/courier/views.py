@@ -195,47 +195,28 @@ class CourierShipmentViewSet(viewsets.ModelViewSet):
             shipment = get_object_or_404(CourierShipment, tracking_number=tracking_identifier)
             tpc_service = get_tpc_courier_service()
             
-            response_data = tpc_service.track_shipment(
+            response_from_service = tpc_service.track_shipment(
                 tracking_identifier, new_version=new_version, with_contact=with_contact
             )
-            # TPC tracking APIs return a list of events or a message
-            if response_data and not response_data.get('message', {}).get('error') and not response_data.get('error_description'):
-                latest_event = response_data[-1] if isinstance(response_data, list) and response_data else {}
-                
-                updated_shipment_status = latest_event.get('Activity', shipment.status)
-                updated_current_location = latest_event.get('City', shipment.current_location)
-
-                # Update shipment model with latest status
-                if updated_shipment_status != shipment.status:
-                    shipment.status = updated_shipment_status
-                    shipment.current_location = updated_current_location
-                    shipment.save()
-                    shipment.add_tracking_event(
-                        status=updated_shipment_status,
-                        location=updated_current_location,
-                        timestamp=timezone.now(), # Or parse from T_Date, T_Time
-                        description=latest_event.get('Remarks', updated_shipment_status)
-                    )
-
-                serializer = CourierTrackingSerializer({
-                    'tracking_number': tracking_identifier,
-                    'status': updated_shipment_status,
-                    'status_display': updated_shipment_status, # TPC provides activity directly
-                    'current_location': updated_current_location,
-                    'estimated_delivery': shipment.estimated_delivery, # TPC API doesn't seem to provide this directly
-                    'tracking_history': response_data # Store raw TPC response for now
-                })
+            
+            if response_from_service.get('status') == 'success':
+                # The shipment object has already been updated by the service method
+                # Fetch the latest state of the shipment
+                shipment.refresh_from_db() 
+                serializer = CourierShipmentSerializer(shipment)
                 return Response(serializer.data)
             else:
-                error_message = response_data.get('message', {}).get('description') or \
-                                response_data.get('error_description') or \
-                                response_data.get('error') or \
-                                'Unable to track shipment via TPC'
+                error_message = response_from_service.get('error', 'Unable to track shipment via TPC')
                 return Response(
-                    {'error': error_message, 'details': response_data},
+                    {'error': error_message, 'details': response_from_service.get('raw_response')},
                     status=status.HTTP_404_NOT_FOUND
                 )
                 
+        except CourierShipment.DoesNotExist:
+            return Response(
+                {'error': f"Shipment with tracking number {tracking_identifier} not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -354,7 +335,60 @@ class CourierShipmentViewSet(viewsets.ModelViewSet):
                     )
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def search_area(self, request):
+        """Search for area names using TPC API."""
+        area_name = request.query_params.get('area_name')
+        if not area_name:
+            return Response({'error': 'area_name parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            tpc_service = get_tpc_courier_service()
+            response_data = tpc_service.search_area_name(area_name)
+            return Response(response_data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def request_consignment_notes(self, request):
+        """Request consignment notes stock issue from TPC API."""
+        qty = request.query_params.get('qty')
+        if not qty:
+            return Response({'error': 'qty parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            qty = int(qty)
+            if qty <= 0:
+                return Response({'error': 'qty must be a positive integer'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            tpc_service = get_tpc_courier_service()
+            response_data = tpc_service.request_consignment_notes(qty)
+            return Response(response_data)
+        except ValueError:
+            return Response({'error': 'qty must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def get_consignment_note_stock(self, request):
+        """Get the number of consignment notes stock from TPC API."""
+        try:
+            tpc_service = get_tpc_courier_service()
+            response_data = tpc_service.get_consignment_note_stock()
+            return Response(response_data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def get_consignment_note_stock_details(self, request):
+        """Get consignment note number stock details from TPC API."""
+        try:
+            tpc_service = get_tpc_courier_service()
+            response_data = tpc_service.get_consignment_note_stock_details()
+            return Response(response_data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def check_duplicate_ref_no(self, request):

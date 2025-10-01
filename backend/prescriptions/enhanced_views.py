@@ -430,10 +430,19 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
         queryset = PrescriptionMedicine.objects.all()
         print(f"PrescriptionMedicineViewSet.get_queryset called. Initial queryset count: {queryset.count()}")
 
-        # Re-enable customer filtering
-        if user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
+        # For 'remap_medicine' action, allow access to the medicine object regardless of user role
+        # as the action itself has AllowAny permission.
+        if self.action == 'remap_medicine':
+            pass # No additional filtering by user role for this action
+        elif user.is_authenticated and hasattr(user, 'role') and user.role in ['admin', 'pharmacist', 'verifier']:
+            # No additional filtering for these roles
+            pass
+        elif user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
             queryset = queryset.filter(prescription__user=user)
             print(f"  - After customer filter: {queryset.count()}")
+        else:
+            # For unauthenticated users or other roles, return an empty queryset or apply stricter filters
+            queryset = queryset.none() # Or raise permission denied
 
         prescription_id = self.request.query_params.get('prescription')
         if prescription_id:

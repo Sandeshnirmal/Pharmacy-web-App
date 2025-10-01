@@ -37,10 +37,9 @@ const OrdersTable = () => {
         params.append('search', searchTerm);
       }
 
-      const response = await orderAPI.getOrders(params);
-
+      const response = orderAPI.getOrder(params);
       const data = response.data;
-      console.log('Fetched orders:', response);
+      console.log(data)
 
       setOrders(data.results || data);
       setTotalPages(Math.ceil((data.count || data.length) / itemsPerPage));

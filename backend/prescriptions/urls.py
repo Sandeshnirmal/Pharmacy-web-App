@@ -47,5 +47,8 @@ urlpatterns = [
     path('search/composition/', medicine_search.search_by_composition, name='search_by_composition'),
     path('ocr/analyze/', medicine_search.prescription_ocr_analysis, name='prescription_ocr_analysis'),
 
+    # Explicitly define remap_medicine URL for PrescriptionMedicineViewSet
+    path('medicines/<uuid:pk>/remap_medicine/', PrescriptionMedicineViewSet.as_view({'post': 'remap_medicine'}), name='prescription-medicine-remap'),
+
     # Test endpoints removed - use mobile API for all prescription processing
 ]

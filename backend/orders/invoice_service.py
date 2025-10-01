@@ -5,6 +5,7 @@ from decimal import Decimal
 import uuid
 from .models import Order
 from django.contrib.auth import get_user_model
+from company_details.models import CompanyDetails # Import CompanyDetails model
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
@@ -251,9 +252,24 @@ Terms and Conditions:
         
         story = []
 
+        # Fetch company details
+        company_details = CompanyDetails.objects.first()
+
         # Header
-        story.append(Paragraph("<b>INVOICE</b>", styles['h1']))
+        story.append(Paragraph("<b>TAX INVOICE</b>", styles['h1']))
         story.append(Spacer(1, 0.2 * inch))
+
+        # Company Details (Seller Information)
+        if company_details:
+            story.append(Paragraph("<b>From:</b>", styles['h3']))
+            story.append(Paragraph(f"<b>{company_details.name}</b>", styles['Normal']))
+            story.append(Paragraph(f"{company_details.address_line1}, {company_details.address_line2 or ''}", styles['Normal']))
+            story.append(Paragraph(f"{company_details.city}, {company_details.state} - {company_details.postal_code}", styles['Normal']))
+            story.append(Paragraph(f"Phone: {company_details.phone_number or 'N/A'}", styles['Normal']))
+            story.append(Paragraph(f"Email: {company_details.email or 'N/A'}", styles['Normal']))
+            if company_details.gstin:
+                story.append(Paragraph(f"GSTIN: {company_details.gstin}", styles['Normal']))
+            story.append(Spacer(1, 0.2 * inch))
 
         # Invoice Details
         story.append(Paragraph(f"<b>Invoice Number:</b> {invoice.invoice_number}", styles['Normal']))
@@ -317,6 +333,15 @@ Terms and Conditions:
         if invoice.razorpay_payment_id:
             story.append(Paragraph(f"<b>Razorpay Payment ID:</b> {invoice.razorpay_payment_id}", styles['Normal']))
         story.append(Spacer(1, 0.2 * inch))
+
+        # Bank Details (if available)
+        if company_details and company_details.bank_name and company_details.bank_account_number:
+            story.append(Paragraph("<b>Bank Details:</b>", styles['h3']))
+            story.append(Paragraph(f"Bank Name: {company_details.bank_name}", styles['Normal']))
+            story.append(Paragraph(f"Account Number: {company_details.bank_account_number}", styles['Normal']))
+            if company_details.bank_ifsc_code:
+                story.append(Paragraph(f"IFSC Code: {company_details.bank_ifsc_code}", styles['Normal']))
+            story.append(Spacer(1, 0.2 * inch))
 
         # Terms and Conditions
         story.append(Paragraph("<b>Terms and Conditions:</b>", styles['h3']))
