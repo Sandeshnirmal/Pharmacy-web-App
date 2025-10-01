@@ -581,7 +581,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                     'price': float(new_product.price)
                 }
             })
-
+# sdfsdf
         except Product.DoesNotExist:
             print(f"Product with ID {new_product_id} not found or inactive.")
             return Response({
