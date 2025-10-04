@@ -34,12 +34,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         if is_prescription:
             queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
         
-        # Filter by authenticated user
-        if self.request.user.is_authenticated:
+        # If the user is an admin, show all orders, otherwise filter by the authenticated user
+        if self.request.user.is_staff:
+            # Admins see all orders, no user-specific filtering
+            pass
+        elif self.request.user.is_authenticated:
             queryset = queryset.filter(user=self.request.user)
         else:
             # If no user is authenticated, return an empty queryset
-            # This should ideally not be reached if IsAuthenticated permission is active
             return queryset.none()
 
         return queryset
@@ -68,13 +70,29 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
-        """Update order status"""
+        """Update order status (Admin only)"""
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Permission denied. Admin access required to update order status.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         order = self.get_object()
         new_status = request.data.get('order_status')
 
         if new_status in dict(Order.ORDER_STATUS):
+            old_status = order.order_status
             order.order_status = new_status
             order.save()
+
+            # Record status history
+            OrderStatusHistory.objects.create(
+                order=order,
+                old_status=old_status,
+                new_status=new_status,
+                changed_by=request.user,
+                reason=f'Manually updated by admin to {new_status}'
+            )
             return Response({'message': 'Order status updated successfully'})
 
         return Response(
