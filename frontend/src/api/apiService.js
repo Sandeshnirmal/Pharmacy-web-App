@@ -97,6 +97,8 @@ export const productAPI = {
   // Inventory management
   updateStock: (productId, stockData) => 
     axiosInstance.post(`/api/products/enhanced-products/${productId}/update_stock/`, stockData),
+  createBatch: (productId, batchData) =>
+    axiosInstance.post(`/api/products/enhanced-products/${productId}/create_batch/`, batchData),
   getLowStockAlert: () => axiosInstance.get('/api/products/enhanced-products/low_stock_alert/'),
   getInventorySummary: () => axiosInstance.get('/api/products/enhanced-products/inventory_summary/'),
   
