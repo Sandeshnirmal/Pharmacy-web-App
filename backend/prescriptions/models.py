@@ -149,15 +149,6 @@ class PrescriptionMedicine(models.Model):
         default='pending'
     )
 
-    # Legacy mapping status for backward compatibility
-    MAPPING_STATUS_CHOICES = [
-        ('Pending', 'Pending'),
-        ('Mapped', 'Mapped'),
-        ('Unmapped', 'Unmapped'),
-        ('Unavailable', 'Unavailable'),
-    ]
-    mapping_status = models.CharField(max_length=50, choices=MAPPING_STATUS_CHOICES, default='Pending')
-
     # Final verified medicine (after pharmacist review)
     verified_medicine = models.ForeignKey(
         Product,
@@ -205,7 +196,6 @@ class PrescriptionMedicine(models.Model):
         verbose_name_plural = 'Prescription Medicines'
         indexes = [
             models.Index(fields=['verification_status']),
-            models.Index(fields=['mapping_status']),
             models.Index(fields=['ai_confidence_score']),
         ]
 

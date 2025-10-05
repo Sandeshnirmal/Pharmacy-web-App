@@ -43,7 +43,7 @@ const OrderDetails = () => {
   const handleStatusUpdate = async (newStatus) => {
     try {
       setStatusUpdating(true);
-      await axiosInstance.patch(`/order/orders/${orderId}/`, {
+      await axiosInstance.patch(`/order/orders/${orderId}/update_status/`, { // Corrected endpoint
         order_status: newStatus,
       });
       fetchOrderDetails(); // Refresh data

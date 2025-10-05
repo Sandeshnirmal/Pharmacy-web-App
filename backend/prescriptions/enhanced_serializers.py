@@ -174,7 +174,7 @@ class PrescriptionMedicineSerializer(serializers.ModelSerializer):
             'recognized_text_raw', 'extracted_medicine_name', 'extracted_dosage',
             'extracted_frequency', 'extracted_duration', 'extracted_quantity', 'extracted_instructions',
             'suggested_medicine', 'suggested_medicine_details', 'ai_confidence_score',
-            'verification_status', 'verification_status_display', 'mapping_status',
+            'verification_status', 'verification_status_display',
             'verified_medicine', 'verified_medicine_details', 'verified_medicine_name',
             'verified_dosage', 'verified_frequency', 'verified_duration',
             'verified_quantity', 'verified_instructions',

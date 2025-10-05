@@ -1,6 +1,7 @@
 # order/views.py
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.pagination import PageNumberPagination # Import PageNumberPagination
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Count, Sum
@@ -14,11 +15,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+class OrderPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by('-order_date')
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
     authentication_classes = [JWTAuthentication] # Add JWTAuthentication
+    pagination_class = OrderPagination # Add pagination class
 
     def get_queryset(self):
         queryset = super().get_queryset()

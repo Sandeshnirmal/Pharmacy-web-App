@@ -144,12 +144,11 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                             extracted_quantity="1", # Default to 1, can be improved with more advanced OCR
                             extracted_instructions="", # Can be improved with more advanced OCR
                             ai_confidence_score=match_confidence,
-                            verification_status='pending',
-                            mapping_status='Pending'
+                            verification_status='pending'
                         )
                         print(f"Created PrescriptionMedicine: {prescription_medicine.id} - {extracted_name}")
 
-                        if local_equivalent:
+                        if local_equivalent and match_confidence >= 0.8: # Auto-select if confidence is high
                             try:
                                 product = Product.objects.get(name=local_equivalent['product_name'])
                                 prescription_medicine.suggested_medicine = product
@@ -159,16 +158,16 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                                 prescription_medicine.unit_price = product.price
                                 prescription_medicine.total_price = product.price * prescription_medicine.quantity_prescribed
                                 prescription_medicine.is_valid_for_order = True
-                                prescription_medicine.mapping_status = 'Mapped'
-                                print(f"  - Mapped to product: {product.name}")
+                                print(f"  - Auto-selected and mapped to product: {product.name} with confidence {match_confidence}")
                             except Product.DoesNotExist:
-                                prescription_medicine.mapping_status = 'Unmapped'
                                 prescription_medicine.is_valid_for_order = False
                                 print(f"  - Product not found for local equivalent: {local_equivalent['product_name']}")
                         else:
-                            prescription_medicine.mapping_status = 'Unmapped'
                             prescription_medicine.is_valid_for_order = False
-                            print(f"  - No local equivalent found for {extracted_name}")
+                            if local_equivalent and match_confidence < 0.8:
+                                print(f"  - Local equivalent found but confidence {match_confidence} is too low for auto-selection: {local_equivalent['product_name']}")
+                            else:
+                                print(f"  - No local equivalent found for {extracted_name}")
                         
                         prescription_medicine.save()
                         print(f"Saved PrescriptionMedicine: {prescription_medicine.id}")
@@ -405,14 +404,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
             'top_medicines': list(top_medicines)
         }
 
-        return Response({
-            'total_prescriptions': total_prescriptions,
-            'pending_verification': pending_verification,
-            'verified_today': verified_today,
-            'rejected_today': rejected_today,
-            'need_clarification': need_clarification,
-            'average_processing_time': average_processing_time
-        })
+        return Response(data)
 
 # ============================================================================
 # PRESCRIPTION MEDICINE MANAGEMENT VIEWSET

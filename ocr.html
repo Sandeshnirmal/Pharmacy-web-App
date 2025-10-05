@@ -46,7 +46,7 @@
                 const base64Image = event.target.result.split(',')[1]; // Get base64 part
                 
                 try {
-                    const response = await fetch('http://localhost:8000/api/prescriptions/mobile/upload/', {
+                    const response = await fetch('http://localhost:8000/api/prescriptions/ocr/analyze/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

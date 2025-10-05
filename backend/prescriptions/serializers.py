@@ -14,7 +14,6 @@ class PrescriptionDetailSerializer(serializers.ModelSerializer):
     product_strength = serializers.CharField(source='mapped_product.strength', read_only=True)
     product_form = serializers.CharField(source='mapped_product.form', read_only=True)
     suggested_products = SuggestedProductSerializer(many=True, read_only=True)
-    mapping_status_display = serializers.CharField(source='get_mapping_status_display', read_only=True)
 
     class Meta:
         model = PrescriptionDetail

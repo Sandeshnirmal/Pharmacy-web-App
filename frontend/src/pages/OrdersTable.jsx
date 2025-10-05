@@ -37,7 +37,7 @@ const OrdersTable = () => {
         params.append('search', searchTerm);
       }
 
-      const response = orderAPI.getOrder(params);
+      const response = await orderAPI.getOrders({ params }); // Changed to getOrders and added await
       const data = response.data;
       console.log(data)
 
@@ -53,7 +53,7 @@ const OrdersTable = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      await axiosInstance.patch(`/order/order-items/${orderId}/`, {
+      await axiosInstance.patch(`/order/orders/${orderId}/update_status/`, { // Corrected endpoint
         order_status: newStatus,
       });
       await fetchOrders(); // Refresh the list
@@ -66,7 +66,7 @@ const OrdersTable = () => {
   const handleBulkStatusUpdate = async (newStatus) => {
     try {
       const updatePromises = selectedOrders.map((id) =>
-        axiosInstance.patch(`/order/order-items/${id}/`, {
+        axiosInstance.patch(`/order/orders/${id}/update_status/`, { // Corrected endpoint
           order_status: newStatus,
         })
       );

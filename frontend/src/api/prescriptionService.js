@@ -110,6 +110,27 @@ export const prescriptionService = {
     }
   },
 
+  // Update mapped product for a specific prescription medicine detail
+  updateMedicineSelection: async (prescriptionDetailId, newProductId) => {
+    try {
+      const response = await axiosInstance.post('/prescription/mobile/update-medicine-selection/', {
+        prescription_detail_id: prescriptionDetailId,
+        new_product_id: newProductId
+      });
+      return {
+        success: true,
+        data: response.data,
+        message: response.data.message || 'Medicine selection updated successfully'
+      };
+    } catch (error) {
+      console.error('Error updating medicine selection:', error);
+      return {
+        success: false,
+        error: error.response?.data?.detail || error.response?.data?.error || error.message || 'Failed to update medicine selection'
+      };
+    }
+  },
+
   // Remap medicine to different product
   remapMedicine: async (medicineId, productId, comment = '') => {
     try {
