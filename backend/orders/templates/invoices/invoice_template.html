@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice #{{ invoice.invoice_number }}</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', 'Helvetica', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2, h3 {
+            color: #0056b3;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .invoice-details, .billing-shipping, .order-items, .totals {
+            margin-bottom: 25px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #fdfdfd;
+        }
+        .invoice-details p, .billing-shipping p {
+            margin: 5px 0;
+        }
+        .invoice-details strong, .billing-shipping strong {
+            color: #0056b3;
+        }
+        .order-items table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .order-items th, .order-items td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        .order-items th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .totals table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .totals td {
+            padding: 8px 10px;
+            text-align: right;
+            border-bottom: 1px solid #eee;
+        }
+        .totals .total-row {
+            font-weight: bold;
+            background-color: #f2f2f2;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 0.9em;
+            color: #777;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Invoice</h1>
+            <p><strong>Invoice Number:</strong> {{ invoice.invoice_number }}</p>
+            <p><strong>Invoice Date:</strong> {{ invoice.invoice_date|date:"F d, Y" }}</p>
+            <p><strong>Due Date:</strong> {{ invoice.due_date|date:"F d, Y" }}</p>
+        </div>
+
+        <div class="invoice-details">
+            <h2>Order Details</h2>
+            <p><strong>Order Number:</strong> ORD{{ order.id|stringformat:"06d" }}</p>
+            <p><strong>Order Date:</strong> {{ order.order_date|date:"F d, Y H:i" }}</p>
+            <p><strong>Status:</strong> {{ order.status }}</p>
+            <p><strong>Payment Method:</strong> {{ invoice.payment_method }}</p>
+            <p><strong>Payment Status:</strong> {{ invoice.status }}</p>
+        </div>
+
+        <div class="billing-shipping">
+            <h2>Customer Information</h2>
+            <p><strong>Name:</strong> {{ user.first_name }} {{ user.last_name }}</p>
+            <p><strong>Email:</strong> {{ user.email }}</p>
+            <p><strong>Shipping Address:</strong> {{ order.shipping_address.street_address }}, {{ order.shipping_address.city }}, {{ order.shipping_address.state }}, {{ order.shipping_address.zip_code }}</p>
+            <p><strong>Billing Address:</strong> {{ order.billing_address.street_address }}, {{ order.billing_address.city }}, {{ order.billing_address.state }}, {{ order.billing_address.zip_code }}</p>
+        </div>
+
+        <div class="order-items">
+            <h2>Items</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.order_items.all %}
+                    <tr>
+                        <td>{{ item.product.name }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>${{ item.price|floatformat:2 }}</td>
+                        <td>${{ item.total_price|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="totals">
+            <table>
+                <tr>
+                    <td>Subtotal:</td>
+                    <td>${{ invoice.sub_total|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td>Tax:</td>
+                    <td>${{ invoice.tax_amount|floatformat:2 }}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total Amount:</td>
+                    <td>${{ invoice.total_amount|floatformat:2 }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>Thank you for your business!</p>
+            <p>Pharmacy Web App</p>
+        </div>
+    </div>
+</body>
+</html>

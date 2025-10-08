@@ -125,7 +125,7 @@ class InvoiceService:
         try:
             with transaction.atomic():
                 # Calculate invoice amounts
-                subtotal = sum(item.unit_price * item.quantity for item in order.items.all())
+                subtotal = sum(item.unit_price_at_order * item.quantity for item in order.items.all())
                 tax_rate = Decimal('18.0')  # 18% GST
                 tax_amount = (subtotal * tax_rate) / 100
                 shipping_fee = order.shipping_fee or Decimal('0')
@@ -147,14 +147,14 @@ class InvoiceService:
                 )
                 
                 # Create invoice items
-                for order_item in order.items.all():
+                for order_item in order.items.all(): # Corrected to use order.items
                     InvoiceItem.objects.create(
                         invoice=invoice,
                         product_name=order_item.product.name,
                         product_description=f"{order_item.product.manufacturer} - {order_item.product.category}",
                         quantity=order_item.quantity,
-                        unit_price=order_item.unit_price,
-                        total_price=order_item.unit_price * order_item.quantity,
+                        unit_price=order_item.unit_price_at_order,
+                        total_price=order_item.unit_price_at_order * order_item.quantity,
                         tax_rate=Decimal('18.0')
                     )
                 
