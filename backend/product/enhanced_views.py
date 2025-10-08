@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Count, F, Sum
 from django.db import transaction
+from django.utils import timezone
+from datetime import timedelta
 # from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
@@ -117,6 +119,11 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter products with advanced search capabilities"""
         queryset = Product.objects.all()
+
+        # Annotate queryset with total_stock for filtering
+        queryset = queryset.annotate(
+            total_stock=Sum('batches__current_quantity')
+        )
         
         # Filter by active status
         is_active = self.request.query_params.get('is_active')
@@ -151,19 +158,19 @@ class ProductViewSet(viewsets.ModelViewSet):
         # Stock filters
         low_stock = self.request.query_params.get('low_stock')
         if low_stock == 'true':
-            queryset = queryset.filter(stock_quantity__lte=F('min_stock_level'))
+            queryset = queryset.filter(total_stock__lte=F('min_stock_level'))
         
         out_of_stock = self.request.query_params.get('out_of_stock')
         if out_of_stock == 'true':
-            queryset = queryset.filter(stock_quantity=0)
+            queryset = queryset.filter(total_stock=0)
         
-        # Price range filter
+        # Price range filter (Note: Product model does not have a direct price field, this might need adjustment)
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
         if min_price:
-            queryset = queryset.filter(price__gte=min_price)
+            queryset = queryset.filter(batches__selling_price__gte=min_price)
         if max_price:
-            queryset = queryset.filter(price__lte=max_price)
+            queryset = queryset.filter(batches__selling_price__lte=max_price)
         
         # Search functionality
         search = self.request.query_params.get('search')
@@ -246,17 +253,18 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])
     def update_stock(self, request, pk=None):
-        """Update product stock quantity"""
+        """Update product stock quantity and optionally set a batch as primary"""
         product = self.get_object()
         quantity = request.data.get('quantity')
         operation = request.data.get('operation', 'set')  # 'set', 'add', 'subtract'
-        
+        set_as_primary = request.data.get('set_as_primary', False) # New parameter
+
         if quantity is None:
             return Response(
                 {'error': 'Quantity is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             quantity = int(quantity)
         except ValueError:
@@ -264,37 +272,91 @@ class ProductViewSet(viewsets.ModelViewSet):
                 {'error': 'Quantity must be a number'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         old_quantity = product.stock_quantity
-        
-        if operation == 'set':
-            product.stock_quantity = quantity
-        elif operation == 'add':
-            product.stock_quantity += quantity
-        elif operation == 'subtract':
-            product.stock_quantity = max(0, product.stock_quantity - quantity)
-        else:
-            return Response(
-                {'error': 'Invalid operation. Use "set", "add", or "subtract"'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        product.save()
-        
+
+        with transaction.atomic():
+            batch_id = request.data.get('batch_id')
+            if batch_id:
+                try:
+                    batch = product.batches.get(id=batch_id)
+                except Batch.DoesNotExist:
+                    return Response(
+                        {'error': f'Batch with ID {batch_id} not found for this product'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                # If no batch_id is provided, default to updating the primary batch
+                # or the first available batch if no primary is explicitly set.
+                batch = product.batches.filter(is_primary=True).first()
+                if not batch:
+                    batch = product.batches.first()
+                if not batch:
+                    # No batches exist, create a new primary batch
+                    batch = Batch.objects.create(
+                        product=product,
+                        batch_number=f'AUTO-{product.id}-{timezone.now().strftime("%Y%m%d%H%M%S")}',
+                        manufacturing_date=timezone.now().date(),
+                        expiry_date=timezone.now().date() + timedelta(days=365),
+                        quantity=0,
+                        current_quantity=0,
+                        cost_price=0,
+                        selling_price=0,
+                        is_primary=True
+                    )
+
+            # Apply stock operation
+            if operation == 'set':
+                batch.current_quantity = quantity
+            elif operation == 'add':
+                batch.current_quantity += quantity
+            elif operation == 'subtract':
+                batch.current_quantity = max(0, batch.current_quantity - quantity)
+            else:
+                return Response(
+                    {'error': 'Invalid operation. Use "set", "add", or "subtract"'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Handle setting as primary
+            if set_as_primary:
+                # Set all other batches for this product to non-primary
+                product.batches.exclude(pk=batch.pk).update(is_primary=False)
+                batch.is_primary = True
+
+            batch.save()
+
+        product.refresh_from_db()
+
         return Response({
             'message': 'Stock updated successfully',
             'old_quantity': old_quantity,
             'new_quantity': product.stock_quantity,
-            'operation': operation
+            'operation': operation,
+            'batch_id': batch.id,
+            'batch_is_primary': batch.is_primary
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])
+    def create_batch(self, request, pk=None):
+        """Create a new batch for a product."""
+        product = self.get_object()
+        serializer = BatchSerializer(data=request.data)
+        if serializer.is_valid():
+            # Ensure the batch is linked to the correct product
+            serializer.save(product=product)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'])
     def low_stock_alert(self, request):
         """Get products with low stock"""
-        low_stock_products = Product.objects.filter(
-            stock_quantity__lte=F('min_stock_level'),
+        low_stock_products = Product.objects.annotate(
+            total_stock=Sum('batches__current_quantity')
+        ).filter(
+            total_stock__lte=F('min_stock_level'),
             is_active=True
-        ).order_by('stock_quantity')
+        ).order_by('total_stock')
         
         serializer = ProductSearchSerializer(low_stock_products, many=True)
         return Response({
@@ -306,17 +368,23 @@ class ProductViewSet(viewsets.ModelViewSet):
     def inventory_summary(self, request):
         """Get inventory summary statistics"""
         total_products = Product.objects.filter(is_active=True).count()
-        out_of_stock = Product.objects.filter(stock_quantity=0, is_active=True).count()
-        low_stock = Product.objects.filter(
-            stock_quantity__lte=F('min_stock_level'),
-            stock_quantity__gt=0,
-            is_active=True
+        
+        # Annotate products with total_stock for filtering
+        products_with_stock = Product.objects.filter(is_active=True).annotate(
+            total_stock=Sum('batches__current_quantity')
+        )
+
+        out_of_stock = products_with_stock.filter(total_stock=0).count()
+        low_stock = products_with_stock.filter(
+            total_stock__lte=F('min_stock_level'),
+            total_stock__gt=0,
         ).count()
         
+        # Calculate total_stock_value by summing (batch.current_quantity * batch.selling_price)
         total_stock_value = Product.objects.filter(is_active=True).aggregate(
-            total_value=Sum(F('stock_quantity') * F('price'))
+            total_value=Sum(F('batches__current_quantity') * F('batches__selling_price'))
         )['total_value'] or 0
-        
+
         return Response({
             'total_products': total_products,
             'out_of_stock': out_of_stock,

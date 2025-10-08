@@ -1,6 +1,7 @@
 # order/views.py
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.pagination import PageNumberPagination # Import PageNumberPagination
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Count, Sum
@@ -14,34 +15,41 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+class OrderPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by('-order_date')
     serializer_class = OrderSerializer
-    # permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
-    # authentication_classes = [JWTAuthentication] # Add JWTAuthentication
+    permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
+    authentication_classes = [JWTAuthentication] # Add JWTAuthentication
+    pagination_class = OrderPagination # Add pagination class
 
     def get_queryset(self):
         queryset = super().get_queryset()
         status_filter = self.request.query_params.get('order_status', None)
         payment_status = self.request.query_params.get('payment_status', None)
         is_prescription = self.request.query_params.get('is_prescription_order', None)
-        user_id = self.request.query_params.get('user_id', None)
+        # user_id = self.request.query_params.get('user_id', None) # Removed as we only filter by authenticated user
 
-        # if status_filter:
-        #     queryset = queryset.filter(order_status=status_filter)
-        # if payment_status:
-        #     queryset = queryset.filter(payment_status=payment_status)
-        # if is_prescription:
-        #     queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
-        # # Filter by authenticated user
-        # if self.request.user.is_authenticated:
-        #     queryset = queryset.filter(user=self.request.user)
-        # elif user_id: # Allow user_id filter only if not authenticated (e.g., for admin if needed, but generally not for regular users)
-        #     queryset = queryset.filter(user_id=user_id)
-        # else:
-        #     # If no user is authenticated and no user_id is provided, return empty queryset
-        #     # This prevents accidental exposure of all orders if AllowAny was used
-        #     return queryset.none()
+        if status_filter:
+            queryset = queryset.filter(order_status=status_filter)
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
+        if is_prescription:
+            queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
+        
+        # If the user is an admin, show all orders, otherwise filter by the authenticated user
+        if self.request.user.is_staff:
+            # Admins see all orders, no user-specific filtering
+            pass
+        elif self.request.user.is_authenticated:
+            queryset = queryset.filter(user=self.request.user)
+        else:
+            # If no user is authenticated, return an empty queryset
+            return queryset.none()
 
         return queryset
 
@@ -69,13 +77,29 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
-        """Update order status"""
+        """Update order status (Admin only)"""
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Permission denied. Admin access required to update order status.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         order = self.get_object()
         new_status = request.data.get('order_status')
 
         if new_status in dict(Order.ORDER_STATUS):
+            old_status = order.order_status
             order.order_status = new_status
             order.save()
+
+            # Record status history
+            OrderStatusHistory.objects.create(
+                order=order,
+                old_status=old_status,
+                new_status=new_status,
+                changed_by=request.user,
+                reason=f'Manually updated by admin to {new_status}'
+            )
             return Response({'message': 'Order status updated successfully'})
 
         return Response(

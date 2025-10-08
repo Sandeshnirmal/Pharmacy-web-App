@@ -1,7 +1,7 @@
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponse
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated,AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Order
@@ -141,6 +141,8 @@ def get_user_invoices(request):
     
     GET /api/order/invoices/my-invoices/
     """
+    logger.info(f"Fetching invoices for user: {request.user.email}")
+    logger.info(f"Available orders for user: {list(Order.objects.filter(user=request.user).values_list('id', flat=True))}")
     try:
         user_orders = Order.objects.filter(user=request.user)
         invoices = Invoice.objects.filter(order__in=user_orders).order_by('-created_at')
@@ -173,7 +175,11 @@ def download_invoice_pdf(request, order_id):
     GET /api/order/invoices/{order_id}/download/
     """
     try:
-        order = get_object_or_404(Order, id=order_id, user=request.user)
+        # Allow admin/staff to download any order's invoice
+        if request.user.is_staff or request.user.is_superuser:
+            order = get_object_or_404(Order, id=order_id)
+        else:
+            order = get_object_or_404(Order, id=order_id, user=request.user)
         
         if not hasattr(order, 'invoice'):
             return Response({
@@ -206,7 +212,11 @@ def get_invoice_summary(request, order_id):
     GET /api/order/invoices/{order_id}/summary/
     """
     try:
-        order = get_object_or_404(Order, id=order_id, user=request.user)
+        # Allow admin/staff to view any order's invoice
+        if request.user.is_staff or request.user.is_superuser:
+            order = get_object_or_404(Order, id=order_id)
+        else:
+            order = get_object_or_404(Order, id=order_id, user=request.user)
         
         if not hasattr(order, 'invoice'):
             # Create invoice if it doesn't exist
@@ -214,21 +224,11 @@ def get_invoice_summary(request, order_id):
         else:
             invoice = order.invoice
         
-        summary = {
-            'invoice_number': invoice.invoice_number,
-            'status': invoice.status,
-            'total_amount': float(invoice.total_amount),
-            'payment_method': invoice.payment_method,
-            'invoice_date': invoice.invoice_date.isoformat(),
-            'due_date': invoice.due_date.isoformat(),
-            'payment_date': invoice.payment_date.isoformat() if invoice.payment_date else None,
-            'order_number': f'ORD{order.id:06d}',
-            'items_count': invoice.items.count(),
-        }
+        invoice_data = InvoiceService.get_invoice_data(invoice) # Get full detailed invoice data
         
         return Response({
             'success': True,
-            'summary': summary
+            'invoice': invoice_data # Return full invoice data
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -236,4 +236,96 @@ def get_invoice_summary(request, order_id):
         return Response({
             'success': False,
             'error': 'Failed to fetch invoice summary'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_invoice_html(request, order_id):
+    """
+    View invoice as HTML
+    
+    GET /api/order/orders/{order_id}/invoice/view/
+    """
+    try:
+        logger.info(f"Attempting to fetch order {order_id}")
+        logger.info(f"Authenticated user: {request.user.email}")
+        
+        # Get order for the current user directly
+        try:
+            # Allow admin/staff to view any order's invoice
+            if request.user.is_staff or request.user.is_superuser:
+                order = Order.objects.get(id=order_id)
+            else:
+                order = Order.objects.get(id=order_id, user=request.user)
+            logger.info(f"Found order {order_id} for user {request.user.email}")
+        except Order.DoesNotExist:
+            logger.warning(f"Order {order_id} not found for user {request.user.email}")
+            return Response({
+                'success': False,
+                'error': 'Order not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+        logger.info(f"Successfully retrieved order {order_id} for user {request.user.email}")
+        
+        if not hasattr(order, 'invoice'):
+            logger.info(f"Creating new invoice for order {order_id}")
+            invoice = InvoiceService.create_invoice_for_order(order)
+        else:
+            invoice = order.invoice
+            logger.info(f"Using existing invoice {invoice.invoice_number}")
+        
+        invoice_data = InvoiceService.get_invoice_data(invoice)
+        logger.debug(f"Generated invoice data for order {order_id}")
+        
+        # Check if client accepts HTML
+        accept_header = request.headers.get('Accept', '*/*')
+        logger.debug(f"Accept header: {accept_header}")
+        
+        if 'text/html' in accept_header:
+            try:
+                # Render HTML
+                from django.template.loader import render_to_string
+                from django.template import TemplateDoesNotExist
+                
+                context = {
+                    'invoice': invoice_data,
+                    'order': order,
+                    'user': {
+                        'email': request.user.email,
+                        'full_name': f"{getattr(request.user, 'first_name', '')} {getattr(request.user, 'last_name', '')}".strip() or request.user.email,
+                    }
+                }
+                
+                # Try rendering test template first
+                try:
+                    html_content = render_to_string('invoices/invoice_test.html', context)
+                    logger.info(f"Successfully rendered test template for order {order_id}")
+                    return HttpResponse(html_content, content_type='text/html')
+                except TemplateDoesNotExist as e:
+                    logger.error(f"Test template not found: {str(e)}")
+                    return Response({
+                        'success': False,
+                        'error': f'Template not found: {str(e)}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        
+            except Exception as template_error:
+                logger.error(f"Template rendering error: {str(template_error)}", exc_info=True)
+                return Response({
+                    'success': False,
+                    'error': f'Failed to render invoice template: {str(template_error)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            # Return JSON data if HTML is not accepted
+            logger.info(f"Returning JSON response for order {order_id} (HTML not accepted)")
+            return Response({
+                'success': True,
+                'invoice': invoice_data
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        logger.error(f"Error viewing invoice HTML: {str(e)}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': f'Failed to view invoice: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

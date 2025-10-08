@@ -1,20 +1,33 @@
 from rest_framework import serializers
+from datetime import date # Import date for current_selling_price calculation
 from .models import Prescription, PrescriptionDetail
 from product.serializers import ProductSerializer
 
 class SuggestedProductSerializer(serializers.ModelSerializer):
     """Serializer for suggested products in prescription details"""
+    current_selling_price = serializers.SerializerMethodField()
+
     class Meta:
         model = ProductSerializer.Meta.model
-        fields = ['id', 'name', 'strength', 'form', 'price', 'mrp', 'manufacturer', 'is_prescription_required']
+        fields = ['id', 'name', 'strength', 'form', 'current_selling_price', 'manufacturer', 'is_prescription_required']
+
+    def get_current_selling_price(self, obj):
+        # This logic is duplicated from ProductSerializer, consider refactoring if possible
+        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+        if primary_batch:
+            return primary_batch.selling_price
+        
+        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
+        if active_batches.exists():
+            return active_batches.first().selling_price
+        return None
 
 class PrescriptionDetailSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='mapped_product.name', read_only=True)
-    product_price = serializers.DecimalField(source='mapped_product.price', max_digits=10, decimal_places=2, read_only=True)
+    product_price = serializers.DecimalField(source='mapped_product.current_selling_price', max_digits=10, decimal_places=2, read_only=True)
     product_strength = serializers.CharField(source='mapped_product.strength', read_only=True)
     product_form = serializers.CharField(source='mapped_product.form', read_only=True)
     suggested_products = SuggestedProductSerializer(many=True, read_only=True)
-    mapping_status_display = serializers.CharField(source='get_mapping_status_display', read_only=True)
 
     class Meta:
         model = PrescriptionDetail

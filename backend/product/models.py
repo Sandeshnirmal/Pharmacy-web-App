@@ -86,9 +86,8 @@ class Product(models.Model):
     form = models.CharField(max_length=50, blank=True)
     is_prescription_required = models.BooleanField(default=False)
 
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    mrp = models.DecimalField(max_digits=10, decimal_places=2)
-    stock_quantity = models.PositiveIntegerField(default=0)
+    # price and mrp are now managed at the batch level, so they are removed from Product
+    # stock_quantity is now managed at the batch level, so it's removed from Product
     min_stock_level = models.PositiveIntegerField(default=10)
 
     dosage_form = models.CharField(max_length=100, blank=True)
@@ -133,6 +132,11 @@ class Product(models.Model):
         ]
         unique_together = ['name', 'manufacturer', 'dosage_form']
 
+    @property
+    def stock_quantity(self):
+        """Calculates the total stock quantity from all active batches."""
+        return self.batches.aggregate(total_quantity=models.Sum('current_quantity'))['total_quantity'] or 0
+
     def __str__(self):
         return f"{self.name} ({self.manufacturer})"
 
@@ -168,6 +172,7 @@ class Batch(models.Model):
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
+    is_primary = models.BooleanField(default=False, help_text="Designates this batch as the primary one for display purposes.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

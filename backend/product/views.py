@@ -20,7 +20,7 @@ from .serializers import (
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('name')
@@ -43,12 +43,13 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(manufacturer__icontains=search)
             )
         if stock_status:
+            queryset = queryset.annotate(total_stock=Sum('batches__current_quantity'))
             if stock_status == 'low':
-                queryset = queryset.filter(stock_quantity__lte=F('min_stock_level'))
+                queryset = queryset.filter(total_stock__lte=F('min_stock_level'))
             elif stock_status == 'out':
-                queryset = queryset.filter(stock_quantity=0)
+                queryset = queryset.filter(total_stock=0)
             elif stock_status == 'in':
-                queryset = queryset.filter(stock_quantity__gt=F('min_stock_level'))
+                queryset = queryset.filter(total_stock__gt=F('min_stock_level'))
         if prescription_required is not None:
             queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
 
@@ -57,15 +58,14 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         """Get products with low stock"""
-        from django.db.models import F
-        products = Product.objects.filter(stock_quantity__lte=F('min_stock_level'))
+        products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock__lte=F('min_stock_level'))
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
         """Get products that are out of stock"""
-        products = Product.objects.filter(stock_quantity=0)
+        products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock=0)
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
@@ -113,7 +113,7 @@ class GenericNameViewSet(viewsets.ModelViewSet):
 class EnhancedProductViewSet(viewsets.ModelViewSet):
     """Enhanced product viewset with additional features for mobile app"""
     queryset = Product.objects.select_related('category', 'generic_name').prefetch_related(
-        'images', 'reviews', 'tags__tag'
+        'images', 'reviews', 'tags__tag', 'batches' # Add 'batches' here
     ).all()
     serializer_class = EnhancedProductSerializer
     permission_classes = [AllowAny]
@@ -136,13 +136,19 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         if category:
             queryset = queryset.filter(category_id=category)
         if min_price:
-            queryset = queryset.filter(price__gte=min_price)
+            # This filter needs to be adjusted to use current_selling_price from batches
+            # For now, it's commented out as 'price' is not a direct field on Product
+            # queryset = queryset.filter(price__gte=min_price)
+            pass
         if max_price:
-            queryset = queryset.filter(price__lte=max_price)
+            # This filter needs to be adjusted to use current_selling_price from batches
+            # For now, it's commented out as 'price' is not a direct field on Product
+            # queryset = queryset.filter(price__lte=max_price)
+            pass
         if prescription_required is not None:
             queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
         if in_stock == 'true':
-            queryset = queryset.filter(stock_quantity__gt=0)
+            queryset = queryset.annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock__gt=0)
         if rating:
             queryset = queryset.annotate(
                 avg_rating=Avg('reviews__rating')
@@ -166,8 +172,8 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def featured(self, request):
         """Get featured products"""
-        featured_products = self.get_queryset().filter(
-            stock_quantity__gt=0
+        featured_products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(
+            total_stock__gt=0
         ).order_by('-created_at')[:10]
 
         serializer = self.get_serializer(featured_products, many=True)
@@ -178,9 +184,10 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         """Get trending products based on views and orders"""
         trending_products = self.get_queryset().annotate(
             view_count=Count('productviewhistory'),
-            review_count=Count('reviews')
+            review_count=Count('reviews'),
+            total_stock=Sum('batches__current_quantity')
         ).filter(
-            stock_quantity__gt=0
+            total_stock__gt=0
         ).order_by('-view_count', '-review_count')[:10]
 
         serializer = self.get_serializer(trending_products, many=True)
@@ -192,9 +199,10 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         if not request.user.is_authenticated:
             # Return popular products for anonymous users
             popular_products = self.get_queryset().annotate(
-                avg_rating=Avg('reviews__rating')
+                avg_rating=Avg('reviews__rating'),
+                total_stock=Sum('batches__current_quantity')
             ).filter(
-                stock_quantity__gt=0,
+                total_stock__gt=0,
                 avg_rating__gte=4.0
             ).order_by('-avg_rating')[:10]
 
@@ -207,9 +215,9 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         ).values_list('product__category', flat=True).distinct()
 
         # Recommend products from viewed categories
-        recommended_products = self.get_queryset().filter(
+        recommended_products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(
             category__in=viewed_products,
-            stock_quantity__gt=0
+            total_stock__gt=0
         ).exclude(
             id__in=ProductViewHistory.objects.filter(
                 user=request.user
@@ -218,6 +226,55 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(recommended_products, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def update_stock(self, request, pk=None):
+        """
+        Adds a new batch or updates an existing batch for a product.
+        Handles setting a batch as primary, ensuring only one primary batch per product.
+        """
+        try:
+            product = self.get_object()
+        except Product.DoesNotExist:
+            return Response({'detail': 'Product not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        batch_data = request.data
+        batch_number = batch_data.get('batch_number')
+        is_primary = batch_data.get('is_primary', False)
+
+        if not batch_number:
+            return Response({'detail': 'Batch number is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if batch already exists for this product
+        batch, created = Batch.objects.get_or_create(
+            product=product,
+            batch_number=batch_number,
+            defaults={
+                'quantity': batch_data.get('quantity', 0),
+                'current_quantity': batch_data.get('quantity', 0),
+                'expiry_date': batch_data.get('expiry_date'),
+                'cost_price': batch_data.get('cost_price', 0),
+                'selling_price': batch_data.get('selling_price', 0),
+                'is_primary': is_primary,
+            }
+        )
+
+        if not created:
+            # Update existing batch
+            batch.quantity = batch_data.get('quantity', batch.quantity)
+            batch.current_quantity = batch_data.get('quantity', batch.current_quantity) # Assuming full replacement or adjustment
+            batch.expiry_date = batch_data.get('expiry_date', batch.expiry_date)
+            batch.cost_price = batch_data.get('cost_price', batch.cost_price)
+            batch.selling_price = batch_data.get('selling_price', batch.selling_price)
+            batch.is_primary = is_primary # Update is_primary
+            batch.save()
+
+        # Ensure only one primary batch for the product
+        if is_primary:
+            Batch.objects.filter(product=product).exclude(id=batch.id).update(is_primary=False)
+
+        serializer = BatchSerializer(batch)
+        return Response(serializer.data, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def search_suggestions(self, request):

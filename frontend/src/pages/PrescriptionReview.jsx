@@ -147,9 +147,10 @@ const PrescriptionReview = () => {
       return;
     }
     try {
-      const result = await prescriptionService.remapMedicine(
+      // Use the new updateMedicineSelection API
+      const result = await prescriptionService.updateMedicineSelection(
         detailId,
-        product.id // Pass product.id directly
+        product.id
       );
       if (result.success) {
         setPrescriptionDetails((prevDetails) =>
@@ -158,14 +159,14 @@ const PrescriptionReview = () => {
               ? {
                   ...d,
                   mapped_product: product.id,
-                  mapped_product_name: product.name,
-                  mapped_product_details: {
-                    strength: product.strength,
-                    form: product.form,
-                  },
-                  verified_medicine: product.id,
+                  product_name: product.name,
+                  product_price: product.price,
                   verified_medicine_name: product.name,
-                  verification_status: "verified",
+                  verified_dosage: product.strength,
+                  verified_form: product.form,
+                  is_valid_for_order: true,
+                  // The suggested_products should be updated by the backend, so we don't modify it here.
+                  // The full product details will be re-fetched by fetchPrescriptionData.
                 }
               : d
           )
@@ -175,11 +176,11 @@ const PrescriptionReview = () => {
         alert(result.message);
         fetchPrescriptionData(); // Re-fetch data to ensure UI is in sync with backend
       } else {
-        alert(`Failed to map product: ${result.error}`);
+        alert(`Failed to update medicine selection: ${result.error}`);
       }
     } catch (err) {
-      console.error("Error remapping medicine:", err);
-      alert("An unexpected error occurred during remapping.");
+      console.error("Error updating medicine selection:", err);
+      alert("An unexpected error occurred during medicine selection update.");
     }
   };
 
@@ -387,25 +388,41 @@ const PrescriptionReview = () => {
                   <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500 flex justify-between items-center">
                     <div>
                       <p className="text-sm font-semibold text-green-800">
-                        Mapped to: {detail.mapped_product_name}
+                        Mapped to: {detail.product_name}
                       </p>
-                      <p className="text-xs text-green-700">
-                        {/* CORRECTED CODE */}
-                        {detail.mapped_product_details ? (
-                          <>
-                            {detail.mapped_product_details.strength} -{" "}
-                            {detail.mapped_product_details.form}
-                          </>
-                        ) : (
-                          "Details not available"
-                        )}
-                      </p>
+                      {/* Find the full product details from suggested_products */}
+                      {detail.mapped_product && detail.suggested_products && (
+                        (() => {
+                          const mappedProductObject = detail.suggested_products.find(
+                            (p) => p.id === detail.mapped_product
+                          );
+                          return mappedProductObject ? (
+                            <div className="text-xs text-green-700 mt-1 space-y-0.5">
+                              <p>
+                                Strength: {mappedProductObject.strength || "N/A"},{" "}
+                                Form: {mappedProductObject.form || "N/A"}
+                              </p>
+                              <p>
+                                Manufacturer: {mappedProductObject.manufacturer || "N/A"}
+                              </p>
+                              <p>
+                                Price: ₹{mappedProductObject.price || "0.00"} (MRP: ₹{mappedProductObject.mrp || "0.00"})
+                              </p>
+                              <p>
+                                Stock: {mappedProductObject.stock_quantity > 0 ? `${mappedProductObject.stock_quantity} in stock` : "Out of stock"}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-green-700">Details not available</p>
+                          );
+                        })()
+                      )}
                     </div>
                     <button
                       onClick={() => {
                         setCurrentDetailId(detail.id);
                         setSearchTerm(
-                          detail.mapped_product_name ||
+                          detail.product_name ||
                             detail.ai_extracted_medicine_name
                         );
                         setShowProductModal(true);

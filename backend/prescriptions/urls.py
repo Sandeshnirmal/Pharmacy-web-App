@@ -28,6 +28,7 @@ urlpatterns = [
     path('mobile/list/', mobile_api.get_user_prescriptions_mobile, name='mobile_prescription_list'),
     path('enhanced-prescriptions/id/<str:prescription_id>/', mobile_api.get_prescriptions_by_id, name='mobile_get_prescription_by_id'),
     path('mobile/create-order/', mobile_api.create_prescription_order, name='mobile_create_order'),
+    path('mobile/update-medicine-selection/', mobile_api.update_prescription_medicine_selection, name='mobile_update_medicine_selection'),
 
     # Admin OCR API endpoints
     path('admin/reprocess-ocr/<int:prescription_id>/', mobile_api.reprocess_prescription_ocr, name='admin_reprocess_ocr'),

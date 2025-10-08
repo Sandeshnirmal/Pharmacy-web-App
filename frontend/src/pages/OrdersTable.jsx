@@ -24,25 +24,37 @@ const OrdersTable = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
+      const params = {
         page: currentPage,
         page_size: itemsPerPage,
-      });
+      };
 
       if (statusFilter !== 'all') {
-        params.append('order_status', statusFilter);
+        params.order_status = statusFilter;
       }
 
       if (searchTerm) {
-        params.append('search', searchTerm);
+        params.search = searchTerm;
       }
 
-      const response = orderAPI.getOrder(params);
+      const response = await orderAPI.getOrders(params);
       const data = response.data;
-      console.log(data)
+      console.log("Raw API response data:", data); // Log the raw data
 
-      setOrders(data.results || data);
-      setTotalPages(Math.ceil((data.count || data.length) / itemsPerPage));
+      if (data && data.results && data.count !== undefined) {
+        setOrders(data.results);
+        setTotalPages(Math.ceil(data.count / itemsPerPage));
+      } else if (Array.isArray(data)) {
+        // Fallback for non-paginated array response (shouldn't happen with DRF pagination)
+        setOrders(data);
+        setTotalPages(Math.ceil(data.length / itemsPerPage));
+      } else {
+        // Handle unexpected data structure
+        setError('Unexpected data structure from API');
+        setOrders([]);
+        setTotalPages(1);
+        console.error('Unexpected API response structure:', data);
+      }
     } catch (err) {
       setError('Failed to fetch orders');
       console.error('Error fetching orders:', err);
@@ -53,7 +65,7 @@ const OrdersTable = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      await axiosInstance.patch(`/order/order-items/${orderId}/`, {
+      await axiosInstance.patch(`/order/orders/${orderId}/update_status/`, { // Corrected endpoint
         order_status: newStatus,
       });
       await fetchOrders(); // Refresh the list
@@ -66,7 +78,7 @@ const OrdersTable = () => {
   const handleBulkStatusUpdate = async (newStatus) => {
     try {
       const updatePromises = selectedOrders.map((id) =>
-        axiosInstance.patch(`/order/order-items/${id}/`, {
+        axiosInstance.patch(`/order/orders/${id}/update_status/`, { // Corrected endpoint
           order_status: newStatus,
         })
       );
@@ -129,17 +141,6 @@ const OrdersTable = () => {
       return <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">Uploaded</span>;
     }
   };
-
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = !searchTerm ||
-      order.user_name?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      // order.user_name?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id.toString().includes(searchTerm);
-
-    const matchesStatus = statusFilter === 'all' || order.order_status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
 
   if (loading) {
     return (
@@ -267,8 +268,8 @@ const OrdersTable = () => {
                   <input
                     type="checkbox"
                     checked={
-                      selectedOrders.length === filteredOrders.length &&
-                      filteredOrders.length > 0
+                      selectedOrders.length === orders.length &&
+                      orders.length > 0
                     }
                     onChange={(e) => handleSelectAll(e.target.checked)}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
@@ -319,7 +320,7 @@ const OrdersTable = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredOrders.map((order) => (
+              {orders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     <input
@@ -389,7 +390,7 @@ const OrdersTable = () => {
         </div>
 
         {/* Empty State */}
-        {filteredOrders.length === 0 && !loading && (
+        {orders.length === 0 && !loading && (
           <div className="text-center py-12">
             <svg
               className="mx-auto h-12 w-12 text-gray-400"

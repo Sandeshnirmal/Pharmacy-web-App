@@ -97,6 +97,8 @@ export const productAPI = {
   // Inventory management
   updateStock: (productId, stockData) => 
     axiosInstance.post(`/api/products/enhanced-products/${productId}/update_stock/`, stockData),
+  createBatch: (productId, batchData) =>
+    axiosInstance.post(`/api/products/enhanced-products/${productId}/create_batch/`, batchData),
   getLowStockAlert: () => axiosInstance.get('/api/products/enhanced-products/low_stock_alert/'),
   getInventorySummary: () => axiosInstance.get('/api/products/enhanced-products/inventory_summary/'),
   
@@ -215,6 +217,20 @@ export const orderAPI = {
   createOrder: (orderData) => axiosInstance.post('/order/orders/', orderData),
   updateOrder: (id, orderData) => axiosInstance.patch(`/order/orders/${id}/`, orderData),
   deleteOrder: (id) => axiosInstance.delete(`/order/orders/${id}/`),
+  
+  // Invoice related endpoints
+  viewInvoice: (orderId) => axiosInstance.get(`/order/orders/${orderId}/invoice/view/`, {
+    responseType: 'text',
+    headers: {
+      'Accept': 'text/html, application/json',
+    }
+  }),
+  downloadInvoice: (orderId) => axiosInstance.get(`/order/invoices/${orderId}/download/`, {
+    responseType: 'blob',
+    headers: {
+      'Accept': 'application/pdf',
+    }
+  }),
 };
 
 // ============================================================================

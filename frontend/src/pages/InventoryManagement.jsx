@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from "react";
+  import React, { useState, useEffect } from "react";
 import axiosInstance from '../api/axiosInstance'
-import Medicines from "./MedicinesListPage";
-import '../api/apiService'
 import { apiUtils, productAPI } from "../api/apiService";
 // --- Sample Data ---
 // In a real app, this would come from an API.
@@ -28,6 +26,7 @@ const InventoryManagement = () => {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showGenericNameModal, setShowGenericNameModal] = useState(false);
   const [showViewBatchModal, setShowViewBatchModal] = useState(false);
+  const [showAddBatchForm, setShowAddBatchForm] = useState(false); // New state for add batch form visibility
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedProductBatches, setSelectedProductBatches] = useState([]);
@@ -47,9 +46,15 @@ const InventoryManagement = () => {
       setError(null);
       const response = await productAPI.getProducts();
       console.log("product",response);
-      setProducts(Array.isArray(response.data)? response.data:response.data.results || []);
+      const fetchedProducts = Array.isArray(response.data)? response.data:response.data.results || [];
+      setProducts(fetchedProducts);
+
+      // Extract all batches from the fetched products
+      const allBatches = fetchedProducts.flatMap(product => product.batches || []);
+      setBatches(allBatches);
+
     } catch(error){
-      const errorInfo =apiUtils.handleError(error);
+      const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
       console.error("error fetching medicines",error);
 
@@ -124,6 +129,7 @@ const fetchGericname = async () => {
     expiry_date: "",
     cost_price: "",
     selling_price: "",
+    is_primary: false, // Add is_primary to newBatch state
   });
 
   const [newProduct, setNewProduct] = useState({
@@ -133,14 +139,18 @@ const fetchGericname = async () => {
     strength: "",
     dosage_form: "",
     manufacturer: "MedCorp",
-    price: "",
-    mrp: "",
     is_prescription_required: false,
     hsn_code: "30041000",
     packaging_unit: "",
     pack_size: "",
-    stock_quantity: "",
-    min_stock_level: "10",
+    // Batch details
+    batch_number: "",
+    quantity: "",
+    expiry_date: "",
+    cost_price: "",
+    selling_price: "",
+    is_primary: false, // Add is_primary to newProduct's initial batch details
+    min_stock_level: "10", // Keep min_stock_level for product
   });
 
   const [newCategory, setNewCategory] = useState({ name: "", description: "" });
@@ -163,8 +173,12 @@ const fetchGericname = async () => {
       return;
     }
     try {
-      await productAPI.updateStock(selectedProduct.id, newBatch);
-      setShowBatchModal(false);
+      const batchData = {
+        ...newBatch,
+        product: selectedProduct.id, // Ensure the product ID is set
+      };
+      await productAPI.createBatch(selectedProduct.id, batchData); // Use createBatch for adding new batches
+      setShowAddBatchForm(false); // Hide the form
       setNewBatch({
         product: "",
         batch_number: "",
@@ -172,9 +186,14 @@ const fetchGericname = async () => {
         expiry_date: "",
         cost_price: "",
         selling_price: "",
+        is_primary: false, // Reset is_primary
       });
       fetchMedicines(); // Refetch medicines to update stock
-      setSelectedProduct(null);
+      // Re-fetch batches for the selected product to update the modal
+      const updatedProductBatches = batches.filter(
+        (batch) => batch.product === selectedProduct.id
+      );
+      setSelectedProductBatches(updatedProductBatches);
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -189,11 +208,8 @@ const fetchGericname = async () => {
         name: newProduct.name,
         strength: newProduct.strength,
         manufacturer: newProduct.manufacturer,
-        price: newProduct.price,
-        mrp: newProduct.mrp,
         is_prescription_required: newProduct.is_prescription_required,
         pack_size: newProduct.pack_size,
-        stock_quantity: newProduct.stock_quantity,
         min_stock_level: newProduct.min_stock_level,
         category: newProduct.category_id,
         generic_name: newProduct.generic_name,
@@ -202,9 +218,25 @@ const fetchGericname = async () => {
         medicine_type: 'tablet', // Default
         prescription_type: newProduct.is_prescription_required ? 'prescription' : 'otc',
         hsn_code: newProduct.hsn_code,
+        // The product price and mrp will be derived from the initial batch's selling_price
+        price: newProduct.selling_price,
+        mrp: newProduct.selling_price,
       };
 
-      await productAPI.createProduct(productData);
+      const productResponse = await productAPI.createProduct(productData);
+      const productId = productResponse.data.id; // Assuming the API returns the created product with an ID
+
+      const batchData = {
+        product: productId,
+        batch_number: newProduct.batch_number,
+        quantity: newProduct.quantity,
+        expiry_date: newProduct.expiry_date,
+        cost_price: newProduct.cost_price,
+        selling_price: newProduct.selling_price,
+        is_primary: newProduct.is_primary, // Pass is_primary for initial batch
+      };
+
+      await productAPI.createBatch(productId, batchData); // Using createBatch for adding initial batch
       
       setShowProductModal(false);
       setNewProduct({
@@ -212,21 +244,25 @@ const fetchGericname = async () => {
         category_id: "",
         generic_name: "",
         strength: "",
-        form: "",
+        dosage_form: "",
         manufacturer: "MedCorp",
-        price: "",
-        mrp: "",
         is_prescription_required: false,
         hsn_code: "30041000",
         pack_size: "",
-        stock_quantity: "",
         min_stock_level: "10",
+        // Reset batch details
+        batch_number: "",
+        quantity: "",
+        expiry_date: "",
+        cost_price: "",
+        selling_price: "",
+        is_primary: false, // Reset is_primary
       });
       fetchMedicines(); // Refetch products
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
-      console.error("Error adding product:", error);
+      console.error("Error adding product or batch:", error);
     }
   };
 
@@ -259,7 +295,8 @@ const fetchGericname = async () => {
   };
 
   const getStockStatus = (product) => {
-    const totalStock = product.stock_quantity || 0;
+    // Use the stock_quantity provided by the backend serializer
+    const totalStock = product.total_stock_quantity || 0;
     if (totalStock === 0)
       return { status: "Out of Stock", color: "bg-red-100 text-red-800" };
     if (totalStock < product.min_stock_level)
@@ -289,10 +326,9 @@ const fetchGericname = async () => {
 
   const handleViewBatches = (product) => {
     setSelectedProduct(product);
-    const productBatches = batches.filter(
-      (batch) => batch.product === product.id
-    );
-    setSelectedProductBatches(productBatches);
+    // Filter batches directly from the product's nested batches
+    setSelectedProductBatches(product.batches || []);
+    console.log("Batches for selected product:", product.batches); // Debug log
     setShowViewBatchModal(true);
   };
 
@@ -319,10 +355,11 @@ const fetchGericname = async () => {
 
   const stats = {
     totalProducts: products.length,
+    total_stock_quantity: products.reduce((sum, product) => sum + (product.stock_quantity || 0), 0),
     lowStock: products.filter(
-      (p) => p.stock_quantity > 0 && p.stock_quantity < p.min_stock_level
+      (p) => p.total_stock_quantity > 0 && p.total_stock_quantity < p.min_stock_level
     ).length,
-    outOfStock: products.filter((p) => p.stock_quantity === 0).length,
+    outOfStock: products.filter((p) => p.total_stock_quantity === 0).length,
     expired: batches.filter((b) => new Date(b.expiry_date) < new Date()).length,
   };
 
@@ -333,6 +370,33 @@ const fetchGericname = async () => {
       </div>
     );
   }
+
+  const handleSetPrimaryBatch = async (batchId) => {
+    if (!selectedProduct) {
+      setError("No product selected.");
+      return;
+    }
+    try {
+      // Call the updateStock API with set_as_primary: true
+      await productAPI.updateStock(selectedProduct.id, {
+        batch_id: batchId,
+        set_as_primary: true,
+        // No quantity or operation needed if just setting primary, but API expects it.
+        // We can send a dummy quantity and 'set' operation if the backend requires it.
+        quantity: selectedProductBatches.find(b => b.id === batchId)?.current_quantity || 0,
+        operation: 'set'
+      });
+      fetchMedicines(); // Refetch all medicines to update UI
+      // Re-fetch batches for the selected product to update the modal
+      const updatedProductResponse = await productAPI.getProduct(selectedProduct.id);
+      setSelectedProduct(updatedProductResponse.data);
+      setSelectedProductBatches(updatedProductResponse.data.batches || []);
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error setting primary batch:", error);
+    }
+  };
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
@@ -353,12 +417,6 @@ const fetchGericname = async () => {
               className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
             >
               Add Medicine
-            </button>
-            <button
-              onClick={() => openAddBatchModal(null)}
-              className="bg-gray-700 text-white hover:bg-gray-800 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
-            >
-              Add Stock
             </button>
             <button
               onClick={() => setShowCategoryModal(true)}
@@ -388,9 +446,9 @@ const fetchGericname = async () => {
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
-          <h3 className="text-gray-500">Total Products</h3>
+          <h3 className="text-gray-500">Total Stock Quantity</h3>
           <p className="text-3xl font-semibold text-gray-800">
-            {stats.totalProducts}
+            {stats.total_stock_quantity}
           </p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-yellow-500">
@@ -447,7 +505,13 @@ const fetchGericname = async () => {
                   Generic Name
                 </th>
                 <th scope="col" className="px-6 py-3 text-center">
-                  Stock Qty
+                  Selling Price
+                </th>
+                <th scope="col" className="px-6 py-3 text-center">
+                  Total Product Qty
+                </th>
+                <th scope="col" className="px-6 py-3 text-center">
+                  Number of Batches
                 </th>
                 <th scope="col" className="px-6 py-3 text-center">
                   Stock Status
@@ -472,13 +536,19 @@ const fetchGericname = async () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {getCategoryName(product.category_name)}
+                      {product.category ? product.category_name :"N/A"}
                     </td>
                     <td className="px-6 py-4">
                       {getGenericName(product.generic_name)}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
-                      {product.stock_quantity}
+                      ₹{product.current_selling_price !== null && product.current_selling_price !== undefined ? Number(product.current_selling_price).toFixed(2) : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 text-center font-bold text-lg">
+                      {product.total_stock_quantity}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {product.batches ? product.batches.length : 0}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span
@@ -489,7 +559,7 @@ const fetchGericname = async () => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button
-                        onClick={() => openAddBatchModal(product)}
+                        onClick={() => handleViewBatches(product)}
                         className="font-medium text-green-600 hover:underline mr-4"
                       >
                         Add Stock
@@ -516,136 +586,6 @@ const fetchGericname = async () => {
 
       {/* --- Modals --- */}
 
-      {/* Add/Edit Batch Modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Add New Stock Batch
-            </h3>
-            <form onSubmit={handleAddBatch} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Product
-                </label>
-                <select
-                  required
-                  value={selectedProduct?.id || ""}
-                  onChange={(e) =>
-                    setSelectedProduct(
-                      products.find((p) => p.id === parseInt(e.target.value))
-                    )
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="" disabled>
-                    Select a product
-                  </option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Batch Number
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newBatch.batch_number}
-                    onChange={(e) =>
-                      setNewBatch({ ...newBatch, batch_number: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Quantity
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={newBatch.quantity}
-                    onChange={(e) =>
-                      setNewBatch({ ...newBatch, quantity: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Expiry Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={newBatch.expiry_date}
-                  onChange={(e) =>
-                      setNewBatch({ ...newBatch, expiry_date: e.target.value })
-                    }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Cost Price
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newBatch.cost_price}
-                    onChange={(e) =>
-                      setNewBatch({ ...newBatch, cost_price: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Selling Price / MRP
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newBatch.selling_price}
-                    onChange={(e) =>
-                      setNewBatch({
-                        ...newBatch,
-                        selling_price: e.target.value,
-                      })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowBatchModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Add Batch
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Add Product Modal */}
       {showProductModal && (
@@ -748,43 +688,13 @@ const fetchGericname = async () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Form (e.g., Tablet)
+                    Dosage Form (e.g., Tablet)
                   </label>
                   <input
                     type="text"
-                    value={newProduct.form}
+                    value={newProduct.dosage_form}
                     onChange={(e) =>
-                      setNewProduct({ ...newProduct, form: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Price
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newProduct.price}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, price: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    MRP
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newProduct.mrp}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, mrp: e.target.value })
+                      setNewProduct({ ...newProduct, dosage_form: e.target.value })
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
@@ -798,23 +708,6 @@ const fetchGericname = async () => {
                     value={newProduct.pack_size}
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, pack_size: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Initial Stock Quantity
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={newProduct.stock_quantity}
-                    onChange={(e) =>
-                      setNewProduct({
-                        ...newProduct,
-                        stock_quantity: e.target.value,
-                      })
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
@@ -835,6 +728,99 @@ const fetchGericname = async () => {
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
+                </div>
+              </div>
+              <h4 className="text-lg font-medium text-gray-900 mb-2 mt-4">
+                Initial Batch Details
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Batch Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newProduct.batch_number}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, batch_number: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={newProduct.quantity}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, quantity: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newProduct.expiry_date}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, expiry_date: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Cost Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newProduct.cost_price}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, cost_price: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Selling Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newProduct.selling_price}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, selling_price: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div className="flex items-center col-span-full md:col-span-1">
+                  <input
+                    type="checkbox"
+                    checked={newProduct.is_primary}
+                    onChange={(e) =>
+                      setNewProduct({
+                        ...newProduct,
+                        is_primary: e.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                  />
+                  <label className="ml-2 block text-sm text-gray-900">
+                    Set as Primary Batch?
+                  </label>
                 </div>
               </div>
               <div className="flex items-center">
@@ -1012,7 +998,16 @@ const fetchGericname = async () => {
                       Expiry Date
                     </th>
                     <th scope="col" className="px-6 py-3">
+                      Selling Price
+                    </th>
+                    <th scope="col" className="px-6 py-3">
                       Expiry Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-center">
+                      Primary
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-center">
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -1022,31 +1017,61 @@ const fetchGericname = async () => {
                       batch.expiry_date
                     );
                     return (
-                      <tr key={batch.id} className="bg-white border-b">
-                        <td className="px-6 py-4">{batch.batch_number}</td>
+                      <tr
+                        key={batch.id}
+                        className={`border-b ${
+                          batch.is_primary ? "bg-blue-50" : "bg-white hover:bg-gray-50"
+                        }`}
+                      >
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          {batch.batch_number}
+                        </td>
                         <td className="px-6 py-4">{batch.current_quantity}</td>
                         <td className="px-6 py-4">
+                          {/* Display expiry date */}
                           {new Date(batch.expiry_date).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4">
+                          ₹{batch.selling_price !== null && batch.selling_price !== undefined ? Number(batch.selling_price).toFixed(2) : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 text-center">
                           <span
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${color}`}
                           >
                             {status}
                           </span>
                         </td>
+                        <td className="px-6 py-4 text-center">
+                          {batch.is_primary ? (
+                            <span className="text-green-600 font-bold">Primary</span>
+                          ) : (
+                            "No"
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {!batch.is_primary && (
+                            <button
+                              onClick={() => handleSetPrimaryBatch(batch.id)}
+                              className="font-medium text-purple-600 hover:underline"
+                            >
+                              Set as Primary
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-              {selectedProductBatches.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No batches found for this product.
-                </div>
-              )}
             </div>
-            <div className="flex justify-end pt-4 mt-4 border-t">
+
+            <div className="flex justify-between items-center mt-6">
+              <button
+                onClick={() => setShowAddBatchForm(!showAddBatchForm)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                {showAddBatchForm ? "Cancel Add Batch" : "Add New Batch"}
+              </button>
               <button
                 onClick={() => setShowViewBatchModal(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
@@ -1054,6 +1079,121 @@ const fetchGericname = async () => {
                 Close
               </button>
             </div>
+
+            {showAddBatchForm && (
+              <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+                <h4 className="text-lg font-medium text-gray-900 mb-4">
+                  Add New Batch for {selectedProduct.name}
+                </h4>
+                <form onSubmit={handleAddBatch} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Batch Number
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newBatch.batch_number}
+                        onChange={(e) =>
+                          setNewBatch({ ...newBatch, batch_number: e.target.value })
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Quantity
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={newBatch.quantity}
+                        onChange={(e) =>
+                          setNewBatch({ ...newBatch, quantity: e.target.value })
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Expiry Date
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={newBatch.expiry_date}
+                        onChange={(e) =>
+                          setNewBatch({ ...newBatch, expiry_date: e.target.value })
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Cost Price
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={newBatch.cost_price}
+                        onChange={(e) =>
+                          setNewBatch({ ...newBatch, cost_price: e.target.value })
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Selling Price
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={newBatch.selling_price}
+                        onChange={(e) =>
+                          setNewBatch({ ...newBatch, selling_price: e.target.value })
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div className="flex items-center col-span-full md:col-span-1">
+                      <input
+                        type="checkbox"
+                        checked={newBatch.is_primary}
+                        onChange={(e) =>
+                          setNewBatch({
+                            ...newBatch,
+                            is_primary: e.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                      />
+                      <label className="ml-2 block text-sm text-gray-900">
+                        Set as Primary Batch?
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddBatchForm(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                    >
+                      Add Batch
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}

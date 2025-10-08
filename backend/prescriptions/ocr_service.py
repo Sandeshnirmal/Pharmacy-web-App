@@ -532,6 +532,7 @@ class OCRService:
 
         if best_match:
             return {
+                'product_object': best_match, # Add the product object here
                 'product_name': best_match.name,
                 'composition': self._build_product_composition(best_match),
                 'form': (best_match.form or 'tablet').title(),

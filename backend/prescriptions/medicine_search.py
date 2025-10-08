@@ -218,7 +218,7 @@ class PrescriptionOCREngine:
     """OCR-based prescription analysis with composition matching"""
 
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel("models/gemini-2.0-flash")
 
     def extract_medicines_from_image(self, image_data):
         """Extract medicines from prescription image using OCR"""

@@ -3,12 +3,58 @@
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import models # Import models module
 from .models import (
     Composition, Product, ProductComposition, Category, GenericName,
     Batch, Inventory, ProductReview, ProductImage, Wishlist, ProductTag
 )
 
 User = get_user_model()
+
+# ============================================================================
+# INVENTORY AND BATCH SERIALIZERS
+# ============================================================================
+
+class BatchSerializer(serializers.ModelSerializer):
+    """Batch serializer with enhanced tracking"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    days_to_expiry = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Batch
+        fields = [
+            'id', 'product', 'product_name', 'batch_number',
+            'manufacturing_date', 'expiry_date', 'quantity', 'current_quantity',
+            'cost_price', 'selling_price', 'mfg_license_number',
+            'days_to_expiry', 'is_expired', 'created_at', 'updated_at'
+        ]
+    
+    def get_days_to_expiry(self, obj):
+        """Calculate days until expiry"""
+        from datetime import date
+        if obj.expiry_date:
+            delta = obj.expiry_date - date.today()
+            return delta.days
+        return None
+    
+    def get_is_expired(self, obj):
+        """Check if batch is expired"""
+        from datetime import date
+        if obj.expiry_date:
+            return obj.expiry_date < date.today()
+        return False
+
+class InventorySerializer(serializers.ModelSerializer):
+    """Inventory serializer"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    
+    class Meta:
+        model = Inventory
+        fields = [
+            'id', 'product', 'product_name', 'quantity_on_hand',
+            'reorder_point', 'last_restock_date'
+        ]
 
 # ============================================================================
 # COMPOSITION MANAGEMENT SERIALIZERS
@@ -71,11 +117,15 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     composition_summary = serializers.SerializerMethodField()
     
     # Stock status
+    total_stock_quantity = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     
     # Pricing
-    discount_percentage = serializers.SerializerMethodField()
+    current_selling_price = serializers.SerializerMethodField()
+
+    # Batches
+    batches = BatchSerializer(many=True, read_only=True)
     
     class Meta:
         model = Product
@@ -83,18 +133,35 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_display',
             'manufacturer', 'medicine_type', 'prescription_type',
             'strength', 'form', 'is_prescription_required',  # Legacy fields
-            'price', 'mrp', 'discount_percentage',
-            'stock_quantity', 'min_stock_level', 'stock_status', 'is_low_stock',
+            'total_stock_quantity', 'min_stock_level', 'stock_status', 'is_low_stock',
+            'current_selling_price',
             'dosage_form', 'pack_size', 'packaging_unit',
             'description', 'composition', 'uses', 'side_effects',
             'how_to_use', 'precautions', 'storage',
             'compositions_detail', 'composition_summary',
             'image_url', 'hsn_code', 'category', 'category_name',
             'is_active', 'is_featured',
-            'created_at', 'updated_at', 'created_by', 'created_by_name'
+            'created_at', 'updated_at', 'created_by', 'created_by_name',
+            'batches' # Add batches to the fields
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
     
+    def get_total_stock_quantity(self, obj):
+        """Calculate total stock quantity from all active batches"""
+        return sum(batch.current_quantity for batch in obj.batches.all())
+
+    def get_current_selling_price(self, obj):
+        """Get the selling price from the primary batch, or the batch with the highest current quantity as fallback"""
+        primary_batch = obj.batches.filter(is_primary=True, current_quantity__gt=0).first()
+        if primary_batch:
+            return primary_batch.selling_price
+        
+        # Fallback to batch with highest quantity if no primary batch is set
+        latest_batch = obj.batches.filter(current_quantity__gt=0).order_by('-current_quantity').first()
+        if latest_batch:
+            return latest_batch.selling_price
+        return None
+
     def get_composition_summary(self, obj):
         """Get a summary of all compositions"""
         compositions = obj.product_compositions.filter(is_active=True)
@@ -104,23 +171,25 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         ]
     
     def get_stock_status(self, obj):
-        """Get stock status"""
-        if obj.stock_quantity == 0:
+        """Get stock status based on total quantity from batches"""
+        total_quantity = self.get_total_stock_quantity(obj)
+        if total_quantity == 0:
             return 'out_of_stock'
-        elif obj.stock_quantity <= obj.min_stock_level:
+        elif total_quantity <= obj.min_stock_level:
             return 'low_stock'
         else:
             return 'in_stock'
     
     def get_is_low_stock(self, obj):
-        """Check if product is low on stock"""
-        return obj.stock_quantity <= obj.min_stock_level
+        """Check if product is low on stock based on total quantity from batches"""
+        total_quantity = self.get_total_stock_quantity(obj)
+        return total_quantity <= obj.min_stock_level
     
-    def get_discount_percentage(self, obj):
-        """Calculate discount percentage"""
-        if obj.mrp > obj.price:
-            return round(((obj.mrp - obj.price) / obj.mrp) * 100, 2)
-        return 0
+    # def get_discount_percentage(self, obj):
+    #     """Calculate discount percentage"""
+    #     if obj.mrp > obj.price:
+    #         return round(((obj.mrp - obj.price) / obj.mrp) * 100, 2)
+    #     return 0
     
     def create(self, validated_data):
         """Create product with current user as creator"""
@@ -154,26 +223,46 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     generic_name_display = serializers.CharField(source='generic_name.name', read_only=True)
     composition_summary = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    total_stock_quantity = serializers.SerializerMethodField()
+    current_selling_price = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name_display',
             'manufacturer', 'medicine_type', 'prescription_type',
-            'price', 'mrp', 'stock_quantity', 'stock_status',
+            'total_stock_quantity', 'stock_status',
+            'current_selling_price',
             'dosage_form', 'composition_summary', 'image_url', 'is_active'
         ]
     
+    def get_total_stock_quantity(self, obj):
+        """Calculate total stock quantity from all active batches"""
+        return sum(batch.current_quantity for batch in obj.batches.all())
+
+    def get_current_selling_price(self, obj):
+        """Get the selling price from the primary batch, or the batch with the highest current quantity as fallback"""
+        primary_batch = obj.batches.filter(is_primary=True, current_quantity__gt=0).first()
+        if primary_batch:
+            return primary_batch.selling_price
+        
+        # Fallback to batch with highest quantity if no primary batch is set
+        latest_batch = obj.batches.filter(current_quantity__gt=0).order_by('-current_quantity').first()
+        if latest_batch:
+            return latest_batch.selling_price
+        return None
+
     def get_composition_summary(self, obj):
         """Get simplified composition summary"""
         compositions = obj.product_compositions.filter(is_active=True)[:3]
         return [comp.composition.name for comp in compositions]
     
     def get_stock_status(self, obj):
-        """Get stock status"""
-        if obj.stock_quantity == 0:
+        """Get stock status based on total quantity from batches"""
+        total_quantity = self.get_total_stock_quantity(obj)
+        if total_quantity == 0:
             return 'out_of_stock'
-        elif obj.stock_quantity <= obj.min_stock_level:
+        elif total_quantity <= obj.min_stock_level:
             return 'low_stock'
         else:
             return 'in_stock'
@@ -218,48 +307,3 @@ class GenericNameSerializer(serializers.ModelSerializer):
     
     def get_products_count(self, obj):
         return obj.product_set.filter(is_active=True).count()
-
-# ============================================================================
-# INVENTORY AND BATCH SERIALIZERS
-# ============================================================================
-
-class BatchSerializer(serializers.ModelSerializer):
-    """Batch serializer with enhanced tracking"""
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    days_to_expiry = serializers.SerializerMethodField()
-    is_expired = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Batch
-        fields = [
-            'id', 'product', 'product_name', 'batch_number',
-            'manufacturing_date', 'expiry_date', 'quantity', 'current_quantity',
-            'cost_price', 'selling_price', 'mfg_license_number',
-            'days_to_expiry', 'is_expired', 'created_at', 'updated_at'
-        ]
-    
-    def get_days_to_expiry(self, obj):
-        """Calculate days until expiry"""
-        from datetime import date
-        if obj.expiry_date:
-            delta = obj.expiry_date - date.today()
-            return delta.days
-        return None
-    
-    def get_is_expired(self, obj):
-        """Check if batch is expired"""
-        from datetime import date
-        if obj.expiry_date:
-            return obj.expiry_date < date.today()
-        return False
-
-class InventorySerializer(serializers.ModelSerializer):
-    """Inventory serializer"""
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    
-    class Meta:
-        model = Inventory
-        fields = [
-            'id', 'product', 'product_name', 'quantity_on_hand',
-            'reorder_point', 'last_restock_date'
-        ]

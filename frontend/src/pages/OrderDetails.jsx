@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import axiosInstance from '../api/axiosInstance';
-import { orderAPI } from "../api/apiService";
+import { orderAPI } from "../api/apiService"; // Assuming orderAPI might have invoice related endpoints
+import InvoiceDisplay from '../components/InvoiceDisplay'; // Import the new component
 
 const OrderDetails = () => {
   const [searchParams] = useSearchParams();
@@ -16,12 +17,44 @@ const OrderDetails = () => {
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [isImagePopupOpen, setIsImagePopupOpen] = useState(false);
   const [popupImageSrc, setPopupImageSrc] = useState("");
+  const [invoiceData, setInvoiceData] = useState(null); // New state for invoice data
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false); // New state for invoice modal
 
   useEffect(() => {
     if (orderId) {
       fetchOrderDetails();
     }
   }, [orderId]);
+
+  const handleViewInvoice = async () => {
+    try {
+      // Explicitly request JSON for viewing in React component
+      const response = await axiosInstance.get(`/order/invoices/${orderId}/summary/`);
+      setInvoiceData(response.data.invoice); // Corrected to response.data.invoice
+      console.log(response.data);
+      setShowInvoiceModal(true);
+    } catch (err) {
+      console.error("Error viewing invoice:", err);
+      setError("Failed to view invoice summary");
+    }
+  };
+
+  const handleDownloadInvoice = async () => {
+    try {
+      const response = await orderAPI.downloadInvoice(orderId);
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `invoice_order_${orderId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error downloading invoice:", err);
+      setError("Failed to download invoice");
+    }
+  };
 
   const fetchOrderDetails = async () => {
     try {
@@ -43,7 +76,7 @@ const OrderDetails = () => {
   const handleStatusUpdate = async (newStatus) => {
     try {
       setStatusUpdating(true);
-      await axiosInstance.patch(`/order/orders/${orderId}/`, {
+      await axiosInstance.patch(`/order/orders/${orderId}/update_status/`, { // Corrected endpoint
         order_status: newStatus,
       });
       fetchOrderDetails(); // Refresh data
@@ -159,6 +192,18 @@ const OrderDetails = () => {
         </div>
         <div className="flex items-center space-x-4">
           {getStatusBadge(order.order_status)}
+          <button
+            onClick={handleViewInvoice}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors duration-200"
+          >
+            View Invoice
+          </button>
+          <button
+            onClick={handleDownloadInvoice}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors duration-200"
+          >
+            Download Invoice
+          </button>
         </div>
       </header>
 
@@ -471,6 +516,24 @@ const OrderDetails = () => {
                 />
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && invoiceData && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto relative">
+            <button
+              onClick={() => setShowInvoiceModal(false)}
+              className="absolute top-3 right-3 bg-gray-200 rounded-full p-2 text-gray-600 hover:bg-gray-300 transition-colors"
+              aria-label="Close invoice"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <InvoiceDisplay invoice={invoiceData} order={order} user={{ email: order.user_email, full_name: order.user_name }} />
           </div>
         </div>
       )}

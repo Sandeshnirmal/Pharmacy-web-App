@@ -7,7 +7,6 @@ const axiosInstance = axios.create({
   withCredentials: true, // Enable credentials for CORS
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
   },
 });
 

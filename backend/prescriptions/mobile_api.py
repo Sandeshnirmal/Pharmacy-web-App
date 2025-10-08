@@ -78,16 +78,15 @@ def upload_prescription(request):
                         extracted_frequency=frequency,
                         extracted_form=form, # Ensure form is saved
                         ai_confidence_score=match_confidence,
-                        mapping_status='Mapped' if local_equivalent else 'Pending',
                         is_valid_for_order=local_equivalent is not None
                     )
 
                     # Set suggested products and best match
                     if local_equivalent:
-                        from product.models import Product
+                        # from product.models import Product # No longer needed here
                         try:
-                            # Use the product_name and form from local_equivalent for lookup
-                            product = Product.objects.get(name=local_equivalent['product_name'], form=local_equivalent['form'])
+                            # Use the product object directly from local_equivalent
+                            product = local_equivalent['product_object']
                             detail.suggested_products.set([product])
 
                             if match_confidence > 0.8:
@@ -96,9 +95,12 @@ def upload_prescription(request):
                                 detail.verified_dosage = product.strength
                                 detail.verified_form = product.form # Ensure verified form is saved
                                 detail.save()
-                        except Product.DoesNotExist:
-                            logger.warning(f"Product not found for local equivalent: {local_equivalent.get('product_name')} (Form: {local_equivalent.get('form')})")
-                            detail.mapping_status = 'No_Product_Found'
+                        except KeyError: # Handle case where product_object might be missing (though it shouldn't if local_equivalent is not None)
+                            logger.warning(f"Product object not found in local_equivalent for: {local_equivalent.get('product_name')} (Form: {local_equivalent.get('form')})")
+                            detail.is_valid_for_order = False
+                            detail.save()
+                        except Exception as e: # Catch other potential errors
+                            logger.warning(f"Error setting product for local equivalent {local_equivalent.get('product_name')}: {str(e)}")
                             detail.is_valid_for_order = False
                             detail.save()
                     else:
@@ -214,7 +216,6 @@ def get_medicine_suggestions(request, prescription_id):
                 'quantity': detail.ai_extracted_quantity,
                 'instructions': detail.ai_extracted_instructions,
                 'confidence_score': detail.ai_confidence_score,
-                'mapping_status': detail.mapping_status,
                 'is_available': detail.is_valid_for_order,
                 'product_info': None
             }
@@ -439,7 +440,6 @@ def reprocess_prescription_ocr(request, prescription_id):
                         ai_extracted_duration=extracted_info.get('duration', ''),
                         ai_extracted_instructions=extracted_info.get('instructions', ''),
                         ai_confidence_score=medicine_data['match_confidence'],
-                        mapping_status='Mapped' if matches else 'Pending',
                         is_valid_for_order=len(matches) > 0
                     )
 
@@ -459,8 +459,7 @@ def reprocess_prescription_ocr(request, prescription_id):
                         'id': detail.id,
                         'medicine_name': detail.ai_extracted_medicine_name,
                         'confidence': detail.ai_confidence_score,
-                        'matches_found': len(matches),
-                        'mapping_status': detail.mapping_status
+                        'matches_found': len(matches)
                     })
 
                 return Response({
@@ -878,4 +877,75 @@ def get_prescriptions_by_id(request, prescription_id):
         return Response({
             'success': False,
             'error': f'Failed to retrieve prescription: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from rest_framework.permissions import IsAuthenticated # Add this import
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated]) # Change to IsAuthenticated
+def update_prescription_medicine_selection(request):
+    """
+    Mobile API: Update the mapped product for a specific prescription medicine detail.
+    Allows users to reselect a suggested medicine if the initial AI mapping is incorrect.
+    """
+    from product.models import Product
+    try:
+        prescription_detail_id = request.data.get('prescription_detail_id')
+        new_product_id = request.data.get('new_product_id')
+
+        if not prescription_detail_id or not new_product_id:
+            return Response({
+                'success': False,
+                'error': 'prescription_detail_id and new_product_id are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info(f"Attempting to update prescription detail. User: {request.user.id if request.user.is_authenticated else 'Anonymous'}, Detail ID: {prescription_detail_id}")
+
+        try:
+            # Remove the user ownership check for admin/pharmacist context
+            detail = PrescriptionDetail.objects.get(id=prescription_detail_id)
+            # The IsAuthenticated permission class should handle if the user is logged in.
+            # If more granular permissions are needed (e.g., only pharmacists), a custom permission class would be required.
+            # For now, assuming any authenticated user can update if they have the detail ID.
+        except PrescriptionDetail.DoesNotExist:
+            logger.warning(f"Prescription detail {prescription_detail_id} not found.")
+            return Response({
+                'success': False,
+                'error': 'Prescription detail not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            new_product = Product.objects.get(id=new_product_id)
+        except Product.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'New product not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Update the mapped product and related fields
+        detail.mapped_product = new_product
+        detail.verified_medicine_name = new_product.name
+        detail.verified_dosage = new_product.strength
+        detail.verified_form = new_product.form
+        detail.is_valid_for_order = True # Assuming a manually selected product is valid
+        detail.save()
+
+        # Add the newly mapped product to suggested_products if not already present
+        if new_product not in detail.suggested_products.all():
+            detail.suggested_products.add(new_product)
+
+        return Response({
+            'success': True,
+            'message': 'Prescription medicine selection updated successfully',
+            'prescription_detail_id': str(detail.id),
+            'mapped_product_id': str(new_product.id),
+            'verified_medicine_name': new_product.name
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error updating prescription medicine selection: {e}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': f'Failed to update medicine selection: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
