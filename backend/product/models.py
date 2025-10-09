@@ -171,10 +171,18 @@ class Batch(models.Model):
     current_quantity = models.PositiveIntegerField()
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    mrp_price = models.DecimalField(max_digits=10,decimal_places=2,default=0)
+    discount_percentage = models.DecimalField(max_digits=10,decimal_places=2,default=0)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
     is_primary = models.BooleanField(default=False, help_text="Designates this batch as the primary one for display purposes.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.mrp_price is not None and self.discount_percentage is not None:
+            discount_amount = self.mrp_price * (self.discount_percentage / 100)
+            self.selling_price = self.mrp_price - discount_amount
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.product.name} - {self.batch_number}"

@@ -10,6 +10,7 @@ from django.db.models import Q, Count, F, Sum
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
+from django.db.models.functions import Coalesce
 # from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
@@ -122,7 +123,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # Annotate queryset with total_stock for filtering
         queryset = queryset.annotate(
-            total_stock=Sum('batches__current_quantity')
+            total_stock=Coalesce(Sum('batches__current_quantity'), 0)
         )
         
         # Filter by active status

@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Optional
 from PIL import Image
 import google.generativeai as genai
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Q, Sum # Import Sum
 from product.models import Product, GenericName
 from backend.settings import GOOGLE_API_KEY
 
@@ -500,9 +500,11 @@ class OCRService:
         for comp_name in composition_names_in_query:
             composition_filters |= Q(compositions__name__icontains=comp_name)
 
-        matching_products = Product.objects.filter(
+        matching_products = Product.objects.annotate(
+            total_stock=Sum('batches__current_quantity')
+        ).filter(
             composition_filters,
-            stock_quantity__gt=0,  # Only in-stock items
+            total_stock__gt=0,  # Only in-stock items
             is_active=True
         ).distinct() # Use distinct to avoid duplicate products if they have multiple matching compositions
 

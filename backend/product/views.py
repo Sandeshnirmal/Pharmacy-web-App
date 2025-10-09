@@ -249,12 +249,14 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         batch, created = Batch.objects.get_or_create(
             product=product,
             batch_number=batch_number,
+    
             defaults={
                 'quantity': batch_data.get('quantity', 0),
                 'current_quantity': batch_data.get('quantity', 0),
                 'expiry_date': batch_data.get('expiry_date'),
                 'cost_price': batch_data.get('cost_price', 0),
-                'selling_price': batch_data.get('selling_price', 0),
+                'mrp_price': batch_data.get('mrp_price', 0),
+                'discount_percentage': batch_data.get('discount_percentage', 0),
                 'is_primary': is_primary,
             }
         )
@@ -265,7 +267,8 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
             batch.current_quantity = batch_data.get('quantity', batch.current_quantity) # Assuming full replacement or adjustment
             batch.expiry_date = batch_data.get('expiry_date', batch.expiry_date)
             batch.cost_price = batch_data.get('cost_price', batch.cost_price)
-            batch.selling_price = batch_data.get('selling_price', batch.selling_price)
+            batch.mrp_price = batch_data.get('mrp_price', batch.mrp_price)
+            batch.discount_percentage = batch_data.get('discount_percentage', batch.discount_percentage)
             batch.is_primary = is_primary # Update is_primary
             batch.save()
 
