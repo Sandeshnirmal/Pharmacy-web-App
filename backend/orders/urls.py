@@ -8,7 +8,7 @@ from .views import (
     verify_prescription_and_confirm_order, get_orders_for_prescription_review,
     get_paid_orders_awaiting_prescription, get_user_pending_order # Import the new view
 )
-from .invoice_views import download_invoice_pdf # Import the new view
+from .invoice_views import download_invoice_pdf, view_invoice_html, get_invoice_summary # Import the new view
 
 router = DefaultRouter()
 router.register(r'orders', OrderViewSet)
@@ -36,6 +36,8 @@ urlpatterns = [
 
     # Invoice endpoints
     path('invoices/<int:order_id>/download/', download_invoice_pdf, name='download_invoice_pdf'),
+    path('orders/<int:order_id>/invoice/view/', view_invoice_html, name='view_invoice_html'),
+    path('invoices/<int:order_id>/summary/', get_invoice_summary, name='get_invoice_summary'), # New invoice summary endpoint
 
     # Pending order retrieval for frontend
     path('pending-order/', get_user_pending_order, name='get_user_pending_order'),

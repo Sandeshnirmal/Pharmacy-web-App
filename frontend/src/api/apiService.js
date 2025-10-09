@@ -217,6 +217,20 @@ export const orderAPI = {
   createOrder: (orderData) => axiosInstance.post('/order/orders/', orderData),
   updateOrder: (id, orderData) => axiosInstance.patch(`/order/orders/${id}/`, orderData),
   deleteOrder: (id) => axiosInstance.delete(`/order/orders/${id}/`),
+  
+  // Invoice related endpoints
+  viewInvoice: (orderId) => axiosInstance.get(`/order/orders/${orderId}/invoice/view/`, {
+    responseType: 'text',
+    headers: {
+      'Accept': 'text/html, application/json',
+    }
+  }),
+  downloadInvoice: (orderId) => axiosInstance.get(`/order/invoices/${orderId}/download/`, {
+    responseType: 'blob',
+    headers: {
+      'Accept': 'application/pdf',
+    }
+  }),
 };
 
 // ============================================================================
