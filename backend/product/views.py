@@ -2,10 +2,13 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.generics import ListCreateAPIView # Import ListCreateAPIView
+from rest_framework.views import APIView # Import APIView for file upload
 from django.db.models import Q, Sum, Count, F, Avg
 from django.utils import timezone
 from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
+import openpyxl # Import openpyxl
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
@@ -14,13 +17,85 @@ from .models import (
 from .serializers import (
     CategorySerializer, ProductSerializer, BatchSerializer,
     InventorySerializer, GenericNameSerializer, EnhancedProductSerializer,
-    ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer
+    ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer,
+    BulkCategorySerializer, BulkGenericNameSerializer, BulkProductSerializer, # Import new serializers
+    FileSerializer # Import FileSerializer
 )
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
+
+class BulkCategoryCreateAPIView(ListCreateAPIView):
+    queryset = Category.objects.all()
+    serializer_class = BulkCategorySerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can bulk create
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+class BulkGenericNameCreateAPIView(ListCreateAPIView):
+    queryset = GenericName.objects.all()
+    serializer_class = BulkGenericNameSerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can bulk create
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+class BulkProductCreateAPIView(ListCreateAPIView):
+    queryset = Product.objects.all()
+    serializer_class = BulkProductSerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can bulk create
+
+    def get_serializer(self, *args, **kwargs):
+        if isinstance(kwargs.get('data', {}), list):
+            kwargs['many'] = True
+        return super().get_serializer(*args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+class ExcelUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = FileSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        file = serializer.validated_data['file']
+
+        try:
+            workbook = openpyxl.load_workbook(file)
+            sheet = workbook.active
+            
+            headers = [cell.value for cell in sheet[1]]
+            data_rows = []
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                row_data = dict(zip(headers, row))
+                data_rows.append(row_data)
+
+            # Process products
+            product_serializer = BulkProductSerializer(data=data_rows, many=True, context={'request': request})
+            product_serializer.is_valid(raise_exception=True)
+            product_serializer.save()
+
+            return Response({"message": "Excel file processed successfully", "data": product_serializer.data}, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('name')

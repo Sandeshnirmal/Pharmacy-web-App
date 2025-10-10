@@ -19,7 +19,18 @@ class CategorySerializer(serializers.ModelSerializer):
 class GenericNameSerializer(serializers.ModelSerializer):
     class Meta:
         model = GenericName
-        fields = '__all__'        
+        fields = '__all__'
+
+class BulkCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['name', 'description', 'parent_category']
+        extra_kwargs = {'parent_category': {'required': False, 'allow_null': True}}
+
+class BulkGenericNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GenericName
+        fields = ['name', 'description']
 
 class BatchSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -149,6 +160,64 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         model = ProductReview
         fields = '__all__'
         read_only_fields = ('user', 'created_at', 'updated_at', 'helpful_count')
+
+class FileSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+class BulkProductSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    generic_name_str = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'name', 'brand_name', 'manufacturer', 'medicine_type',
+            'prescription_type', 'strength', 'form', 'is_prescription_required',
+            'min_stock_level', 'dosage_form', 'pack_size', 'packaging_unit',
+            'description', 'composition', 'uses', 'side_effects', 'how_to_use',
+            'precautions', 'storage', 'image_url', 'hsn_code',
+            'is_active', 'is_featured', 'category_name', 'generic_name_str', 'created_by'
+        ]
+        extra_kwargs = {
+            'generic_name': {'required': False}, # Make generic_name not required at model level
+            'category': {'required': False}, # Make category not required at model level
+        }
+
+    def create(self, validated_data):
+        category_name = validated_data.pop('category_name', None)
+        generic_name_str = validated_data.pop('generic_name_str', None)
+        
+        if category_name:
+            category, created = Category.objects.get_or_create(name=category_name)
+            validated_data['category'] = category
+        
+        if generic_name_str:
+            generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
+            validated_data['generic_name'] = generic_name
+        
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        category_name = validated_data.pop('category_name', None)
+        generic_name_str = validated_data.pop('generic_name_str', None)
+
+        if category_name:
+            category, created = Category.objects.get_or_create(name=category_name)
+            validated_data['category'] = category
+        
+        if generic_name_str:
+            generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
+            validated_data['generic_name'] = generic_name
+
+        return super().update(instance, validated_data)
+
+class EnhancedProductSerializer(serializers.ModelSerializer):
+    category = CategorySerializer(read_only=True)
+    generic_name = GenericNameSerializer(read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+    reviews = ProductReviewSerializer(many=True, read_only=True)
+    tags = serializers.SerializerMethodField()
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
