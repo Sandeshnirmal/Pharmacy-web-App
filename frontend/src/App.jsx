@@ -25,6 +25,9 @@ import TPCCourierManagementPage from './pages/TPCCourierManagementPage.jsx'
 // Reports
 import SalesReportsAnalysisPage from "./pages/Report.jsx";
 
+//invoice
+import Invoice from './pages/Invoice.jsx';
+
 function App() {
   return (
     <Router>
@@ -51,6 +54,9 @@ function App() {
             path="/Prescription_Review/:prescriptionId"
             element={<PrescriptionReview />}
           />
+
+          <Route path="/Invoice" element={<Invoice />} />
+
           {/* <Route path="/AI_Test" element={<AITestPage />} /> */}
 
           {/* Order Management */}

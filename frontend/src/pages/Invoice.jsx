@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import logoImg from "../assets/full_logo.png";
 
 // --- SVG Icons (for a clean, dependency-free UI) ---
@@ -6,138 +6,161 @@ const PharmacyLogo = () => (
     <img
         src={logoImg}
         alt="Pharmacy Logo"
-        className="w-20 h-17 object-contain"
+        className="w-12 h-12 object-contain"
         style={{ display: "block" }}
     />
 );
 
-const PlusIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    className="h-5 w-5 mr-2"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-    />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    className="h-5 w-5 text-red-500 hover:text-red-700 cursor-pointer"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-    />
-  </svg>
-);
+// --- Mock API Data for a Paid Purchase Invoice ---
+const mockApiData = {
+  vendor: {
+    name: "Global Pharma Distributors",
+    address: "456 Industrial Ave, Mumbai, Maharashtra, 400001",
+    email: "sales@globalpharma.com",
+    phone: "+91 22 5555 1234",
+  },
+  invoice: {
+    invoice_number: "GPD-2025-00123",
+    invoice_date: "2025-10-08T06:53:52.551Z",
+    payment_date: "2025-10-08T07:15:00.000Z",
+    buyer: {
+      name: "Infixmart",
+      address: {
+        line1: "No. 123, Arcot Road",
+        line2: "Vellore, Tamil Nadu, 632004",
+      },
+      email: "purchases@infixmart.com",
+      phone: "+91 416 123 4567",
+    },
+  },
+  items: [
+    {
+      name: "Paracetamol 500mg",
+      description: "Box of 200 units",
+      quantity: 20,
+      price: 500.0,
+      total_price: 10000.0,
+    },
+    {
+      name: "Antiseptic Liquid",
+      description: "Case of 50 units (500ml)",
+      quantity: 5,
+      price: 4500.0,
+      total_price: 22500.0,
+    },
+  ],
+  financial: {
+    subtotal: 32500.0,
+    tax_amount: 1625.0,
+    discount_amount: 1000.0,
+    total_price: 33125.0,
+    amount_paid: 33125.0,
+    balance_due: 0.0,
+  },
+  payment_details: {
+    payment_method: "Online Transfer",
+    transaction_id: "TRF-SBI-987654321",
+    account_name: "Global Pharma Distributors",
+    account_number: "987654321098",
+    bank: "HDFC Bank, Mumbai Corporate Branch",
+  },
+  terms_and_conditions:
+    "This is a record of your payment. Thank you for your business. Goods once sold will not be taken back.",
+};
 
 const Invoice = () => {
   // --- State Management ---
-  const [invoiceNumber, setInvoiceNumber] = useState(
-    `INV-${new Date().getFullYear()}-0001`
-  );
-  const [issuedDate, setIssuedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [dueDate, setDueDate] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [invoiceData, setInvoiceData] = useState(null);
 
-  const [billTo, setBillTo] = useState({
-    name: "",
-    address: "",
-    phone: "",
-    email: "",
-  });
-
-  const [items, setItems] = useState([
-    {
-      id: 1,
-      description: "Paracetamol 500mg Tablets (1 strip)",
-      quantity: 2,
-      price: 35.0,
-    },
-    {
-      id: 2,
-      description: "Vitamin C 1000mg Chewable (30 tabs)",
-      quantity: 1,
-      price: 150.5,
-    },
-  ]);
-
-  const [notes, setNotes] = useState(
-    "Please ensure all medicines are stored as per the instructions. Thank you for your purchase!"
-  );
-  const [taxRate, setTaxRate] = useState(5); // Example: 5% GST
-  const [discount, setDiscount] = useState(0);
-
-  // --- Handlers for Dynamic Form ---
-  const handleAddItem = () => {
-    const newItem = {
-      id: items.length + 1,
-      description: "",
-      quantity: 1,
-      price: 0.0,
+  // --- Data Fetching Effect ---
+  useEffect(() => {
+    // Simulate fetching data from an API
+    const fetchInvoiceData = () => {
+      setIsLoading(true);
+      // In a real app, you would make a network request here
+      // e.g., fetch('/api/purchase-order/details/some-id')
+      new Promise((resolve) => setTimeout(() => resolve(mockApiData), 1000))
+        .then((data) => {
+          setInvoiceData(data);
+          setIsLoading(false);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch invoice data:", error);
+          setIsLoading(false);
+          // Handle error state in UI
+        });
     };
-    setItems([...items, newItem]);
-  };
 
-  const handleRemoveItem = (idToRemove) => {
-    setItems(items.filter((item) => item.id !== idToRemove));
-  };
-
-  const handleItemChange = (id, field, value) => {
-    const newItems = items.map((item) => {
-      if (item.id === id) {
-        const newItem = { ...item, [field]: value };
-        // Ensure quantity and price are numbers for calculation
-        if (field === "quantity" || field === "price") {
-          newItem[field] = parseFloat(value) || 0;
-        }
-        return newItem;
-      }
-      return item;
-    });
-    setItems(newItems);
-  };
-
-  const handleBillToChange = (e) => {
-    const { name, value } = e.target;
-    setBillTo((prev) => ({ ...prev, [name]: value }));
-  };
-
-  // --- Calculations using useMemo for efficiency ---
-  const subtotal = useMemo(() => {
-    return items.reduce((acc, item) => acc + item.quantity * item.price, 0);
-  }, [items]);
-
-  const taxAmount = useMemo(() => {
-    return subtotal * (taxRate / 100);
-  }, [subtotal, taxRate]);
-
-  const grandTotal = useMemo(() => {
-    return subtotal + taxAmount - discount;
-  }, [subtotal, taxAmount, discount]);
+    fetchInvoiceData();
+  }, []); // Empty dependency array means this runs once on mount
 
   const handlePrint = () => {
     window.print();
   };
 
+  // Helper for formatting dates nicely for display
+  const displayFormatDate = (dateString) => {
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="bg-gray-100 min-h-screen flex items-center justify-center">
+        <div className="flex items-center gap-4">
+          <svg
+            className="animate-spin h-8 w-8 text-emerald-500"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <span className="text-xl font-semibold text-gray-600">
+            Loading Invoice...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!invoiceData) {
+    return (
+      <div className="bg-gray-100 min-h-screen flex items-center justify-center">
+        <p className="text-xl font-semibold text-red-500">
+          Error: Could not load invoice data.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
-      <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-lg">
+      <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-lg relative">
+        {/* --- Paid Stamp --- */}
+        <div className="absolute top-8 right-8 transform rotate-12">
+          <div className="border-4 border-green-500 text-green-500 rounded-lg px-4 py-2 text-4xl font-black uppercase tracking-wider">
+            Paid
+          </div>
+        </div>
+
         {/* --- Invoice Body --- */}
         <div className="p-8 md:p-12" id="invoice-content">
           {/* --- Header --- */}
@@ -145,35 +168,21 @@ const Invoice = () => {
             <div className="flex items-center gap-4 mb-6 sm:mb-0">
               <PharmacyLogo />
               <div>
-                <h1 className="text-2xl font-bold text-green-500">
-                  InfixMart
-                </h1>
-                <p className="text-gray-500">
-                  123 Health St, Wellness City, 54321
-                </p>
-                <p className="text-gray-500">
-                  contact@mediquick.com | +91 98765 43210
-                </p>
+                <h1 className="text-2xl font-bold text-gray-800">Infixmart</h1>
+                <p className="text-gray-500 text-sm">Purchase Department</p>
               </div>
             </div>
             <div className="text-left sm:text-right">
-              <h2 className="text-3xl font-extrabold text-emerald-500 uppercase tracking-wider">
-                Invoice
+              <h2 className="text-3xl font-extrabold text-gray-700 uppercase tracking-wider">
+                Paid Invoice
               </h2>
-              <div className="mt-2">
-                <label
-                  htmlFor="invoiceNumber"
-                  className="text-sm font-semibold text-gray-600"
-                >
-                  Invoice #
-                </label>
-                <input
-                  id="invoiceNumber"
-                  type="text"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  className="w-full sm:w-auto p-1 border rounded-md text-gray-700 text-left sm:text-right"
-                />
+              <div className="mt-2 text-gray-700">
+                <span className="text-sm font-semibold text-gray-600">
+                  Invoice #{" "}
+                </span>
+                <span className="font-mono">
+                  {invoiceData.invoice.invoice_number}
+                </span>
               </div>
             </div>
           </header>
@@ -181,67 +190,34 @@ const Invoice = () => {
           {/* --- Customer and Dates --- */}
           <section className="grid md:grid-cols-2 gap-8 mt-8">
             <div>
-              <h3 className="font-semibold text-gray-700 mb-2">Bill To:</h3>
-              <input
-                name="name"
-                value={billTo.name}
-                onChange={handleBillToChange}
-                placeholder="Customer Name"
-                className="w-full p-2 mb-2 border rounded-md"
-              />
-              <textarea
-                name="address"
-                value={billTo.address}
-                onChange={handleBillToChange}
-                placeholder="Customer Address"
-                className="w-full p-2 mb-2 border rounded-md"
-                rows="2"
-              ></textarea>
-              <input
-                name="email"
-                type="email"
-                value={billTo.email}
-                onChange={handleBillToChange}
-                placeholder="customer@example.com"
-                className="w-full p-2 mb-2 border rounded-md"
-              />
-              <input
-                name="phone"
-                type="tel"
-                value={billTo.phone}
-                onChange={handleBillToChange}
-                placeholder="+91 12345 67890"
-                className="w-full p-2 border rounded-md"
-              />
+              <h3 className="font-semibold text-gray-700 mb-2">From Vendor:</h3>
+              <p className="font-bold text-gray-800">
+                {invoiceData.vendor.name}
+              </p>
+              <p className="text-gray-600 text-sm">
+                {invoiceData.vendor.address}
+              </p>
+              <p className="text-gray-600 text-sm">
+                {invoiceData.vendor.email}
+              </p>
+              <p className="text-gray-600 text-sm">
+                {invoiceData.vendor.phone}
+              </p>
             </div>
             <div className="text-left md:text-right">
-              <div className="grid grid-cols-2 gap-4">
-                <label
-                  htmlFor="issuedDate"
-                  className="font-semibold text-gray-700"
-                >
-                  Issued Date:
-                </label>
-                <input
-                  id="issuedDate"
-                  type="date"
-                  value={issuedDate}
-                  onChange={(e) => setIssuedDate(e.target.value)}
-                  className="p-2 border rounded-md"
-                />
-                <label
-                  htmlFor="dueDate"
-                  className="font-semibold text-gray-700"
-                >
-                  Due Date:
-                </label>
-                <input
-                  id="dueDate"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="p-2 border rounded-md"
-                />
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <span className="font-semibold text-gray-700">
+                  Invoice Date:
+                </span>
+                <span className="text-gray-800">
+                  {displayFormatDate(invoiceData.invoice.invoice_date)}
+                </span>
+                <span className="font-semibold text-gray-700">
+                  Payment Date:
+                </span>
+                <span className="text-gray-800">
+                  {displayFormatDate(invoiceData.invoice.payment_date)}
+                </span>
               </div>
             </div>
           </section>
@@ -254,139 +230,108 @@ const Invoice = () => {
                   <tr className="bg-gray-100 text-sm font-semibold text-gray-600">
                     <th className="p-3">Description</th>
                     <th className="p-3 text-center w-24">Qty</th>
-                    <th className="p-3 text-right w-32">Price</th>
+                    <th className="p-3 text-right w-32">Unit Price</th>
                     <th className="p-3 text-right w-32">Total</th>
-                    <th className="p-3 text-center w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id} className="border-b border-gray-100">
+                  {invoiceData.items.map((item, index) => (
+                    <tr key={index} className="border-b border-gray-100">
                       <td className="p-3">
-                        <input
-                          type="text"
-                          value={item.description}
-                          onChange={(e) =>
-                            handleItemChange(
-                              item.id,
-                              "description",
-                              e.target.value
-                            )
-                          }
-                          className="w-full p-1 border rounded-md"
-                        />
+                        <p className="font-semibold text-gray-800">
+                          {item.name}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {item.description}
+                        </p>
                       </td>
-                      <td className="p-3">
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) =>
-                            handleItemChange(
-                              item.id,
-                              "quantity",
-                              e.target.value
-                            )
-                          }
-                          className="w-full p-1 border rounded-md text-center"
-                        />
-                      </td>
+                      <td className="p-3 text-center">{item.quantity}</td>
                       <td className="p-3 text-right">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={item.price.toFixed(2)}
-                          onChange={(e) =>
-                            handleItemChange(item.id, "price", e.target.value)
-                          }
-                          className="w-full p-1 border rounded-md text-right"
-                        />
+                        ₹{item.price.toFixed(2)}
                       </td>
                       <td className="p-3 text-right font-medium text-gray-800">
-                        ₹{(item.quantity * item.price).toFixed(2)}
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => handleRemoveItem(item.id)}
-                          title="Remove Item"
-                        >
-                          <TrashIcon />
-                        </button>
+                        ₹{item.total_price.toFixed(2)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <button
-              onClick={handleAddItem}
-              className="mt-4 flex items-center justify-center text-emerald-600 font-semibold py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg hover:bg-emerald-50 hover:border-emerald-300 transition-colors"
-            >
-              <PlusIcon />
-              Add Item
-            </button>
           </section>
 
           {/* --- Summary & Totals --- */}
           <section className="mt-8 grid md:grid-cols-2 gap-8 items-start">
-            <div>
-              <h3 className="font-semibold text-gray-700 mb-2">Notes:</h3>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full p-2 border rounded-md"
-                rows="3"
-              ></textarea>
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-semibold text-gray-700 mb-2">
+                  Payment Summary:
+                </h3>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p>
+                    <span className="font-medium text-gray-700">
+                      Payment Method:
+                    </span>{" "}
+                    {invoiceData.payment_details.payment_method}
+                  </p>
+                  <p>
+                    <span className="font-medium text-gray-700">
+                      Transaction ID:
+                    </span>{" "}
+                    {invoiceData.payment_details.transaction_id}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-700 mb-2">
+                  Vendor Terms:
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {invoiceData.terms_and_conditions}
+                </p>
+              </div>
             </div>
             <div className="flex flex-col items-end">
               <div className="w-full max-w-sm">
                 <div className="flex justify-between py-2 border-b">
                   <span className="font-semibold text-gray-600">Subtotal:</span>
                   <span className="font-medium text-gray-800">
-                    ₹{subtotal.toFixed(2)}
+                    ₹{invoiceData.financial.subtotal.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-600">
-                      Tax (%):
-                    </span>
-                    <input
-                      type="number"
-                      value={taxRate}
-                      onChange={(e) =>
-                        setTaxRate(parseFloat(e.target.value) || 0)
-                      }
-                      className="w-20 p-1 border rounded-md text-right"
-                    />
-                  </div>
+                  <span className="font-semibold text-gray-600">Tax:</span>
                   <span className="font-medium text-gray-800">
-                    ₹{taxAmount.toFixed(2)}
+                    ₹{invoiceData.financial.tax_amount.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-600">
-                      Discount (₹):
-                    </span>
-                    <input
-                      type="number"
-                      value={discount}
-                      onChange={(e) =>
-                        setDiscount(parseFloat(e.target.value) || 0)
-                      }
-                      className="w-20 p-1 border rounded-md text-right"
-                    />
-                  </div>
+                  <span className="font-semibold text-gray-600">Discount:</span>
                   <span className="font-medium text-red-500">
-                    - ₹{discount.toFixed(2)}
+                    - ₹{invoiceData.financial.discount_amount.toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between py-4 bg-gray-100 rounded-b-lg px-4 mt-2">
+                <div className="flex justify-between py-2 border-b">
                   <span className="text-lg font-bold text-gray-800">
-                    Grand Total:
+                    Total Amount:
                   </span>
-                  <span className="text-lg font-bold text-emerald-600">
-                    ₹{grandTotal.toFixed(2)}
+                  <span className="text-lg font-bold text-gray-800">
+                    ₹{invoiceData.financial.total_price.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="font-semibold text-gray-600">
+                    Amount Paid:
+                  </span>
+                  <span className="font-medium text-green-600">
+                    - ₹{invoiceData.financial.amount_paid.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-4 bg-green-100 rounded-b-lg px-4 mt-2">
+                  <span className="text-lg font-bold text-gray-800">
+                    Balance Due:
+                  </span>
+                  <span className="text-lg font-bold text-green-600">
+                    ₹{invoiceData.financial.balance_due.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -394,22 +339,32 @@ const Invoice = () => {
           </section>
 
           {/* --- Footer --- */}
-          <footer className="mt-12 text-center text-gray-500 border-t pt-6">
-            <p>Thank you for your business!</p>
-            <p className="text-sm">MediQuick Pharmacy | www.mediquick.com</p>
+          <footer className="mt-12 border-t pt-8">
+            <div className="flex justify-between items-end">
+              <div className="text-left text-sm text-gray-500">
+                <p>Thank you for your timely payment.</p>
+                <p>This is a computer-generated receipt.</p>
+              </div>
+              <div className="text-right w-48">
+                <div className="h-12 border-b border-gray-400"></div>
+                <p className="text-sm font-semibold text-gray-700 pt-2">
+                  Authorised Signature (Infixmart)
+                </p>
+              </div>
+            </div>
           </footer>
         </div>
 
         {/* --- Action Buttons (outside printable area) --- */}
         <div className="p-6 bg-gray-50 border-t rounded-b-lg flex justify-end gap-3 print:hidden">
           <button className="py-2 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-            Send Invoice
+            Download Receipt
           </button>
           <button
             onClick={handlePrint}
-            className="py-2 px-4 bg-emerald-500 text-white font-semibold rounded-lg hover:bg-emerald-600 transition-colors"
+            className="py-2 px-4 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
           >
-            Print / Download PDF
+            Print Receipt
           </button>
         </div>
       </div>
@@ -421,24 +376,13 @@ const Invoice = () => {
           body { background-color: #fff; }
           .print\\:hidden { display: none; }
           #invoice-content { 
-            box-shadow: none; 
+            box-shadow: none !important; 
             margin: 0;
             padding: 2rem;
             max-width: 100%;
             border: 1px solid #e5e7eb;
           }
-          input, textarea {
-            border: 1px solid transparent !important;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none;
-            padding: 4px;
-          }
-          input:focus, textarea:focus {
-             outline: none;
-          }
           table, tr, td, th { page-break-inside: avoid !important; }
-          .shadow-2xl { box-shadow: none !important; }
         `}
       </style>
     </div>
