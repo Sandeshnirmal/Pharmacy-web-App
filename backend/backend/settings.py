@@ -246,7 +246,7 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor', # Optional: for compressing cached data
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer', # Optional: for JSON serialization
+            'SERIALIZER': 'django_redis.serializers.pickle.PickleSerializer', # Use Pickle for DRF Response objects
         },
         'TIMEOUT': 300, # Cache for 5 minutes
     }

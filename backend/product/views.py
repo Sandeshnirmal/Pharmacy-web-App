@@ -26,7 +26,7 @@ from .serializers import (
 
 from django.db.models import Subquery, OuterRef # Import Subquery and OuterRef
 
-# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.annotate(
         products_count=Count('product', filter=Q(product__is_active=True))
@@ -104,7 +104,7 @@ class ExcelUploadView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [AllowAny]  # Allow public access for mobile app browsing
@@ -184,7 +184,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.all().order_by('-created_at')
     serializer_class = BatchSerializer
@@ -206,13 +206,13 @@ class BatchViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class InventoryViewSet(viewsets.ModelViewSet):
     queryset = Inventory.objects.all()
     serializer_class = InventorySerializer
     permission_classes = [IsAuthenticated]
 
-# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class GenericNameViewSet(viewsets.ModelViewSet):
     queryset = GenericName.objects.annotate(
         products_count=Count('product', filter=Q(product__is_active=True))
@@ -230,7 +230,7 @@ class GenericNameViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class EnhancedProductViewSet(viewsets.ModelViewSet):
     """Enhanced product viewset with additional features for mobile app"""
     serializer_class = EnhancedProductSerializer
