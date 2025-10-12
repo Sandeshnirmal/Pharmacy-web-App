@@ -170,11 +170,10 @@ class Batch(models.Model):
     quantity = models.PositiveIntegerField(default=0)
     current_quantity = models.PositiveIntegerField()
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    mrp_price = models.DecimalField(max_digits=10,decimal_places=2,default=0)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0 , null=False)
+    mrp_price = models.DecimalField(max_digits=10,decimal_places=2,default=0 ,null=False)
     discount_percentage = models.DecimalField(max_digits=10,decimal_places=2,default=0)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
-    is_primary = models.BooleanField(default=False, help_text="Designates this batch as the primary one for display purposes.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

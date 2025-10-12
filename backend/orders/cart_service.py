@@ -132,10 +132,6 @@ class CartService:
                         unit_price_at_order=item_data['unit_price']
                     )
                     
-                    # Update stock
-                    product = item_data['product']
-                    product.stock_quantity -= item_data['quantity']
-                    product.save()
                 
                 # Handle prescription upload if provided
                 if prescription_file and prescription_required:

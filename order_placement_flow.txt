@@ -62,6 +62,15 @@ The order placement process is designed to be robust, handling both Cash on Deli
 *   **Clear Cart**: Upon successful order finalization, the user's cart is cleared.
 *   **Navigate to Confirmation**: The user is navigated to the `OrderConfirmationScreen`, displaying the details of their newly placed order.
 
+*   **Inventory Deduction (New)**:
+    *   Upon successful order finalization (i.e., `order_status` becomes 'payment_completed' and `payment_status` becomes 'Paid'), the system initiates inventory deduction.
+    *   For each `OrderItem` in the finalized order:
+        *   The system queries `Batch` records for the corresponding `Product`.
+        *   Batches are prioritized for deduction based on their `expiry_date` (earliest expiry first) to ensure older stock is moved first. Only non-expired batches with available `current_quantity` are considered.
+        *   The `quantity` for the `OrderItem` is deducted from these batches.
+        *   A `StockMovement` record is created for each deduction, detailing the `product`, `batch`, `quantity` deducted, and a reference to the `order_id` for traceability.
+        *   If at any point there is insufficient stock across all available batches to fulfill an `OrderItem`'s quantity, the entire order transaction is rolled back, and an error is returned to the user, preventing the order from being placed.
+
 #### 5. Order Duplication Prevention Summary
 
 The system employs several mechanisms to prevent order duplications:

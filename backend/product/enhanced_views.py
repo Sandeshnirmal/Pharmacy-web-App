@@ -11,6 +11,8 @@ from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models.functions import Coalesce
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 # from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
@@ -30,6 +32,7 @@ User = get_user_model()
 # COMPOSITION MANAGEMENT VIEWSET
 # ============================================================================
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class CompositionViewSet(viewsets.ModelViewSet):
     """ViewSet for managing medicine compositions with full CRUD operations"""
     queryset = Composition.objects.all()
@@ -48,8 +51,10 @@ class CompositionViewSet(viewsets.ModelViewSet):
 
     
     def get_queryset(self):
-        """Filter compositions based on parameters"""
-        queryset = Composition.objects.all()
+        """Filter compositions based on parameters and optimize for related counts"""
+        queryset = Composition.objects.annotate(
+            products_count=Count('products', filter=Q(products__is_active=True))
+        ).select_related('created_by') # Optimize for created_by_name in serializer
         
         # Filter by active status
         is_active = self.request.query_params.get('is_active')
@@ -103,6 +108,7 @@ class CompositionViewSet(viewsets.ModelViewSet):
 # ENHANCED PRODUCT MANAGEMENT VIEWSET
 # ============================================================================
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class ProductViewSet(viewsets.ModelViewSet):
     """Enhanced product management with composition support"""
     queryset = Product.objects.all()
@@ -118,12 +124,29 @@ class ProductViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
     
     def get_queryset(self):
-        """Filter products with advanced search capabilities"""
-        queryset = Product.objects.all()
-
-        # Annotate queryset with total_stock for filtering
-        queryset = queryset.annotate(
-            total_stock=Coalesce(Sum('batches__current_quantity'), 0)
+        """Filter products with advanced search capabilities and optimize queries"""
+        # Use select_related for ForeignKey relationships and prefetch_related for ManyToMany/reverse ForeignKey
+        queryset = Product.objects.all().select_related(
+            'generic_name', 'category', 'created_by'
+        ).prefetch_related(
+            'batches',
+            Prefetch(
+                'productcomposition_set',
+                queryset=ProductComposition.objects.filter(is_active=True).select_related('composition'),
+                to_attr='active_product_compositions'
+            )
+        ).annotate(
+            total_stock=Coalesce(Sum('batches__current_quantity'), 0),
+            # Annotate current_selling_price to avoid N+1 in serializer
+            current_selling_price_annotated=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0
+                    ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
+                ),
+                0.0 # Default to 0.0 if no available batch
+            )
         )
         
         # Filter by active status
@@ -165,15 +188,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         if out_of_stock == 'true':
             queryset = queryset.filter(total_stock=0)
         
-        # Price range filter (Note: Product model does not have a direct price field, this might need adjustment)
+        # Price range filter
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
         if min_price:
-            queryset = queryset.filter(batches__selling_price__gte=min_price)
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
         if max_price:
-            queryset = queryset.filter(batches__selling_price__lte=max_price)
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
         
-        # Search functionality
+        # Search functionality - consider using a dedicated full-text search solution for large datasets
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
@@ -181,7 +204,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(brand_name__icontains=search) |
                 Q(generic_name__name__icontains=search) |
                 Q(manufacturer__icontains=search) |
-                Q(compositions__name__icontains=search)
+                Q(active_product_compositions__composition__name__icontains=search) # Use prefetched compositions
             ).distinct()
         
         return queryset.order_by('name')
@@ -254,11 +277,10 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])
     def update_stock(self, request, pk=None):
-        """Update product stock quantity and optionally set a batch as primary"""
+        """Update product stock quantity"""
         product = self.get_object()
         quantity = request.data.get('quantity')
         operation = request.data.get('operation', 'set')  # 'set', 'add', 'subtract'
-        set_as_primary = request.data.get('set_as_primary', False) # New parameter
 
         if quantity is None:
             return Response(
@@ -287,13 +309,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_404_NOT_FOUND
                     )
             else:
-                # If no batch_id is provided, default to updating the primary batch
-                # or the first available batch if no primary is explicitly set.
-                batch = product.batches.filter(is_primary=True).first()
+                # If no batch_id is provided, default to updating the first available batch.
+                batch = product.batches.first()
                 if not batch:
-                    batch = product.batches.first()
-                if not batch:
-                    # No batches exist, create a new primary batch
+                    # No batches exist, create a new batch
                     batch = Batch.objects.create(
                         product=product,
                         batch_number=f'AUTO-{product.id}-{timezone.now().strftime("%Y%m%d%H%M%S")}',
@@ -303,7 +322,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                         current_quantity=0,
                         cost_price=0,
                         selling_price=0,
-                        is_primary=True
                     )
 
             # Apply stock operation
@@ -319,12 +337,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Handle setting as primary
-            if set_as_primary:
-                # Set all other batches for this product to non-primary
-                product.batches.exclude(pk=batch.pk).update(is_primary=False)
-                batch.is_primary = True
-
             batch.save()
 
         product.refresh_from_db()
@@ -335,7 +347,6 @@ class ProductViewSet(viewsets.ModelViewSet):
             'new_quantity': product.stock_quantity,
             'operation': operation,
             'batch_id': batch.id,
-            'batch_is_primary': batch.is_primary
         })
 
     @action(detail=True, methods=['post'], permission_classes=[IsPharmacistOrAdmin])

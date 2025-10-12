@@ -9,6 +9,8 @@ from django.utils import timezone
 from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 import openpyxl # Import openpyxl
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
@@ -22,8 +24,13 @@ from .serializers import (
     FileSerializer # Import FileSerializer
 )
 
+from django.db.models import Subquery, OuterRef # Import Subquery and OuterRef
+
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all().order_by('name')
+    queryset = Category.objects.annotate(
+        products_count=Count('product', filter=Q(product__is_active=True))
+    ).all().order_by('name')
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
 
@@ -97,28 +104,54 @@ class ExcelUploadView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all().order_by('name')
     serializer_class = ProductSerializer
     permission_classes = [AllowAny]  # Allow public access for mobile app browsing
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        # Use select_related for ForeignKey relationships and prefetch_related for ManyToMany/reverse ForeignKey
+        queryset = Product.objects.all().select_related(
+            'generic_name', 'category', 'created_by'
+        ).prefetch_related(
+            'batches',
+            Prefetch(
+                'productcomposition_set',
+                queryset=ProductComposition.objects.filter(is_active=True).select_related('composition'),
+                to_attr='active_product_compositions'
+            )
+        ).annotate(
+            total_stock=Coalesce(Sum('batches__current_quantity'), 0),
+            # Annotate current_selling_price to avoid N+1 in serializer
+            current_selling_price_annotated=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0
+                    ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
+                ),
+                0.0 # Default to 0.0 if no available batch
+            )
+        ).order_by('name')
+
         category = self.request.query_params.get('category', None)
         search = self.request.query_params.get('search', None)
         stock_status = self.request.query_params.get('stock_status', None)
         prescription_required = self.request.query_params.get('prescription_required', None)
+        min_price = self.request.query_params.get('min_price')
+        max_price = self.request.query_params.get('max_price')
 
         if category:
             queryset = queryset.filter(category_id=category)
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) |
+                Q(brand_name__icontains=search) |
                 Q(generic_name__name__icontains=search) |
-                Q(manufacturer__icontains=search)
-            )
+                Q(manufacturer__icontains=search) |
+                Q(active_product_compositions__composition__name__icontains=search) # Use prefetched compositions
+            ).distinct()
         if stock_status:
-            queryset = queryset.annotate(total_stock=Sum('batches__current_quantity'))
             if stock_status == 'low':
                 queryset = queryset.filter(total_stock__lte=F('min_stock_level'))
             elif stock_status == 'out':
@@ -127,27 +160,35 @@ class ProductViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(total_stock__gt=F('min_stock_level'))
         if prescription_required is not None:
             queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
+        if min_price:
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
 
         return queryset
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         """Get products with low stock"""
-        products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock__lte=F('min_stock_level'))
+        # Use the optimized queryset from get_queryset
+        products = self.get_queryset().filter(total_stock__lte=F('min_stock_level'))
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
         """Get products that are out of stock"""
-        products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock=0)
+        # Use the optimized queryset from get_queryset
+        products = self.get_queryset().filter(total_stock=0)
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
+
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.all().order_by('-created_at')
     serializer_class = BatchSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -165,13 +206,17 @@ class BatchViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class InventoryViewSet(viewsets.ModelViewSet):
     queryset = Inventory.objects.all()
     serializer_class = InventorySerializer
     permission_classes = [IsAuthenticated]
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class GenericNameViewSet(viewsets.ModelViewSet):
-    queryset = GenericName.objects.all().order_by('name')
+    queryset = GenericName.objects.annotate(
+        products_count=Count('product', filter=Q(product__is_active=True))
+    ).all().order_by('name')
     serializer_class = GenericNameSerializer
     permission_classes = [IsAuthenticated]
 
@@ -185,20 +230,42 @@ class GenericNameViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class EnhancedProductViewSet(viewsets.ModelViewSet):
     """Enhanced product viewset with additional features for mobile app"""
-    queryset = Product.objects.select_related('category', 'generic_name').prefetch_related(
-        'images', 'reviews', 'tags__tag', 'batches' # Add 'batches' here
-    ).all()
     serializer_class = EnhancedProductSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description']
-    ordering_fields = ['price', 'created_at', 'name']
+    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description', 'compositions__name'] # Add compositions__name
+    ordering_fields = ['current_selling_price_annotated', 'created_at', 'name'] # Use annotated price
     ordering = ['-created_at']
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        # Use select_related for ForeignKey relationships and prefetch_related for ManyToMany/reverse ForeignKey
+        queryset = Product.objects.all().select_related(
+            'generic_name', 'category', 'created_by'
+        ).prefetch_related(
+            'batches',
+            'images', 'reviews', 'tags__tag', # Existing prefetches
+            Prefetch(
+                'productcomposition_set',
+                queryset=ProductComposition.objects.filter(is_active=True).select_related('composition'),
+                to_attr='active_product_compositions'
+            )
+        ).annotate(
+            total_stock=Coalesce(Sum('batches__current_quantity'), 0),
+            # Annotate current_selling_price to avoid N+1 in serializer
+            current_selling_price_annotated=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0
+                    ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
+                ),
+                0.0 # Default to 0.0 if no available batch
+            ),
+            avg_rating=Coalesce(Avg('reviews__rating'), 0.0) # Annotate average rating
+        )
 
         # Filter parameters
         category = self.request.query_params.get('category')
@@ -207,27 +274,22 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         prescription_required = self.request.query_params.get('prescription_required')
         in_stock = self.request.query_params.get('in_stock')
         rating = self.request.query_params.get('min_rating')
+        composition = self.request.query_params.get('composition') # New filter for composition
 
         if category:
             queryset = queryset.filter(category_id=category)
         if min_price:
-            # This filter needs to be adjusted to use current_selling_price from batches
-            # For now, it's commented out as 'price' is not a direct field on Product
-            # queryset = queryset.filter(price__gte=min_price)
-            pass
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
         if max_price:
-            # This filter needs to be adjusted to use current_selling_price from batches
-            # For now, it's commented out as 'price' is not a direct field on Product
-            # queryset = queryset.filter(price__lte=max_price)
-            pass
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
         if prescription_required is not None:
             queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
         if in_stock == 'true':
-            queryset = queryset.annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock__gt=0)
+            queryset = queryset.filter(total_stock__gt=0)
         if rating:
-            queryset = queryset.annotate(
-                avg_rating=Avg('reviews__rating')
-            ).filter(avg_rating__gte=rating)
+            queryset = queryset.filter(avg_rating__gte=rating)
+        if composition:
+            queryset = queryset.filter(active_product_compositions__composition__name__icontains=composition)
 
         return queryset
 

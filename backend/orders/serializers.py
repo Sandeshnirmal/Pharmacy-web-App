@@ -34,12 +34,12 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'user_name', 'user_email', 'user_phone', 'address', 'address_full',
                   'order_date', 'total_amount', 'discount_amount', 'shipping_fee',
                   'payment_method', 'payment_status', 'order_status', 'is_prescription_order',
-                  'prescription_image_base64', 'prescription_status', 'delivery_method',
+                  'prescription_image_url', 'prescription_status', 'delivery_method', # Changed to prescription_image_url
                   'expected_delivery_date', 'notes', 'delivery_address', 'tracking_number',
                   'created_at', 'updated_at', 'items', 'prescription_id', 'total_items']
         read_only_fields = ['user', 'order_date', 'total_amount', 'discount_amount', 'shipping_fee',
                             'payment_status', 'order_status', 'created_at', 'updated_at',
-                            'tracking_number', 'delivery_address'] # delivery_address might be set by system
+                            'tracking_number', 'delivery_address', 'prescription_image_url'] # Added prescription_image_url to read_only_fields
 
     def get_address_full(self, obj):
         if obj.address:

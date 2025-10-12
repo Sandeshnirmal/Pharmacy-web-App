@@ -38,7 +38,7 @@ class Order(models.Model):
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS)
     order_status = models.CharField(max_length=25, choices=ORDER_STATUS, default='Pending')
     is_prescription_order = models.BooleanField(default=False)
-    prescription_image_base64 = models.TextField(blank=True, null=True) # Store base64 image directly
+    prescription_image_url = models.URLField(max_length=500, blank=True, null=True) # Store URL to image
     PRESCRIPTION_STATUS_CHOICES = [
         ('pending_review', 'Pending Review'),
         ('verified', 'Verified'),

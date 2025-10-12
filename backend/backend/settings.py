@@ -239,8 +239,18 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
-
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1', # Assuming Redis runs on localhost:6379, database 1
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor', # Optional: for compressing cached data
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer', # Optional: for JSON serialization
+        },
+        'TIMEOUT': 300, # Cache for 5 minutes
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -259,32 +269,41 @@ REST_FRAMEWORK = {
 
 
 
+from datetime import timedelta, date
 
-# SIMPLE_JWT = {
-#     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),  # Short-lived access tokens
-#     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # Longer-lived refresh tokens
-#     'ROTATE_REFRESH_TOKENS': True,                 # Rotate refresh tokens on use
-#     'BLACKLIST_AFTER_ROTATION': True,              # Invalidate old refresh tokens
-#     'UPDATE_LAST_LOGIN': True,                     # Update user's last login on token refresh
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=50),  # Short-lived access tokens
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),   # Longer-lived refresh tokens
+    'ROTATE_REFRESH_TOKENS': True,                 # Rotate refresh tokens on use
+    'BLACKLIST_AFTER_ROTATION': True,              # Invalidate old refresh tokens
+    'UPDATE_LAST_LOGIN': True,                     # Update user's last login on token refresh
 
-#     'ALGORITHM': 'HS256',
-#     'SIGNING_KEY': 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=', # Use your SECRET_KEY or a strong, separate key
-#     'VERIFYING_KEY': None,
-#     'AUDIENCE': None,
-#     'ISSUER': None,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=', # Use your SECRET_KEY or a strong, separate key
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
 
-#     'AUTH_HEADER_TYPES': ('Bearer',), # Common practice for JWT
-#     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
-#     'USER_ID_FIELD': 'id', # Assuming your custom User model uses 'id' as PK
-#     'USER_ID_CLAIM': 'user_id', # Claim name for user ID in token
+    'AUTH_HEADER_TYPES': ('Bearer',), # Common practice for JWT
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id', # Assuming your custom User model uses 'id' as PK
+    'USER_ID_CLAIM': 'user_id', # Claim name for user ID in token
 
-#     'TOKEN_TYPE_CLAIM': 'token_type',
-#     'JTI_CLAIM': 'jti', # JWT ID claim for blacklist
-#     'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti', # JWT ID claim for blacklist
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
 
-#     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5), # For sliding tokens, if you use them
-#     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # For sliding tokens
-# }
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5), # For sliding tokens, if you use them
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # For sliding tokens
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0' # Use Redis database 0 for Celery broker
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0' # Use Redis database 0 for Celery results
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Calcutta' # Match your project's TIME_ZONE
 
 LOGGING = {
     'version': 1,
@@ -304,10 +323,28 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple' if not DEBUG else 'verbose',
         },
+        'celery_file': { # New handler for Celery logs
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'celery.log'),
+            'maxBytes': 1024 * 1024 * 5, # 5 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
         'django': {
             'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery': { # Logger for Celery
+            'handlers': ['console', 'celery_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery.task': { # Logger for Celery tasks
+            'handlers': ['console', 'celery_file'],
             'level': 'INFO',
             'propagate': False,
         },

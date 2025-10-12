@@ -32,19 +32,93 @@ class BulkGenericNameSerializer(serializers.ModelSerializer):
         model = GenericName
         fields = ['name', 'description']
 
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from django.db.models import Avg
+from datetime import date, timedelta
+
+from .models import (
+    Category, Product, Batch, Inventory, GenericName,
+    ProductReview, ProductImage, Wishlist, ProductTag,
+    ProductTagAssignment, ProductViewHistory
+)
+
+User = get_user_model()
+
+
+# ----------------------------
+# Category Serializer
+# ----------------------------
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = '__all__'
+
+
+# ----------------------------
+# Generic Name Serializer
+# ----------------------------
+class GenericNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GenericName
+        fields = '__all__'
+
+
+# ----------------------------
+# Simple Batch Serializer for Debugging
+# ----------------------------
+class SimpleBatchSerializer(serializers.ModelSerializer):
+    mrp_price = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Batch
+        fields = ['id', 'mrp_price', 'discount_percentage', 'selling_price']
+
+    def get_mrp_price(self, obj):
+        return obj.mrp_price if obj.mrp_price is not None else 0
+
+    def get_discount_percentage(self, obj):
+        return obj.discount_percentage if obj.discount_percentage is not None else 0
+
+
+# ----------------------------
+# Batch Serializer
+# ----------------------------
 class BatchSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     expiry_status = serializers.SerializerMethodField()
     days_to_expiry = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+    # Changed mrp_price and discount_percentage to DecimalField for writeability
+    mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
 
     class Meta:
         model = Batch
-        fields = '__all__'
+        fields = [
+            'id', 'product', 'product_name', 'batch_number',
+            'manufacturing_date', 'expiry_date', 'quantity',
+            'current_quantity', 'cost_price', 'mrp_price',
+            'discount_percentage', 'selling_price',
+            'mfg_license_number', 'created_at',
+            'updated_at', 'days_to_expiry', 'is_expired', 'expiry_status'
+        ]
+        extra_kwargs = {
+            'current_quantity': {'required': False},
+            'selling_price': {'read_only': True},
+        }
+
+    def get_days_to_expiry(self, obj):
+        today = date.today()
+        return (obj.expiry_date - today).days
+
+    def get_is_expired(self, obj):
+        today = date.today()
+        return obj.expiry_date < today
 
     def get_expiry_status(self, obj):
-        from datetime import date, timedelta
         today = date.today()
-
         if obj.expiry_date < today:
             return 'Expired'
         elif obj.expiry_date <= today + timedelta(days=30):
@@ -54,25 +128,26 @@ class BatchSerializer(serializers.ModelSerializer):
         else:
             return 'Good'
 
-    def get_days_to_expiry(self, obj):
-        from datetime import date
-        today = date.today()
-        return (obj.expiry_date - today).days
+    def create(self, validated_data):
+        if 'current_quantity' not in validated_data:
+            validated_data['current_quantity'] = validated_data.get('quantity', 0)
+        return super().create(validated_data)
 
 
+# ----------------------------
+# Product Serializer
+# ----------------------------
 class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), source='category', write_only=True
     )
-
     generic_name = GenericNameSerializer(read_only=True)
     generic_name_id = serializers.PrimaryKeyRelatedField(
         queryset=GenericName.objects.all(), source='generic_name', write_only=True
     )
-
     stock_status = serializers.SerializerMethodField()
-    stock_quantity = serializers.SerializerMethodField() # Add stock_quantity
+    stock_quantity = serializers.SerializerMethodField()
     total_batches = serializers.SerializerMethodField()
     batches = BatchSerializer(many=True, read_only=True)
     current_selling_price = serializers.SerializerMethodField()
@@ -81,48 +156,59 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'brand_name', 'generic_name', 'manufacturer',
+            'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
             'medicine_type', 'prescription_type', 'strength', 'form',
             'is_prescription_required', 'min_stock_level', 'dosage_form',
-            'pack_size', 'packaging_unit', 'description', 'composition',
-            'uses', 'side_effects', 'how_to_use', 'precautions', 'storage',
-            'compositions', 'image_url', 'hsn_code', 'category',
-            'is_active', 'is_featured', 'created_at', 'updated_at', 'created_by',
-            'batches', 'current_selling_price', 'current_cost_price', 'stock_quantity', 'category_id', 'stock_status', 'generic_name_id', 'total_batches' # Add stock_quantity, category_id, stock_status, generic_name_id, and total_batches
+            'pack_size', 'packaging_unit', 'description', 'composition', 'uses',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions',
+            'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
+            'is_featured', 'created_at', 'updated_at', 'created_by',
+            'batches', 'current_selling_price', 'current_cost_price',
+            'stock_quantity', 'stock_status', 'total_batches'
         ]
 
     def get_current_selling_price(self, obj):
-        from datetime import date
-        # Try to find a primary active batch first
-        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        # User wants price to be based on the earliest expiring batch, not necessarily the cheapest.
+        # First, sort active batches by expiry date.
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        # If a primary batch exists and is active, it still takes precedence for selling price.
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.selling_price
-        
-        # If no primary batch, fall back to the lowest selling price among active batches
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
-        if active_batches.exists():
-            return active_batches.first().selling_price
-        return None
+
+        # Otherwise, take the selling price of the earliest expiring active batch.
+        if active_batches:
+            return active_batches[0].selling_price
+        return 0
 
     def get_current_cost_price(self, obj):
-        from datetime import date
-        # Try to find a primary active batch first
-        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        # Sort active batches by expiry date.
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        # If a primary batch exists and is active, it still takes precedence for cost price.
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.cost_price
 
-        # If no primary batch, fall back to the lowest cost price among active batches
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('cost_price')
-        if active_batches.exists():
-            return active_batches.first().cost_price
-        return None
+        # Otherwise, take the cost price of the earliest expiring active batch.
+        if active_batches:
+            return active_batches[0].cost_price
+        return 0
 
     def get_stock_quantity(self, obj):
-        # Calculate total stock from all active batches
-        return sum(batch.current_quantity for batch in obj.batches.filter(expiry_date__gt=date.today()))
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+        return sum(batch.current_quantity for batch in active_batches)
 
     def get_stock_status(self, obj):
-        total_stock = self.get_stock_quantity(obj) # Use the calculated stock_quantity
+        total_stock = self.get_stock_quantity(obj)
         if total_stock == 0:
             return 'Out of Stock'
         elif total_stock <= obj.min_stock_level:
@@ -133,6 +219,115 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_total_batches(self, obj):
         return obj.batches.count()
 
+
+# ----------------------------
+# Enhanced Product Serializer
+# ----------------------------
+class EnhancedProductSerializer(serializers.ModelSerializer):
+    batches = SimpleBatchSerializer(many=True, read_only=True)  # Temporarily use SimpleBatchSerializer for debugging
+    tags = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    total_reviews = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
+    is_in_wishlist = serializers.SerializerMethodField()
+    related_products = serializers.SerializerMethodField()
+    current_selling_price = serializers.SerializerMethodField()
+    current_cost_price = serializers.SerializerMethodField()
+    stock_quantity = serializers.SerializerMethodField()
+    stock_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
+            'medicine_type', 'prescription_type', 'strength', 'form',
+            'is_prescription_required', 'min_stock_level', 'dosage_form',
+            'pack_size', 'packaging_unit', 'description', 'composition', 'uses',
+            'side_effects', 'how_to_use', 'precautions', 'storage',
+            'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
+            'is_featured', 'created_at', 'updated_at', 'created_by',
+            'batches', 'images', 'reviews', 'tags', 'average_rating',
+            'total_reviews', 'discount_percentage', 'is_in_wishlist',
+            'related_products', 'current_selling_price', 'current_cost_price',
+            'stock_quantity', 'stock_status'
+        ]
+
+    def get_discount_percentage(self, obj):
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today()]
+        if active_batches:
+            return float(max(batch.discount_percentage for batch in active_batches))
+        return 0
+
+    def get_average_rating(self, obj):
+        avg = obj.reviews.aggregate(avg_rating=Avg('rating'))['avg_rating']
+        return round(avg, 1) if avg else 0
+
+    def get_total_reviews(self, obj):
+        return obj.reviews.count()
+
+    def get_tags(self, obj):
+        tag_assignments = obj.tags.select_related('tag').all()
+        return [{'name': ta.tag.name, 'color': ta.tag.color} for ta in tag_assignments]
+
+    def get_is_in_wishlist(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Wishlist.objects.filter(user=request.user, product=obj).exists()
+        return False
+
+    def get_related_products(self, obj):
+        related = Product.objects.filter(category=obj.category).exclude(id=obj.id)[:4]
+        return ProductSerializer(related, many=True, context=self.context).data
+
+    def get_current_selling_price(self, obj):
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        # User wants price to be based on the earliest expiring batch, not necessarily the cheapest.
+        # First, sort active batches by expiry date.
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        # If a primary batch exists and is active, it still takes precedence for selling price.
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
+        if primary_batch:
+            return primary_batch.selling_price
+
+        # Otherwise, take the selling price of the earliest expiring active batch.
+        if active_batches:
+            return active_batches[0].selling_price
+        return 0
+
+    def get_current_cost_price(self, obj):
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        # Sort active batches by expiry date.
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        # If a primary batch exists and is active, it still takes precedence for cost price.
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
+        if primary_batch:
+            return primary_batch.cost_price
+
+        # Otherwise, take the cost price of the earliest expiring active batch.
+        if active_batches:
+            return active_batches[0].cost_price
+        return 0
+
+    def get_stock_quantity(self, obj):
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+        return sum(batch.current_quantity for batch in active_batches)
+
+    def get_stock_status(self, obj):
+        total_stock = self.get_stock_quantity(obj)
+        if total_stock == 0:
+            return 'out_of_stock'
+        elif total_stock <= obj.min_stock_level:
+            return 'low_stock'
+        else:
+            return 'in_stock'
 
 class InventorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -212,124 +407,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 
-class EnhancedProductSerializer(serializers.ModelSerializer):
-    category = CategorySerializer(read_only=True)
-    generic_name = GenericNameSerializer(read_only=True)
-    images = ProductImageSerializer(many=True, read_only=True)
-    reviews = ProductReviewSerializer(many=True, read_only=True)
-    tags = serializers.SerializerMethodField()
-
-    def create(self, validated_data):
-        validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
-
-
-class EnhancedProductSerializer(serializers.ModelSerializer):
-    category = CategorySerializer(read_only=True)
-    generic_name = GenericNameSerializer(read_only=True)
-    images = ProductImageSerializer(many=True, read_only=True)
-    reviews = ProductReviewSerializer(many=True, read_only=True)
-    tags = serializers.SerializerMethodField()
-
-    # Calculated fields
-    average_rating = serializers.SerializerMethodField()
-    total_reviews = serializers.SerializerMethodField()
-    stock_status = serializers.SerializerMethodField()
-    stock_quantity = serializers.SerializerMethodField() # Add stock_quantity
-    discount_percentage = serializers.SerializerMethodField()
-    is_in_wishlist = serializers.SerializerMethodField()
-    related_products = serializers.SerializerMethodField()
-    batches = BatchSerializer(many=True, read_only=True)
-    current_selling_price = serializers.SerializerMethodField() # Add this line
-    current_cost_price = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Product
-        fields = [
-            'id', 'name', 'brand_name', 'generic_name', 'manufacturer',
-            'medicine_type', 'prescription_type', 'strength', 'form',
-            'is_prescription_required', 'min_stock_level', 'dosage_form',
-            'pack_size', 'packaging_unit', 'description', 'composition',
-            'uses', 'side_effects', 'how_to_use', 'precautions', 'storage',
-            'compositions', 'image_url', 'hsn_code', 'category',
-            'is_active', 'is_featured', 'created_at', 'updated_at', 'created_by',
-            'images', 'reviews', 'tags', 'average_rating', 'total_reviews',
-            'stock_status', 'stock_quantity', 'discount_percentage', 'is_in_wishlist', # Add stock_quantity
-            'related_products', 'batches', 'current_selling_price', 'current_cost_price'
-        ]
-
-    def get_current_selling_price(self, obj):
-        from datetime import date
-        # Try to find a primary active batch first
-        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
-        if primary_batch:
-            return primary_batch.selling_price
-        
-        # If no primary batch, fall back to the lowest selling price among active batches
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
-        if active_batches.exists():
-            return active_batches.first().selling_price
-        return None
-
-    def get_current_cost_price(self, obj):
-        from datetime import date
-        # Try to find a primary active batch first
-        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
-        if primary_batch:
-            return primary_batch.cost_price
-
-        # If no primary batch, fall back to the lowest cost price among active batches
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('cost_price')
-        if active_batches.exists():
-            return active_batches.first().cost_price
-        return None
-
-    def get_tags(self, obj):
-        tag_assignments = obj.tags.select_related('tag').all()
-        return [{'name': ta.tag.name, 'color': ta.tag.color} for ta in tag_assignments]
-
-    def get_average_rating(self, obj):
-        avg = obj.reviews.aggregate(avg_rating=Avg('rating'))['avg_rating']
-        return round(avg, 1) if avg else 0
-
-    def get_total_reviews(self, obj):
-        return obj.reviews.count()
-
-    def get_stock_quantity(self, obj):
-        # Calculate total stock from all active batches
-        from datetime import date
-        return sum(batch.current_quantity for batch in obj.batches.filter(expiry_date__gt=date.today()))
-
-    def get_stock_status(self, obj):
-        total_stock = self.get_stock_quantity(obj) # Use the calculated stock_quantity
-        if total_stock == 0:
-            return 'out_of_stock'
-        elif total_stock <= obj.min_stock_level:
-            return 'low_stock'
-        else:
-            return 'in_stock'
-
-    def get_discount_percentage(self, obj):
-        # Discount calculation should now be based on batch selling prices.
-        # Since 'price' and 'mrp' are removed from Product, we need to derive a reference.
-        # For simplicity, let's assume no direct discount percentage is calculated at product level
-        # unless a specific 'mrp' or 'list_price' is introduced at batch level.
-        # For now, returning 0.
-        return 0
-
-    def get_is_in_wishlist(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Wishlist.objects.filter(user=request.user, product=obj).exists()
-        return False
-
-    def get_related_products(self, obj):
-        # Get products from same category, excluding current product
-        related = Product.objects.filter(
-            category=obj.category
-        ).exclude(id=obj.id)[:4]
-
-        return ProductSerializer(related, many=True, context=self.context).data
 
 
 class WishlistSerializer(serializers.ModelSerializer):
@@ -369,29 +446,40 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         ]
 
     def get_current_selling_price(self, obj):
-        from datetime import date
-        # Try to find a primary active batch first
-        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+        # from datetime import date # This import is already at the top of the file
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        # User wants price to be based on the earliest expiring batch, not necessarily the cheapest.
+        # First, sort active batches by expiry date.
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        # If a primary batch exists and is active, it still takes precedence for selling price.
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.selling_price
         
-        # If no primary batch, fall back to the lowest selling price among active batches
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
-        if active_batches.exists():
-            return active_batches.first().selling_price
+        # Otherwise, take the selling price of the earliest expiring active batch.
+        if active_batches:
+            return active_batches[0].selling_price
         return None
 
     def get_current_cost_price(self, obj):
-        from datetime import date
-        # Try to find a primary active batch first
-        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+        # from datetime import date # This import is already at the top of the file
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        # Sort active batches by expiry date.
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        # If a primary batch exists and is active, it still takes precedence for cost price.
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.cost_price
 
-        # If no primary batch, fall back to the lowest cost price among active batches
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('cost_price')
-        if active_batches.exists():
-            return active_batches.first().cost_price
+        # Otherwise, take the cost price of the earliest expiring active batch.
+        if active_batches:
+            return active_batches[0].cost_price
         return None
 
     def get_average_rating(self, obj):

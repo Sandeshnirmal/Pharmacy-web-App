@@ -31,14 +31,23 @@ const InventoryManagement = () => {
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedProductBatches, setSelectedProductBatches] = useState([]);
-
-
+  const [successMessage, setSuccessMessage] = useState(null); // New state for success messages
 
   useEffect(()=>{
     fetchMedicines();
     fetchCategory();
     fetchGericname();
   },[]);
+
+  // Clear success message after a few seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000); // Message disappears after 3 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const fetchMedicines = async()=>{
 
@@ -132,7 +141,6 @@ const fetchGericname = async () => {
     mrp_price: "", // Add mrp_price
     discount_percentage: "", // Add discount_percentage
     selling_price: "",
-    is_primary: false, // Add is_primary to newBatch state
   });
 
   const [newProduct, setNewProduct] = useState({
@@ -154,7 +162,6 @@ const fetchGericname = async () => {
     mrp_price: "", // Add mrp_price for initial batch
     discount_percentage: "", // Add discount_percentage for initial batch
     selling_price: "",
-    is_primary: false, // Add is_primary to newProduct's initial batch details
     min_stock_level: "10", // Keep min_stock_level for product
   });
 
@@ -172,106 +179,50 @@ const fetchGericname = async () => {
     genericNames.find((g) => g.id === id)?.name || "N/A";
 
   const EditBatchForm = ({ batch, onSave, onCancel }) => {
-    const [editFormData, setEditFormData] = useState({
-      batch_number: batch.batch_number,
-      quantity: batch.quantity,
-      expiry_date: batch.expiry_date,
-      cost_price: batch.cost_price,
-      mrp_price: batch.mrp_price,
-      discount_percentage: batch.discount_percentage,
-      is_primary: batch.is_primary,
-    });
+    // Ensure mrp_price and discount_percentage are numbers, defaulting to 0 if null/undefined
+    const initialMrpPrice = Number(batch.mrp_price || 0);
+    const initialDiscountPercentage = Number(batch.discount_percentage || 0);
 
-    const handleEditInputChange = (e) => {
-      const { name, value, type, checked } = e.target;
-      setEditFormData(prev => ({
-        ...prev,
-        [name]: type === 'checkbox' 
-                ? checked 
-                : (type === 'number' 
-                    ? (value === '' ? 0 : parseFloat(value)) // Convert empty string to 0 for number inputs
-                    : value)
-      }));
+    const [discountPercentage, setDiscountPercentage] = useState(initialDiscountPercentage);
+
+    const handleDiscountChange = (e) => {
+      const value = e.target.value;
+      setDiscountPercentage(value === '' ? 0 : parseFloat(value));
     };
 
     const handleEditSubmit = (e) => {
       e.preventDefault();
-      // Basic validation
-      if (!editFormData.batch_number || !editFormData.expiry_date || editFormData.quantity <= 0 || editFormData.mrp_price <= 0) {
-        alert('Please fill all required fields for the batch: Batch Number, Expiry Date, Quantity, MRP.');
-        return;
-      }
-      if (editFormData.discount_percentage < 0 || editFormData.discount_percentage > 100) {
+      // Basic validation for discount percentage only
+      if (discountPercentage < 0 || discountPercentage > 100) {
         alert('Discount percentage must be between 0 and 100.');
         return;
       }
-      onSave(batch.id, editFormData);
+      // Pass only the editable field and necessary read-only fields for calculation
+      onSave(batch.id, { 
+        discount_percentage: discountPercentage,
+        mrp_price: initialMrpPrice, // Use the ensured numeric value
+        batch_number: batch.batch_number, // Include batch_number for backend lookup
+        quantity: batch.current_quantity, // Include other fields to ensure partial update works correctly
+        expiry_date: batch.expiry_date,
+        cost_price: batch.cost_price,
+      });
     };
 
-    const calculatedSellingPrice = (editFormData.mrp_price - (editFormData.mrp_price * editFormData.discount_percentage / 100)).toFixed(2);
+    const calculatedSellingPrice = (initialMrpPrice - (initialMrpPrice * discountPercentage / 100)).toFixed(2);
 
     return (
       <form onSubmit={handleEditSubmit} className="space-y-4 p-4 bg-white rounded-lg shadow-inner">
         <h4 className="text-md font-semibold text-gray-800 mb-4">Edit Batch: {batch.batch_number}</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Batch Number</label>
-            <input
-              type="text"
-              name="batch_number"
-              required
-              value={editFormData.batch_number}
-              onChange={handleEditInputChange}
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Quantity</label>
-            <input
-              type="number"
-              name="quantity"
-              min="0"
-              required
-              value={editFormData.quantity}
-              onChange={handleEditInputChange}
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Expiry Date</label>
-            <input
-              type="date"
-              name="expiry_date"
-              required
-              value={editFormData.expiry_date}
-              onChange={handleEditInputChange}
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Cost Price</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              name="cost_price"
-              required
-              value={editFormData.cost_price}
-              onChange={handleEditInputChange}
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700">MRP (₹)</label>
             <input
               type="number"
               step="0.01"
               min="0"
-              name="mrp_price"
-              required
-              value={editFormData.mrp_price}
-              onChange={handleEditInputChange}
-              className="w-full px-3 py-2 border rounded-lg"
+              value={initialMrpPrice}
+              readOnly
+              className="w-full px-3 py-2 border rounded-lg bg-gray-100"
             />
           </div>
           <div>
@@ -283,8 +234,8 @@ const fetchGericname = async () => {
               max="100"
               name="discount_percentage"
               required
-              value={editFormData.discount_percentage}
-              onChange={handleEditInputChange}
+              value={discountPercentage}
+              onChange={handleDiscountChange}
               className="w-full px-3 py-2 border rounded-lg"
             />
           </div>
@@ -298,16 +249,6 @@ const fetchGericname = async () => {
               readOnly
               className="w-full px-3 py-2 border rounded-lg bg-gray-100"
             />
-          </div>
-          <div className="flex items-center mt-6">
-            <input
-              type="checkbox"
-              name="is_primary"
-              checked={editFormData.is_primary}
-              onChange={handleEditInputChange}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <span className="ml-2 text-sm text-gray-600">Primary Batch</span>
           </div>
         </div>
         <div className="flex justify-end space-x-3 pt-4">
@@ -336,11 +277,14 @@ const fetchGericname = async () => {
       return;
     }
     try {
+      const calculatedSellingPrice = parseFloat((newBatch.mrp_price - (newBatch.mrp_price * newBatch.discount_percentage / 100)).toFixed(2));
+
       const batchData = {
         ...newBatch,
         product: selectedProduct.id, // Ensure the product ID is set
+        selling_price: calculatedSellingPrice, // Use the calculated selling price
       };
-      await productAPI.createBatch(selectedProduct.id, batchData); // Use createBatch for adding new batches
+      await productAPI.addBatch(batchData); // Use addBatch for adding new batches
       setShowAddBatchForm(false); // Hide the form
       setNewBatch({
         product: "",
@@ -351,7 +295,7 @@ const fetchGericname = async () => {
         mrp_price: "",
         discount_percentage: "",
         selling_price: "",
-        is_primary: false, // Reset is_primary
+        // is_primary: false, // Reset is_primary
       });
       fetchMedicines(); // Refetch medicines to update stock
       // Re-fetch batches for the selected product to update the modal
@@ -399,11 +343,10 @@ const fetchGericname = async () => {
         cost_price: newProduct.cost_price,
         mrp_price: newProduct.mrp_price, // Pass mrp_price
         discount_percentage: newProduct.discount_percentage, // Pass discount_percentage
-        selling_price: newProduct.selling_price,
-        is_primary: newProduct.is_primary, // Pass is_primary for initial batch
+        selling_price: parseFloat((newProduct.mrp_price - (newProduct.mrp_price * newProduct.discount_percentage / 100)).toFixed(2)),
       };
 
-      await productAPI.createBatch(productId, batchData); // Using createBatch for adding initial batch
+      await productAPI.addBatch(batchData); // Using addBatch for adding initial batch
       
       setShowProductModal(false);
       setNewProduct({
@@ -425,7 +368,6 @@ const fetchGericname = async () => {
         mrp_price: "",
         discount_percentage: "",
         selling_price: "",
-        is_primary: false, // Reset is_primary
       });
       fetchMedicines(); // Refetch products
     } catch (error) {
@@ -465,7 +407,7 @@ const fetchGericname = async () => {
 
   const getStockStatus = (product) => {
     // Use the stock_quantity provided by the backend serializer
-    const totalStock = product.total_stock_quantity || 0;
+    const totalStock = product.stock_quantity || 0; // Changed to product.stock_quantity
     if (totalStock === 0)
       return { status: "Out of Stock", color: "bg-red-100 text-red-800" };
     if (totalStock < product.min_stock_level)
@@ -503,7 +445,8 @@ const fetchGericname = async () => {
 
   const openAddBatchModal = (product) => {
     setSelectedProduct(product);
-    setShowBatchModal(true);
+    setShowViewBatchModal(true); // Open the view batches modal
+    setShowAddBatchForm(true); // Show the add batch form within it
   };
 
   const handleUpdateBatch = async (batchId, updatedData) => {
@@ -512,11 +455,9 @@ const fetchGericname = async () => {
       return;
     }
     try {
-      await productAPI.updateStock(selectedProduct.id, {
-        batch_id: batchId,
-        ...updatedData,
-        operation: 'set' // Assuming 'set' operation for updates
-      });
+      // The updatedData already contains mrp_price and discount_percentage
+      // The backend's Batch model save method will recalculate selling_price
+      await productAPI.updateBatch(batchId, updatedData);
       setEditingBatch(null); // Close edit form
       fetchMedicines(); // Refetch all medicines to update UI
       // Re-fetch batches for the selected product to update the modal
@@ -550,9 +491,9 @@ const fetchGericname = async () => {
     totalProducts: products.length,
     total_stock_quantity: products.reduce((sum, product) => sum + (product.stock_quantity || 0), 0),
     lowStock: products.filter(
-      (p) => p.total_stock_quantity > 0 && p.total_stock_quantity < p.min_stock_level
+      (p) => p.stock_quantity > 0 && p.stock_quantity < p.min_stock_level
     ).length,
-    outOfStock: products.filter((p) => p.total_stock_quantity === 0).length,
+    outOfStock: products.filter((p) => p.stock_quantity === 0).length,
     expired: batches.filter((b) => new Date(b.expiry_date) < new Date()).length,
   };
 
@@ -563,43 +504,6 @@ const fetchGericname = async () => {
       </div>
     );
   }
-
-  const handleSetPrimaryBatch = async (batchId) => {
-    if (!selectedProduct) {
-      setError("No product selected.");
-      return;
-    }
-    try {
-      // Call the updateStock API with set_as_primary: true
-      const batchToUpdate = selectedProductBatches.find(b => b.id === batchId);
-      if (!batchToUpdate) {
-        setError("Batch not found for setting primary.");
-        return;
-      }
-
-      await productAPI.updateStock(selectedProduct.id, {
-        batch_id: batchId,
-        set_as_primary: true,
-        // Include all required fields for updateStock, even if only setting primary
-        batch_number: batchToUpdate.batch_number,
-        quantity: batchToUpdate.current_quantity,
-        expiry_date: batchToUpdate.expiry_date,
-        cost_price: batchToUpdate.cost_price,
-        mrp_price: batchToUpdate.mrp_price,
-        discount_percentage: batchToUpdate.discount_percentage,
-        operation: 'set' // Explicitly set operation
-      });
-      fetchMedicines(); // Refetch all medicines to update UI
-      // Re-fetch batches for the selected product to update the modal
-      const updatedProductResponse = await productAPI.getProduct(selectedProduct.id);
-      setSelectedProduct(updatedProductResponse.data);
-      setSelectedProductBatches(updatedProductResponse.data.batches || []);
-    } catch (error) {
-      const errorInfo = apiUtils.handleError(error);
-      setError(errorInfo.message);
-      console.error("Error setting primary batch:", error);
-    }
-  };
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
@@ -643,6 +547,15 @@ const fetchGericname = async () => {
           role="alert"
         >
           {error}
+        </div>
+      )}
+
+      {successMessage && (
+        <div
+          className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4"
+          role="alert"
+        >
+          {successMessage}
         </div>
       )}
 
@@ -762,7 +675,7 @@ const fetchGericname = async () => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button
-                        onClick={() => handleViewBatches(product)}
+                        onClick={() => openAddBatchModal(product)}
                         className="font-medium text-green-600 hover:underline mr-4"
                       >
                         Add Stock
@@ -1009,22 +922,7 @@ const fetchGericname = async () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
-                <div className="flex items-center col-span-full md:col-span-1">
-                  <input
-                    type="checkbox"
-                    checked={newProduct.is_primary}
-                    onChange={(e) =>
-                      setNewProduct({
-                        ...newProduct,
-                        is_primary: e.target.checked,
-                      })
-                    }
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                  />
-                  <label className="ml-2 block text-sm text-gray-900">
-                    Set as Primary Batch?
-                  </label>
-                </div>
+                
               </div>
               <div className="flex items-center">
                 <input
@@ -1213,9 +1111,6 @@ const fetchGericname = async () => {
                       Expiry Status
                     </th>
                     <th scope="col" className="px-6 py-3 text-center">
-                      Primary
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-center">
                       Actions
                     </th>
                   </tr>
@@ -1230,26 +1125,24 @@ const fetchGericname = async () => {
                     return (
                       <React.Fragment key={batch.id}>
                         <tr
-                          className={`border-b ${
-                            batch.is_primary ? "bg-blue-50" : "bg-white hover:bg-gray-50"
-                          }`}
+                          className={`border-b bg-white hover:bg-gray-50`}
                         >
                           <td className="px-6 py-4 font-medium text-gray-900">
                             {batch.batch_number}
                           </td>
                           <td className="px-6 py-4">{batch.current_quantity}</td>
                           <td className="px-6 py-4">
-                            ₹{batch.mrp_price !== null && batch.mrp_price !== undefined ? Number(batch.mrp_price).toFixed(2) : 'N/A'}
+                            ₹{batch.mrp_price}
                           </td>
                           <td className="px-6 py-4">
-                            {batch.discount_percentage !== null && batch.discount_percentage !== undefined ? Number(batch.discount_percentage).toFixed(2) : 'N/A'}%
+                            {batch.discount_percentage }%
                           </td>
                           <td className="px-6 py-4">
                             {/* Display expiry date */}
                             {new Date(batch.expiry_date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4">
-                            ₹{batch.selling_price !== null && batch.selling_price !== undefined ? Number(batch.selling_price).toFixed(2) : calculatedSellingPrice}
+                            ₹{Number(batch.selling_price).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span
@@ -1259,32 +1152,17 @@ const fetchGericname = async () => {
                             </span>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            {batch.is_primary ? (
-                              <span className="text-green-600 font-bold">Primary</span>
-                            ) : (
-                              "No"
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center">
                             <button
                               onClick={() => setEditingBatch(batch)}
                               className="font-medium text-indigo-600 hover:underline mr-2"
                             >
                               Edit
                             </button>
-                            {!batch.is_primary && (
-                              <button
-                                onClick={() => handleSetPrimaryBatch(batch.id)}
-                                className="font-medium text-purple-600 hover:underline"
-                              >
-                                Set as Primary
-                              </button>
-                            )}
                           </td>
                         </tr>
                         {editingBatch && editingBatch.id === batch.id && (
                           <tr className="bg-gray-100">
-                            <td colSpan="9" className="p-4">
+                            <td colSpan="8" className="p-4">
                               <EditBatchForm
                                 batch={editingBatch}
                                 onSave={handleUpdateBatch}
@@ -1425,22 +1303,7 @@ const fetchGericname = async () => {
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
                       />
                     </div>
-                    <div className="flex items-center col-span-full md:col-span-1">
-                      <input
-                        type="checkbox"
-                        checked={newBatch.is_primary}
-                        onChange={(e) =>
-                          setNewBatch({
-                            ...newBatch,
-                            is_primary: e.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                      />
-                      <label className="ml-2 block text-sm text-gray-900">
-                        Set as Primary Batch?
-                      </label>
-                    </div>
+                   
                   </div>
                   <div className="flex justify-end space-x-3 pt-4">
                     <button

@@ -15,13 +15,13 @@ import uuid
 import os
 
 from .models import (
-    Prescription, PrescriptionMedicine, PrescriptionWorkflowLog,
-    PrescriptionDetail  # Legacy alias
+    Prescription, PrescriptionMedicine, PrescriptionWorkflowLog
 )
 from .serializers import (
-    PrescriptionSerializer, PrescriptionDetailSerializer
+    PrescriptionSerializer, PrescriptionMedicineSerializer # Changed PrescriptionDetailSerializer to PrescriptionMedicineSerializer
 )
 from .ocr_service import OCRService
+from .tasks import process_prescription_ocr_task # Import Celery task
 from usermanagement.models import UserRole
 from product.models import Product
 
@@ -59,8 +59,8 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """Create prescription with workflow logging"""
-        prescription = serializer.save()
+        """Create prescription and trigger asynchronous OCR processing"""
+        prescription = serializer.save(status='pending_ocr', verification_status='Pending_AI_Processing')
         
         # Log workflow action
         PrescriptionWorkflowLog.objects.create(
@@ -74,168 +74,39 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         
         # Trigger AI processing if image is provided
         if prescription.image_file:
-            self.trigger_ai_processing(prescription)
-    
-    def trigger_ai_processing(self, prescription):
-        """Trigger AI processing for prescription"""
-        # Update prescription status
-        prescription.status = 'ai_processing'
-        prescription.save()
-        
-        # Update prescription status
-        prescription.status = 'ai_processing'
-        prescription.save()
-        
-        # Log workflow change
-        PrescriptionWorkflowLog.objects.create(
-            prescription=prescription,
-            from_status='uploaded',
-            to_status='ai_processing',
-            action_taken='AI processing started',
-            performed_by=self.request.user if self.request.user.is_authenticated else None,
-            system_generated=True
-        )
-        
-        # TODO: Integrate with actual AI service
-        # For now, simulate AI processing
-        self.simulate_ai_processing(prescription)
-
-    def simulate_ai_processing(self, prescription):
-        """Integrate actual AI processing for prescription"""
-        try:
-            ocr_service = OCRService()
-            # Ensure the image file exists and get its path
-            if not prescription.image_file or not prescription.image_file.path:
-                raise ValueError("Prescription image file not found.")
-
-            ocr_result = ocr_service.process_prescription_image(prescription.image_file.path)
-
-            if ocr_result['success']:
-                # Update prescription with OCR results
-                prescription.status = 'ai_mapped'
-                prescription.ai_processed = True
-                prescription.ai_confidence_score = ocr_result.get('ocr_confidence', 0.0)
-                prescription.ai_processing_time = ocr_result.get('processing_summary', {}).get('ai_processing_time', 0.0) # Assuming OCRService returns this
-                prescription.ocr_text = ocr_result.get('raw_text', '')
-                prescription.save()
-
-                # Clear existing prescription medicines to avoid duplicates on re-processing
-                prescription.prescription_medicines.all().delete()
-
-                # Create PrescriptionMedicine objects from OCR results
-                print(f"Attempting to create PrescriptionMedicine objects for {len(ocr_result['medicines'])} medicines.")
-                for i, medicine_data in enumerate(ocr_result['medicines']):
-                    print(f"Processing medicine data: {medicine_data}")
-                    extracted_name = medicine_data.get('input_medicine_name', '')
-                    extracted_dosage = medicine_data.get('strength', '')
-                    extracted_frequency = medicine_data.get('frequency', '')
-                    extracted_form = medicine_data.get('form', '')
-                    match_confidence = medicine_data.get('match_confidence', 0.0)
-                    local_equivalent = medicine_data.get('local_equivalent')
-
-                    try:
-                        prescription_medicine = PrescriptionMedicine.objects.create(
-                            prescription=prescription,
-                            line_number=i + 1,
-                            extracted_medicine_name=extracted_name,
-                            extracted_dosage=extracted_dosage,
-                            extracted_frequency=extracted_frequency,
-                            extracted_form=extracted_form, # Added extracted_form
-                            extracted_quantity="1", # Default to 1, can be improved with more advanced OCR
-                            extracted_instructions="", # Can be improved with more advanced OCR
-                            ai_confidence_score=match_confidence,
-                            verification_status='pending'
-                        )
-                        print(f"Created PrescriptionMedicine: {prescription_medicine.id} - {extracted_name}")
-
-                        if local_equivalent and match_confidence >= 0.8: # Auto-select if confidence is high
-                            try:
-                                product = Product.objects.get(name=local_equivalent['product_name'])
-                                prescription_medicine.suggested_medicine = product
-                                prescription_medicine.verified_medicine = product
-                                prescription_medicine.mapped_product = product
-                                prescription_medicine.verified_medicine_name = product.name
-                                prescription_medicine.unit_price = product.price
-                                prescription_medicine.total_price = product.price * prescription_medicine.quantity_prescribed
-                                prescription_medicine.is_valid_for_order = True
-                                print(f"  - Auto-selected and mapped to product: {product.name} with confidence {match_confidence}")
-                            except Product.DoesNotExist:
-                                prescription_medicine.is_valid_for_order = False
-                                print(f"  - Product not found for local equivalent: {local_equivalent['product_name']}")
-                        else:
-                            prescription_medicine.is_valid_for_order = False
-                            if local_equivalent and match_confidence < 0.8:
-                                print(f"  - Local equivalent found but confidence {match_confidence} is too low for auto-selection: {local_equivalent['product_name']}")
-                            else:
-                                print(f"  - No local equivalent found for {extracted_name}")
-                        
-                        prescription_medicine.save()
-                        print(f"Saved PrescriptionMedicine: {prescription_medicine.id}")
-
-                    except Exception as create_e:
-                        print(f"Error creating PrescriptionMedicine for {extracted_name}: {create_e}")
-                        import traceback
-                        traceback.print_exc()
-
-                # Update status to pending verification
-                prescription.status = 'pending_verification'
-                prescription.verification_status = 'Pending_Review' # Ensure frontend can display actions
-                prescription.save()
-
-                # Log workflow changes
-                PrescriptionWorkflowLog.objects.create(
-                    prescription=prescription,
-                    from_status='ai_processing',
-                    to_status='ai_mapped',
-                    action_taken='AI processing completed',
-                    performed_by=self.request.user if self.request.user.is_authenticated else None,
-                    system_generated=True
-                )
+            try:
+                # Get the actual file path for OCR processing
+                actual_file_path = prescription.image_file.path
+                user_id = str(self.request.user.id) if self.request.user.is_authenticated else None
+                process_prescription_ocr_task.delay(str(prescription.id), actual_file_path, user_id)
                 
+                # Log task initiation
                 PrescriptionWorkflowLog.objects.create(
                     prescription=prescription,
-                    from_status='ai_mapped',
-                    to_status='pending_verification',
-                    action_taken='Ready for verification',
+                    from_status='uploaded',
+                    to_status='pending_ocr',
+                    action_taken='OCR processing task initiated',
                     performed_by=self.request.user if self.request.user.is_authenticated else None,
                     system_generated=True
                 )
-            else:
-                # Handle OCR failure
-                prescription.status = 'ai_failed'
-                prescription.ai_processed = False
-                prescription.rejection_reason = ocr_result.get('error', 'AI processing failed.')
+                print(f"OCR processing task initiated for prescription {prescription.id}")
+            except Exception as e:
+                print(f"Failed to initiate OCR task for prescription {prescription.id}: {e}")
+                prescription.status = 'ocr_failed'
+                prescription.verification_status = 'OCR_Failed'
+                prescription.rejection_reason = f"Failed to initiate OCR task: {str(e)}"
                 prescription.save()
-
                 PrescriptionWorkflowLog.objects.create(
                     prescription=prescription,
-                    from_status='ai_processing',
-                    to_status='ai_failed',
-                    action_taken='AI processing failed',
-                    notes=ocr_result.get('error', 'Unknown error during AI processing.'),
+                    from_status='uploaded',
+                    to_status='ocr_failed',
+                    action_taken='OCR task initiation failed',
+                    notes=str(e),
                     performed_by=self.request.user if self.request.user.is_authenticated else None,
                     system_generated=True
                 )
-
-        except Exception as e:
-            print(f"Error during AI processing simulation: {e}")
-            # Log the full traceback for better debugging
-            import traceback
-            traceback.print_exc()
-            prescription.status = 'ai_failed'
-            prescription.ai_processed = False
-            prescription.rejection_reason = f"Internal AI processing error: {str(e)}"
-            prescription.save()
-
-            PrescriptionWorkflowLog.objects.create(
-                prescription=prescription,
-                from_status='ai_processing',
-                to_status='ai_failed',
-                action_taken='AI processing failed due to internal error',
-                notes=str(e),
-                performed_by=self.request.user if self.request.user.is_authenticated else None,
-                system_generated=True
-            )
+    
+    # Removed trigger_ai_processing and simulate_ai_processing as their logic is now in the Celery task
     
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def verify(self, request, pk=None):
@@ -589,17 +460,9 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
     def mobile_composition_prescription_upload(self, request):
         """
         MOBILE APP API: Composition-based prescription processing for mobile customers
-
-        This endpoint is called by the mobile application when customers upload prescriptions.
-        Process prescription image with composition-based matching:
-        1. OCR extraction of medicine names and compositions
-        2. Match based on active ingredients/salts
-        3. Return suggestions for manual user selection in mobile app
-        4. No auto-cart addition - user controlled in mobile app
-        5. Creates prescription record for admin dashboard approval workflow
+        Triggers asynchronous OCR processing.
         """
         try:
-            # Validate request
             if 'prescription_image' not in request.FILES:
                 return Response({
                     'success': False,
@@ -608,7 +471,6 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
 
             prescription_image = request.FILES['prescription_image']
 
-            # Validate image file
             allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
             file_extension = os.path.splitext(prescription_image.name)[1].lower()
             if file_extension not in allowed_extensions:
@@ -618,95 +480,41 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Save uploaded image temporarily
-            file_path = default_storage.save(
-                f'temp_prescriptions/{prescription_image.name}',
-                ContentFile(prescription_image.read())
-            )
+            file_name = f'temp_prescriptions/{uuid.uuid4()}{file_extension}' # Use UUID for unique filename
+            file_path = default_storage.save(file_name, ContentFile(prescription_image.read()))
             full_path = default_storage.path(file_path)
 
-            try:
-                # Initialize OCR service
-                ocr_service = OCRService()
+            # Create a Prescription record with initial status
+            prescription = Prescription.objects.create(
+                user=request.user if request.user.is_authenticated else None,
+                image_url=default_storage.url(file_path),
+                status='pending_ocr',
+                verification_status='Pending_AI_Processing',
+                upload_date=timezone.now()
+            )
 
-                # Process prescription with composition-based matching
-                result = ocr_service.process_prescription_image(full_path)
-                print(f"OCR Service Result in mobile_composition_prescription_upload: {result}")
+            # Trigger OCR processing asynchronously
+            user_id = str(request.user.id) if request.user.is_authenticated else None
+            process_prescription_ocr_task.delay(str(prescription.id), full_path, user_id)
 
-                if result['success']:
-                    # Prepare response for frontend
-                    # The 'medicines' key from ocr_service.process_prescription_image contains the analyzed medicines
-                    analyzed_medicines = result.get('medicines', [])
-                    print(f"Analyzed Medicines for response: {analyzed_medicines}")
-
-                    # Extract composition matches for response
-                    composition_matches_for_response = []
-                    for med in analyzed_medicines:
-                        if med.get('local_equivalent'):
-                            composition_matches_for_response.append({
-                                'input_medicine_name': med.get('input_medicine_name'),
-                                'generic_name': med.get('generic_name'),
-                                'composition': med.get('composition'),
-                                'form': med.get('form'),
-                                'local_equivalent': med.get('local_equivalent'),
-                                'match_confidence': med.get('match_confidence')
-                            })
-
-                    response_data = {
-                        'success': True,
-                        'message': 'Prescription processed successfully',
-                        'ocr_confidence': result.get('ocr_confidence', 0.8),
-                        'extracted_text': result.get('raw_text', ''), # Corrected key
-                        'total_medicines_extracted': result.get('total_medicines_found', 0),
-                        'extracted_medicines': analyzed_medicines, # Corrected key
-                        'composition_matches': composition_matches_for_response, # Derived from analyzed_medicines
-                        'workflow_info': {
-                            'requires_manual_selection': True,
-                            'requires_admin_approval': True,
-                            'auto_cart_addition': False,
-                            'next_step': 'User must manually select medicines from suggestions'
-                        },
-                        'instructions': {
-                            'step_1': 'Review extracted medicines and their compositions',
-                            'step_2': 'Manually select medicines from composition-based matches',
-                            'step_3': 'Add selected medicines to cart',
-                            'step_4': 'Upload original prescription during checkout',
-                            'step_5': 'Order will be sent to admin for approval'
-                        }
-                    }
-
-                    # Add match statistics
-                    total_matches = len(composition_matches_for_response)
-                    response_data['match_statistics'] = {
-                        'total_composition_matches': total_matches,
-                        'exact_matches': sum(1 for match in composition_matches_for_response
-                                           if match.get('local_equivalent', {}).get('confidence', 0) >= 0.95), # Assuming high confidence for exact
-                        'high_similarity_matches': sum(1 for match in composition_matches_for_response
-                                                     if match.get('local_equivalent', {}).get('confidence', 0) >= 0.8 and match.get('local_equivalent', {}).get('confidence', 0) < 0.95),
-                        'average_match_score': sum(match.get('match_confidence', 0)
-                                                 for match in composition_matches_for_response) / max(total_matches, 1)
-                    }
-
-                    return Response(response_data, status=status.HTTP_200_OK)
-                else:
-                    return Response({
-                        'success': False,
-                        'error': result.get('error', 'Failed to process prescription'),
-                        'extracted_medicines': [],
-                        'composition_matches': []
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-            finally:
-                # Clean up temporary file
-                if default_storage.exists(file_path):
-                    default_storage.delete(file_path)
+            return Response({
+                'success': True,
+                'message': 'Prescription uploaded successfully. Processing initiated in background.',
+                'prescription_id': prescription.id,
+                'status': 'pending_ocr'
+            }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
+            print(f"Error in mobile_composition_prescription_upload: {e}")
+            import traceback
+            traceback.print_exc()
             return Response({
                 'success': False,
                 'error': f'Prescription processing failed: {str(e)}',
                 'extracted_medicines': [],
                 'composition_matches': []
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def add_medicine_to_prescription(self, request):

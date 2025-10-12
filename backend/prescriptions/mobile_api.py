@@ -1,15 +1,15 @@
 # Mobile API endpoints for prescription processing
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny,AllowAny
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.db.models import Q
-from .models import Prescription, PrescriptionDetail
-# Removed ai_service - using only OCR service now
+from .models import Prescription, PrescriptionMedicine
 from .ocr_service import OCRService
+from .tasks import process_prescription_ocr_task
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,106 +39,34 @@ def upload_prescription(request):
             user=request.user,
             image_url=image_url,
             verification_status='Pending_AI_Processing',
-            upload_date=timezone.now()
+            upload_date=timezone.now(),
+            status='pending_ocr' # Set initial status for async processing
         )
         
-        # Process with Real OCR service
+        # Trigger OCR processing asynchronously using Celery task
         try:
-            ocr_service = OCRService()
-
-            # Get the actual file path for OCR processing
             actual_file_path = default_storage.path(file_path)
-            ocr_result = ocr_service.process_prescription_image(actual_file_path)
-
-            if ocr_result['success']:
-                # Update prescription with OCR results
-                prescription.ai_processed = True
-                prescription.ai_confidence_score = ocr_result['ocr_confidence']
-                prescription.ai_processing_time = 2.5  # Real processing time
-                prescription.verification_status = 'AI_Processed'
-                prescription.save()
-
-                # Create prescription details from OCR results
-                for i, medicine_data in enumerate(ocr_result['medicines']):
-                    input_medicine_name = medicine_data.get('input_medicine_name', '')
-                    generic_name = medicine_data.get('generic_name', '')
-                    composition = medicine_data.get('composition', '')
-                    form = medicine_data.get('form', '')
-                    strength = medicine_data.get('strength', '')
-                    frequency = medicine_data.get('frequency', '')
-                    local_equivalent = medicine_data.get('local_equivalent')
-                    match_confidence = medicine_data.get('match_confidence', 0.0)
-
-                    detail = PrescriptionDetail.objects.create(
-                        prescription=prescription,
-                        line_number=i + 1,
-                        recognized_text_raw=f"{input_medicine_name} ({composition})",
-                        extracted_medicine_name=input_medicine_name,
-                        extracted_dosage=strength,
-                        extracted_frequency=frequency,
-                        extracted_form=form, # Ensure form is saved
-                        ai_confidence_score=match_confidence,
-                        is_valid_for_order=local_equivalent is not None
-                    )
-
-                    # Set suggested products and best match
-                    if local_equivalent:
-                        # from product.models import Product # No longer needed here
-                        try:
-                            # Use the product object directly from local_equivalent
-                            product = local_equivalent['product_object']
-                            detail.suggested_products.set([product])
-
-                            if match_confidence > 0.8:
-                                detail.mapped_product = product
-                                detail.verified_medicine_name = product.name
-                                detail.verified_dosage = product.strength
-                                detail.verified_form = product.form # Ensure verified form is saved
-                                detail.save()
-                        except KeyError: # Handle case where product_object might be missing (though it shouldn't if local_equivalent is not None)
-                            logger.warning(f"Product object not found in local_equivalent for: {local_equivalent.get('product_name')} (Form: {local_equivalent.get('form')})")
-                            detail.is_valid_for_order = False
-                            detail.save()
-                        except Exception as e: # Catch other potential errors
-                            logger.warning(f"Error setting product for local equivalent {local_equivalent.get('product_name')}: {str(e)}")
-                            detail.is_valid_for_order = False
-                            detail.save()
-                    else:
-                        # If no local equivalent, still save the extracted info
-                        detail.verified_medicine_name = input_medicine_name
-                        detail.verified_dosage = strength
-                        detail.verified_form = form
-                        detail.save()
-
-
-                return Response({
-                    'success': True,
-                    'prescription_id': prescription.id,
-                    'message': 'Prescription processed successfully with real OCR',
-                    'ocr_confidence': ocr_result['ocr_confidence'],
-                    'medicines_found': ocr_result['total_medicines_found'],
-                    'processing_summary': ocr_result['processing_summary'],
-                    'can_proceed_to_order': ocr_result['processing_summary']['high_confidence_matches'] > 0
-                }, status=status.HTTP_201_CREATED)
-            else:
-                # OCR failed, return error
-                return Response({
-                    'success': False,
-                    'prescription_id': prescription.id,
-                    'error': 'OCR processing failed. Please try with a clearer image.',
-                    'message': 'Prescription uploaded but processing failed',
-                    'ocr_error': ocr_result.get('error', 'OCR processing failed')
-                }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            process_prescription_ocr_task.delay(str(prescription.id), actual_file_path, str(request.user.id))
+            
+            logger.info(f"OCR processing task initiated for prescription {prescription.id}")
+            return Response({
+                'success': True,
+                'prescription_id': prescription.id,
+                'message': 'Prescription uploaded successfully. OCR processing initiated in background.',
+                'status': 'pending_ocr'
+            }, status=status.HTTP_202_ACCEPTED) # 202 Accepted for asynchronous processing
 
         except Exception as e:
-            # OCR service failed completely
-            logger.error(f"OCR service failed completely for user {request.user.id}: {str(e)}", exc_info=True)
+            logger.error(f"Failed to initiate OCR task for prescription {prescription.id}: {str(e)}", exc_info=True)
+            prescription.status = 'ocr_failed'
+            prescription.verification_status = 'OCR_Failed'
+            prescription.save()
             return Response({
                 'success': False,
-                'prescription_id': prescription.id if 'prescription' in locals() else None,
-                'error': f'Processing failed: {str(e)}',
-                'message': 'Prescription uploaded but processing failed. Please try again with a clearer image.'
-            }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                'prescription_id': prescription.id,
+                'error': f'Failed to initiate OCR processing: {str(e)}',
+                'message': 'Prescription uploaded but processing could not be initiated. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
     except Exception as e:
         logger.error(f"Failed to upload prescription for user {request.user.id}: {str(e)}", exc_info=True)
@@ -397,95 +325,46 @@ def create_prescription_order(request):
 @permission_classes([AllowAny])
 def reprocess_prescription_ocr(request, prescription_id):
     """
-    Admin API: Reprocess prescription with OCR for better results
+    Admin API: Reprocess prescription with OCR for better results asynchronously.
     """
     try:
         prescription = Prescription.objects.get(id=prescription_id)
 
-        # Initialize OCR service
-        ocr_service = OCRService()
-
-        # Get image path from URL
-        if prescription.image_url:
-            # Convert URL to file path
-            image_path = prescription.image_url.replace('/media/', '')
-            full_path = default_storage.path(image_path)
-
-            # Process with OCR
-            ocr_result = ocr_service.process_prescription_image(full_path)
-
-            if ocr_result['success']:
-                # Clear existing details
-                prescription.prescription_medicines.all().delete()
-
-                # Update prescription
-                prescription.ai_processed = True
-                prescription.ai_confidence_score = ocr_result['ocr_confidence']
-                prescription.verification_status = 'AI_Processed'
-                prescription.save()
-
-                # Create new details from OCR
-                created_details = []
-                for i, medicine_data in enumerate(ocr_result['medicines']):
-                    extracted_info = medicine_data['extracted_info']
-                    matches = medicine_data['database_matches']
-
-                    detail = PrescriptionDetail.objects.create(
-                        prescription=prescription,
-                        line_number=i + 1,
-                        recognized_text_raw=f"{extracted_info.get('name', '')} {extracted_info.get('strength', '')}",
-                        ai_extracted_medicine_name=extracted_info.get('name', ''),
-                        ai_extracted_dosage=extracted_info.get('strength', ''),
-                        ai_extracted_frequency=extracted_info.get('frequency', ''),
-                        ai_extracted_duration=extracted_info.get('duration', ''),
-                        ai_extracted_instructions=extracted_info.get('instructions', ''),
-                        ai_confidence_score=medicine_data['match_confidence'],
-                        is_valid_for_order=len(matches) > 0
-                    )
-
-                    if matches:
-                        from product.models import Product
-                        product_ids = [match['product_id'] for match in matches]
-                        products = Product.objects.filter(id__in=product_ids)
-                        detail.suggested_products.set(products)
-
-                        if matches[0]['match_score'] > 0.8:
-                            detail.mapped_product = products.first()
-                            detail.verified_medicine_name = matches[0]['name']
-                            detail.verified_dosage = matches[0]['strength']
-                            detail.save()
-
-                    created_details.append({
-                        'id': detail.id,
-                        'medicine_name': detail.ai_extracted_medicine_name,
-                        'confidence': detail.ai_confidence_score,
-                        'matches_found': len(matches)
-                    })
-
-                return Response({
-                    'success': True,
-                    'message': 'Prescription reprocessed successfully with OCR',
-                    'ocr_confidence': ocr_result['ocr_confidence'],
-                    'medicines_processed': len(created_details),
-                    'processing_summary': ocr_result['processing_summary'],
-                    'details': created_details
-                })
-            else:
-                return Response({
-                    'success': False,
-                    'error': ocr_result.get('error', 'OCR processing failed')
-                }, status=status.HTTP_400_BAD_REQUEST)
-        else:
+        if not prescription.image_url:
             return Response({
                 'success': False,
                 'error': 'No image found for this prescription'
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Convert URL to file path
+        image_path = prescription.image_url.replace('/media/', '')
+        full_path = default_storage.path(image_path)
+
+        # Clear existing details before reprocessing
+        prescription.prescription_medicines.all().delete()
+        prescription.ai_processed = False
+        prescription.ocr_confidence_score = 0.0
+        prescription.verification_status = 'Pending_AI_Processing'
+        prescription.status = 'pending_ocr'
+        prescription.save()
+
+        # Trigger OCR processing asynchronously
+        process_prescription_ocr_task.delay(str(prescription.id), full_path, str(request.user.id))
+
+        logger.info(f"OCR reprocessing task initiated for prescription {prescription.id}")
+        return Response({
+            'success': True,
+            'message': 'Prescription reprocessing initiated in background.',
+            'prescription_id': prescription.id,
+            'status': 'pending_ocr'
+        }, status=status.HTTP_202_ACCEPTED)
 
     except Prescription.DoesNotExist:
         return Response({
             'error': 'Prescription not found'
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.error(f"Failed to reprocess prescription {prescription_id}: {str(e)}", exc_info=True)
         return Response({
             'error': f'Failed to reprocess prescription: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -497,49 +376,66 @@ def get_prescription_products(request, prescription_id):
     """
     Mobile API: Get all products related to a prescription for search/browsing
     """
+    from product.models import Product # Import Product model here
     try:
         prescription = Prescription.objects.get(id=prescription_id, user=request.user)
 
-        # Get all prescription details with mapped products
-        prescription_details = prescription.prescription_medicines.all()
+        # Get all prescription medicines with mapped products, optimize queries
+        prescription_medicines = PrescriptionMedicine.objects.filter(
+            prescription=prescription
+        ).select_related(
+            'mapped_product',
+            'mapped_product__generic_name',
+            'mapped_product__category'
+        ).prefetch_related(
+            'suggested_products',
+            'suggested_products__generic_name',
+            'suggested_products__category'
+        )
 
         products_data = []
-        for detail in prescription_details:
+        seen_product_ids = set()
+
+        for medicine in prescription_medicines:
             # Add mapped product if available
-            if detail.mapped_product:
-                products_data.append({
-                    'id': detail.mapped_product.id,
-                    'name': detail.mapped_product.name,
-                    'manufacturer': detail.mapped_product.manufacturer,
-                    'price': float(detail.mapped_product.price),
-                    'mrp': float(detail.mapped_product.mrp),
-                    'strength': detail.mapped_product.strength,
-                    'form': detail.mapped_product.form,
-                    'stock_quantity': detail.mapped_product.stock_quantity,
-                    'in_stock': detail.mapped_product.stock_quantity > 0,
-                    'is_prescription_required': detail.mapped_product.is_prescription_required,
-                    'extracted_medicine': detail.ai_extracted_medicine_name,
-                    'prescription_detail_id': detail.id
-                })
+            if medicine.mapped_product:
+                product = medicine.mapped_product
+                if product.id not in seen_product_ids:
+                    products_data.append({
+                        'id': product.id,
+                        'name': product.name,
+                        'manufacturer': product.manufacturer,
+                        'price': float(product.current_selling_price_annotated if hasattr(product, 'current_selling_price_annotated') else product.price), # Use annotated price if available
+                        'mrp': float(product.mrp),
+                        'strength': product.strength,
+                        'form': product.form,
+                        'stock_quantity': product.total_stock if hasattr(product, 'total_stock') else product.stock_quantity, # Use annotated stock if available
+                        'in_stock': (product.total_stock if hasattr(product, 'total_stock') else product.stock_quantity) > 0,
+                        'is_prescription_required': product.is_prescription_required,
+                        'extracted_medicine': medicine.extracted_medicine_name,
+                        'prescription_medicine_id': medicine.id # Changed to prescription_medicine_id
+                    })
+                    seen_product_ids.add(product.id)
 
             # Add suggested products
-            for suggested_product in detail.suggested_products.all():
-                if suggested_product.id not in [p['id'] for p in products_data]:
+            for suggested_product in medicine.suggested_products.all():
+                if suggested_product.id not in seen_product_ids:
                     products_data.append({
                         'id': suggested_product.id,
                         'name': suggested_product.name,
                         'manufacturer': suggested_product.manufacturer,
-                        'price': float(suggested_product.price),
+                        'price': float(suggested_product.current_selling_price_annotated if hasattr(suggested_product, 'current_selling_price_annotated') else suggested_product.price),
                         'mrp': float(suggested_product.mrp),
                         'strength': suggested_product.strength,
                         'form': suggested_product.form,
-                        'stock_quantity': suggested_product.stock_quantity,
-                        'in_stock': suggested_product.stock_quantity > 0,
+                        'stock_quantity': suggested_product.total_stock if hasattr(suggested_product, 'total_stock') else suggested_product.stock_quantity,
+                        'in_stock': (suggested_product.total_stock if hasattr(suggested_product, 'total_stock') else suggested_product.stock_quantity) > 0,
                         'is_prescription_required': suggested_product.is_prescription_required,
-                        'extracted_medicine': detail.ai_extracted_medicine_name,
-                        'prescription_detail_id': detail.id,
+                        'extracted_medicine': medicine.extracted_medicine_name,
+                        'prescription_medicine_id': medicine.id, # Changed to prescription_medicine_id
                         'is_suggested': True
                     })
+                    seen_product_ids.add(suggested_product.id)
 
         return Response({
             'success': True,
@@ -555,9 +451,10 @@ def get_prescription_products(request, prescription_id):
             'error': 'Prescription not found'
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.error(f"Error fetching prescription products: {str(e)}", exc_info=True)
         return Response({
             'success': False,
-            'error': str(e)
+            'error': f'Failed to retrieve prescription products: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -891,28 +788,28 @@ def update_prescription_medicine_selection(request):
     """
     from product.models import Product
     try:
-        prescription_detail_id = request.data.get('prescription_detail_id')
+        prescription_medicine_id = request.data.get('prescription_medicine_id') # Changed to prescription_medicine_id
         new_product_id = request.data.get('new_product_id')
 
-        if not prescription_detail_id or not new_product_id:
+        if not prescription_medicine_id or not new_product_id:
             return Response({
                 'success': False,
-                'error': 'prescription_detail_id and new_product_id are required'
+                'error': 'prescription_medicine_id and new_product_id are required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        logger.info(f"Attempting to update prescription detail. User: {request.user.id if request.user.is_authenticated else 'Anonymous'}, Detail ID: {prescription_detail_id}")
+        logger.info(f"Attempting to update prescription medicine. User: {request.user.id if request.user.is_authenticated else 'Anonymous'}, Medicine ID: {prescription_medicine_id}")
 
         try:
-            # Remove the user ownership check for admin/pharmacist context
-            detail = PrescriptionDetail.objects.get(id=prescription_detail_id)
-            # The IsAuthenticated permission class should handle if the user is logged in.
-            # If more granular permissions are needed (e.g., only pharmacists), a custom permission class would be required.
-            # For now, assuming any authenticated user can update if they have the detail ID.
-        except PrescriptionDetail.DoesNotExist:
-            logger.warning(f"Prescription detail {prescription_detail_id} not found.")
+            # Ensure the user owns the prescription associated with this medicine
+            medicine = PrescriptionMedicine.objects.get(
+                id=prescription_medicine_id,
+                prescription__user=request.user # Added user ownership check
+            )
+        except PrescriptionMedicine.DoesNotExist:
+            logger.warning(f"Prescription medicine {prescription_medicine_id} not found or not owned by user.")
             return Response({
                 'success': False,
-                'error': 'Prescription detail not found'
+                'error': 'Prescription medicine not found or unauthorized'
             }, status=status.HTTP_404_NOT_FOUND)
 
         try:
@@ -924,21 +821,21 @@ def update_prescription_medicine_selection(request):
             }, status=status.HTTP_404_NOT_FOUND)
 
         # Update the mapped product and related fields
-        detail.mapped_product = new_product
-        detail.verified_medicine_name = new_product.name
-        detail.verified_dosage = new_product.strength
-        detail.verified_form = new_product.form
-        detail.is_valid_for_order = True # Assuming a manually selected product is valid
-        detail.save()
+        medicine.mapped_product = new_product
+        medicine.verified_medicine_name = new_product.name
+        medicine.verified_dosage = new_product.strength
+        medicine.verified_form = new_product.form
+        medicine.is_valid_for_order = True # Assuming a manually selected product is valid
+        medicine.save()
 
         # Add the newly mapped product to suggested_products if not already present
-        if new_product not in detail.suggested_products.all():
-            detail.suggested_products.add(new_product)
+        if new_product not in medicine.suggested_products.all():
+            medicine.suggested_products.add(new_product)
 
         return Response({
             'success': True,
             'message': 'Prescription medicine selection updated successfully',
-            'prescription_detail_id': str(detail.id),
+            'prescription_medicine_id': str(medicine.id), # Changed to prescription_medicine_id
             'mapped_product_id': str(new_product.id),
             'verified_medicine_name': new_product.name
         }, status=status.HTTP_200_OK)

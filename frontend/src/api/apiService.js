@@ -95,10 +95,17 @@ export const productAPI = {
     axiosInstance.delete(`/api/products/enhanced-products/${productId}/remove_composition/`, { data: compositionData }),
   
   // Inventory management
+  // Batch management using legacy/batches endpoint
+  addBatch: (batchData) =>
+    axiosInstance.post('/api/products/legacy/batches/', batchData),
+  updateBatch: (batchId, batchData) =>
+    axiosInstance.patch(`/api/products/legacy/batches/${batchId}/`, batchData),
+  
+  // Original updateStock (if still needed for other purposes, otherwise remove)
+  // For now, keeping it as it might be used elsewhere, but batch creation/update will use new functions.
   updateStock: (productId, stockData) => 
     axiosInstance.post(`/api/products/enhanced-products/${productId}/update_stock/`, stockData),
-  createBatch: (productId, batchData) =>
-    axiosInstance.post(`/api/products/enhanced-products/${productId}/create_batch/`, batchData),
+
   getLowStockAlert: () => axiosInstance.get('/api/products/enhanced-products/low_stock_alert/'),
   getInventorySummary: () => axiosInstance.get('/api/products/enhanced-products/inventory_summary/'),
   
