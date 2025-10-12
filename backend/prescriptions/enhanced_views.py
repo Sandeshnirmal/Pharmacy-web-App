@@ -18,7 +18,7 @@ from .models import (
     Prescription, PrescriptionMedicine, PrescriptionWorkflowLog
 )
 from .serializers import (
-    PrescriptionSerializer, PrescriptionMedicineSerializer # Changed PrescriptionDetailSerializer to PrescriptionMedicineSerializer
+    PrescriptionSerializer, PrescriptionDetailSerializer, SuggestedProductSerializer
 )
 from .ocr_service import OCRService
 from .tasks import process_prescription_ocr_task # Import Celery task

@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Count, F, Sum
+from django.db.models import Q, Count, F, Sum, Prefetch, OuterRef, Subquery, DecimalField # Added Prefetch, OuterRef, Subquery, DecimalField
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
@@ -32,7 +32,7 @@ User = get_user_model()
 # COMPOSITION MANAGEMENT VIEWSET
 # ============================================================================
 
-@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class CompositionViewSet(viewsets.ModelViewSet):
     """ViewSet for managing medicine compositions with full CRUD operations"""
     queryset = Composition.objects.all()
@@ -108,7 +108,7 @@ class CompositionViewSet(viewsets.ModelViewSet):
 # ENHANCED PRODUCT MANAGEMENT VIEWSET
 # ============================================================================
 
-@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+# @method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class ProductViewSet(viewsets.ModelViewSet):
     """Enhanced product management with composition support"""
     queryset = Product.objects.all()
@@ -131,7 +131,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             'batches',
             Prefetch(
-                'productcomposition_set',
+                'product_compositions', # Corrected related_name
                 queryset=ProductComposition.objects.filter(is_active=True).select_related('composition'),
                 to_attr='active_product_compositions'
             )
@@ -145,7 +145,8 @@ class ProductViewSet(viewsets.ModelViewSet):
                         current_quantity__gt=0
                     ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
                 ),
-                0.0 # Default to 0.0 if no available batch
+                0.0, # Default to 0.0 if no available batch
+                output_field=DecimalField()
             )
         )
         

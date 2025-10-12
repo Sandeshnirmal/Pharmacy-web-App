@@ -173,6 +173,7 @@ class Batch(models.Model):
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0 , null=False)
     mrp_price = models.DecimalField(max_digits=10,decimal_places=2,default=0 ,null=False)
     discount_percentage = models.DecimalField(max_digits=10,decimal_places=2,default=0)
+    is_primary = models.BooleanField(default=False)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
