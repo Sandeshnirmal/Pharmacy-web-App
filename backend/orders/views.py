@@ -15,6 +15,7 @@ from .serializers import OrderSerializer, OrderItemSerializer
 import logging
 import base64
 import uuid
+import os # Import os module
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.conf import settings # Import settings to get MEDIA_URL
@@ -29,9 +30,13 @@ def save_base64_image_and_get_url(base64_string, filename_prefix="prescription")
         return None
 
     try:
-        # Assuming base64_string is like "data:image/jpeg;base64,..."
-        format, imgstr = base64_string.split(';base64,')
-        ext = format.split('/')[-1] # e.g., 'jpeg'
+        if ';base64,' in base64_string:
+            format, imgstr = base64_string.split(';base64,')
+            ext = format.split('/')[-1] # e.g., 'jpeg'
+        else:
+            # Assume it's just the base64 string without the prefix
+            imgstr = base64_string
+            ext = 'jpeg' # Default to jpeg if format is not provided
 
         file_name = f"{filename_prefix}_{uuid.uuid4()}.{ext}"
         
@@ -416,7 +421,7 @@ def create_paid_order_for_prescription(request):
                     logger.info(f"Existing order {existing_order_id} for user {request.user.id} is already paid and completed. Returning it.")
                     # Potentially update prescription details if they are sent again
                     if _is_prescription_order_from_request: # Use the explicitly bound variable
-                        order.prescription_image_base64 = _prescription_image_to_set_from_request
+                        order.prescription_image_url = _prescription_image_url_to_set_from_request
                         order.prescription_status = _prescription_status_to_set_from_request
                         order.save() # Save only if prescription details were updated
                     
@@ -542,11 +547,11 @@ def create_paid_order_for_prescription(request):
 
                 # Only set prescription fields if it's a prescription order
                 if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order.prescription_image_base64 = _prescription_image_to_set_from_request
+                    order.prescription_image_url = _prescription_image_url_to_set_from_request
                     order.prescription_status = _prescription_status_to_set_from_request
                 else:
                     # If it's no longer a prescription order, clear these fields
-                    order.prescription_image_base64 = None
+                    order.prescription_image_url = None
                     order.prescription_status = 'pending_review' # Reset to default or a non-prescription specific status
 
                 # Determine old status for history
@@ -566,11 +571,11 @@ def create_paid_order_for_prescription(request):
 
                 # Only set prescription fields if it's a prescription order
                 if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order.prescription_image_base64 = _prescription_image_to_set_from_request
+                    order.prescription_image_url = _prescription_image_url_to_set_from_request
                     order.prescription_status = _prescription_status_to_set_from_request
                 else:
                     # If it's no longer a prescription order, clear these fields
-                    order.prescription_image_base64 = None
+                    order.prescription_image_url = None
                     order.prescription_status = 'verified' # Reset to default or a non-prescription specific status
 
                 order.save()
@@ -629,7 +634,7 @@ def create_paid_order_for_prescription(request):
 
                 # Only add prescription fields to kwargs if it's a prescription order
                 if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order_kwargs['prescription_image_base64'] = _prescription_image_to_set_from_request
+                    order_kwargs['prescription_image_url'] = _prescription_image_url_to_set_from_request
                     order_kwargs['prescription_status'] = _prescription_status_to_set_from_request
                 # If not a prescription order, these fields are omitted, and model defaults apply.
 
@@ -959,15 +964,6 @@ def create_pending_order(request):
         prescription_image_base64 = request.data.get('prescription_image') # Still get base64 from request
         notes = request.data.get('notes', '')
 
-        prescription_image_url_to_set = None
-        if prescription_image_base64:
-            prescription_image_url_to_set = save_base64_image_and_get_url(prescription_image_base64)
-            if not prescription_image_url_to_set:
-                return Response({
-                    'success': False,
-                    'error': 'Failed to save prescription image.'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
         if not items_data:
             logger.error("create_pending_order: No items provided in request.")
             return Response({
@@ -981,6 +977,16 @@ def create_pending_order(request):
             order_status='Pending',
             payment_status='Pending'
         ).order_by('-created_at').first()
+
+        prescription_image_url_to_set = None
+        prescription_image_base64 = request.data.get('prescription_image')
+        if prescription_image_base64:
+            prescription_image_url_to_set = save_base64_image_and_get_url(prescription_image_base64)
+            if not prescription_image_url_to_set:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to save prescription image.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         if existing_pending_order:
             # Compare items of the existing pending order with the new cart items
@@ -1043,7 +1049,7 @@ def create_pending_order(request):
                 is_prescription_order=True, # Assuming all pending orders might be prescription related initially
                 total_amount=total_amount,
                 delivery_address=delivery_address_data, # Store delivery address as JSON
-                prescription_image_base64=prescription_image_base64, # Store base64 image directly
+                prescription_image_url=prescription_image_url_to_set, # Store URL to image
                 prescription_status='pending_review', # Always set to 'pending_review' for prescription orders
                 notes=notes,
             )

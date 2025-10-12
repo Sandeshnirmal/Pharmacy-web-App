@@ -41,11 +41,17 @@ def process_prescription_ocr_task(self, prescription_id, image_path, user_id=Non
             )
         
         # Log workflow action
+        # Determine from_status based on the prescription's status before this update
+        from_status = prescription.status # This will be the status before it's set to 'pending_verification'
+        
         PrescriptionWorkflowLog.objects.create(
             prescription=prescription,
+            from_status=from_status,
+            to_status='pending_verification', # The status it's being changed to
             action='OCR_PROCESSED',
             notes=f'OCR processing completed with confidence: {confidence_score:.2f}',
-            actor=user
+            actor=user,
+            system_generated=True # Mark as system-generated action
         )
         
         logger.info(f"OCR processing completed for prescription {prescription_id}. Extracted {len(extracted_medicines)} medicines.")

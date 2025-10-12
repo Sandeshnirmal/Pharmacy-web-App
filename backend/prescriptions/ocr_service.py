@@ -269,10 +269,13 @@ class OCRService:
                 continue
 
             found_medicine_name = None
+            best_match_score = 0.0
             for med_name in sorted_medicine_names:
-                if med_name in line:
+                # Use fuzzy matching for medicine names
+                score = difflib.SequenceMatcher(None, line, med_name).ratio()
+                if score > 0.6 and score > best_match_score: # Threshold for fuzzy match
+                    best_match_score = score
                     found_medicine_name = med_name
-                    break
             
             if found_medicine_name:
                 strength = ''
