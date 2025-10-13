@@ -303,6 +303,7 @@ CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0' # Use Redis database 0 for Ce
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True # Added to address deprecation warning
 CELERY_TIMEZONE = 'Asia/Calcutta' # Match your project's TIME_ZONE
 
 LOGGING = {

@@ -11,6 +11,7 @@ import os
 import re
 import difflib
 import json
+import logging # Import logging
 from typing import List, Dict, Any, Optional
 from PIL import Image
 import google.generativeai as genai
@@ -18,6 +19,8 @@ from django.conf import settings
 from django.db.models import Q, Sum # Import Sum
 from product.models import Product, GenericName
 from backend.settings import GOOGLE_API_KEY
+
+logger = logging.getLogger(__name__) # Get logger instance
 
 class OCRService:
     def __init__(self):
@@ -144,47 +147,51 @@ class OCRService:
 
             # Enhanced prompt for intelligent medicine analysis
             prompt = """
-            You are an intelligent medical OCR and medicine analysis system.
+            You are an intelligent medical OCR and medicine analysis system. Your primary goal is to extract medicine-related information from prescription images, even if the handwriting is challenging or unclear.
 
-            Analyze the provided image and extract any medicine-related information. This includes medicine names, dosages, frequencies, and forms, even if presented within a question or sentence.
+            Analyze the provided image and extract all possible medicine-related details. This includes:
+            1.  **Medicine Name**: Identify the brand name or generic name. If unsure, provide your best guess.
+            2.  **Strength/Dosage**: Extract the dosage with units (e.g., 500mg, 10ml, 1g).
+            3.  **Dosage Form**: Determine the form (e.g., tablet, capsule, syrup, injection, cream).
+            4.  **Frequency**: Extract how often the medicine should be taken (e.g., once daily, twice daily, BID, TID, QID, OD, BD, TDS).
+            5.  **Quantity/Duration**: If visible, extract the quantity (e.g., "60 tablets") or duration (e.g., "for 7 days").
 
-            For each medicine found:
-            1. Extract the medicine name (brand or generic).
-            2. Identify strength/dosage (e.g., 500mg, 10ml).
-            3. Determine dosage form (e.g., tablet, syrup).
-            4. Extract frequency (e.g., once daily, tid).
+            **CRITICAL INSTRUCTIONS FOR CHALLENGING HANDWRITING**:
+            -   **Prioritize Extraction**: Even if the handwriting is difficult, make your best effort to interpret and extract *any* potential medicine information. Do not return empty if there's a plausible interpretation.
+            -   **Best Guess**: If a word or number is ambiguous, provide your most probable interpretation.
+            -   **Focus on Keywords**: Look for common medicine names, dosage units (mg, ml, g), and frequency indicators (daily, BID, TID).
+            -   **Ignore Non-Medical Text**: Strictly focus on pharmacologically relevant items. Disregard patient names, doctor details, clinic information, or general notes unless they are directly part of a medicine instruction.
 
-            IMPORTANT RULES:
-            - Focus ONLY on pharmacologically relevant medicines.
-            - Ignore non-medicine items, patient details, or doctor information.
-            - Extract information as accurately as possible from the text.
+            Format your response as a JSON object. If multiple medicines are found, list them in an array. If no medicines are confidently identified, return an empty array for "medicines".
 
-            Format response as JSON:
+            JSON Format Example:
             {
                 "medicines": [
                     {
                         "medicine_name": "extracted medicine name",
                         "strength": "dosage with unit",
                         "form": "tablet/capsule/syrup/etc",
-                        "frequency": "how often to take"
-                    }
+                        "frequency": "how often to take",
+                        "quantity_duration": "e.g., 60 tablets or for 7 days"
+                    },
+                    // ... other medicines
                 ]
             }
 
-            Return only valid JSON format.
+            Return ONLY the valid JSON object. Do not include any additional text or explanations outside the JSON.
             """
 
             response = self.model.generate_content([prompt, image])
             extracted_text = response.text.strip()
             
             # Log the raw AI response for debugging
-            print(f"Gemini AI Raw Response: {extracted_text}")
+            logger.info(f"Gemini AI Raw Response: {extracted_text}") # Changed from print to logger.info
             
             # Parse the JSON response
             medicines = self._parse_json_response(extracted_text)
             
             # Log the parsed medicines for debugging
-            print(f"Parsed Medicines: {medicines}")
+            logger.info(f"Parsed Medicines: {medicines}") # Changed from print to logger.info
 
             return {
                 'success': True,

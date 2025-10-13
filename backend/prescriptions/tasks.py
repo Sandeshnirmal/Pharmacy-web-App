@@ -21,23 +21,48 @@ def process_prescription_ocr_task(self, prescription_id, image_path, user_id=Non
         ocr_service = OCRService()
         ocr_results = ocr_service.process_prescription_image(image_path)
         
-        extracted_medicines = ocr_results.get('extracted_medicines', [])
-        confidence_score = ocr_results.get('confidence_score', 0.0)
+        # Correctly retrieve the list of processed medicines from OCRService result
+        extracted_medicines = ocr_results.get('medicines', []) 
+        confidence_score = ocr_results.get('ocr_confidence', 0.0) # Use 'ocr_confidence' from OCRService result
         
-        prescription.ocr_processed = True
-        prescription.ocr_confidence_score = confidence_score
+        prescription.ai_processed = True # Changed from ocr_processed to ai_processed based on model
+        prescription.ai_confidence_score = confidence_score # Changed from ocr_confidence_score to ai_confidence_score
         prescription.status = 'pending_verification' # Move to next stage
         prescription.save()
 
         # Create PrescriptionMedicine entries
         for medicine_data in extracted_medicines:
+            # The OCRService returns 'medicines' which are already analyzed and potentially matched.
+            # Each item in 'extracted_medicines' (which is 'analyzed_medicines' from OCRService)
+            # has keys like 'input_medicine_name', 'generic_name', 'composition', 'form',
+            # 'local_equivalent', 'match_confidence'.
+
+            # Extract relevant data from the analyzed medicine_data
+            input_medicine_name = medicine_data.get('input_medicine_name', '')
+            extracted_dosage = medicine_data.get('strength', '') # 'strength' from OCRService output maps to 'extracted_dosage'
+            extracted_form = medicine_data.get('form', '').lower() # 'form' from OCRService output maps to 'extracted_form'
+            extracted_frequency = medicine_data.get('frequency', '') # 'frequency' from OCRService output maps to 'extracted_frequency'
+            extracted_quantity_duration = medicine_data.get('quantity_duration', '') # New field from prompt
+
+            # Map quantity_duration to extracted_quantity for now, or parse if needed
+            extracted_quantity = extracted_quantity_duration # Simple mapping for now
+
+            # Get the suggested Product object if a local equivalent was found
+            suggested_product_obj = None
+            if medicine_data.get('local_equivalent') and medicine_data['local_equivalent'].get('product_object'):
+                suggested_product_obj = medicine_data['local_equivalent']['product_object']
+
             PrescriptionMedicine.objects.create(
                 prescription=prescription,
-                medicine_name=medicine_data.get('name'),
-                dosage=medicine_data.get('dosage'),
-                quantity=medicine_data.get('quantity'),
-                is_verified=False,
-                suggested_product_id=medicine_data.get('suggested_product_id') # Store suggested product
+                extracted_medicine_name=input_medicine_name,
+                extracted_dosage=extracted_dosage,
+                extracted_form=extracted_form,
+                extracted_frequency=extracted_frequency,
+                extracted_quantity=extracted_quantity,
+                verification_status='pending', # Default status
+                suggested_medicine=suggested_product_obj, # Link to Product object
+                ai_confidence_score=medicine_data.get('match_confidence', 0.0),
+                # Other fields can be set as needed or left to their defaults
             )
         
         # Log workflow action

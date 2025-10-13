@@ -354,82 +354,78 @@ const PrescriptionReview = () => {
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-sm text-gray-500">
-                      AI Extracted: "
-                      {detail.ai_extracted_medicine_name ||
-                        detail.verified_medicine_name ||
-                        "N/A"}
+                      AI Extracted Name: "
+                      <span className="font-semibold text-gray-800">
+                        {detail.extracted_medicine_name || "N/A"}
+                      </span>
                       "
                     </p>
-                    <p className="text-lg font-bold text-gray-800">
-                      {detail.product_name ||
-                        detail.verified_medicine_name ||
-                        "Unknown Medicine"}
-                    </p>
                     <p className="text-sm text-gray-600 mt-1">
-                      {detail.extracted_dosage ||
-                        detail.verified_dosage ||
-                        "N/A"}
+                      Dosage:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_dosage || "N/A"}
+                      </span>
+                      , Form:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_form || "N/A"}
+                      </span>
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Frequency:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_frequency || "N/A"}
+                      </span>
+                      , Quantity:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_quantity || "N/A"}
+                      </span>
                     </p>
                   </div>
                   <ConfidenceIndicator
-                    confidence={detail.ai_confidence_score}
+                    confidence={detail.ai_confidence_score * 100}
                   />
                 </div>
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <p className="text-xs font-semibold text-yellow-800">
-                    AI Instructions:
-                  </p>
-                  <p className="text-sm text-yellow-900">
-                    {detail.ai_extracted_instructions}
-                  </p>
-                </div>
+                {detail.extracted_instructions && (
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <p className="text-xs font-semibold text-yellow-800">
+                      AI Instructions:
+                    </p>
+                    <p className="text-sm text-yellow-900">
+                      {detail.extracted_instructions}
+                    </p>
+                  </div>
+                )}
 
-                {detail.mapped_product ? (
+                {detail.suggested_medicine ? (
                   <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500 flex justify-between items-center">
                     <div>
                       <p className="text-sm font-semibold text-green-800">
-                        Mapped to: {detail.product_name}
+                        Mapped to: {detail.suggested_medicine.name}
                       </p>
-                      {/* Find the full product details from suggested_products */}
-                      {detail.mapped_product && detail.suggested_products && (
-                        (() => {
-                          const mappedProductObject = detail.suggested_products.find(
-                            (p) => p.id === detail.mapped_product
-                          );
-                          return mappedProductObject ? (
-                            <div className="text-xs text-green-700 mt-1 space-y-0.5">
-                              <p>
-                                Strength: {mappedProductObject.strength || "N/A"},{" "}
-                                Form: {mappedProductObject.form || "N/A"}
-                              </p>
-                              <p>
-                                Manufacturer: {mappedProductObject.manufacturer || "N/A"}
-                              </p>
-                              <p>
-                                Price: ₹{mappedProductObject.price || "0.00"} (MRP: ₹{mappedProductObject.mrp || "0.00"})
-                              </p>
-                              <p>
-                                Stock: {mappedProductObject.stock_quantity > 0 ? `${mappedProductObject.stock_quantity} in stock` : "Out of stock"}
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-green-700">Details not available</p>
-                          );
-                        })()
-                      )}
+                      <div className="text-xs text-green-700 mt-1 space-y-0.5">
+                        <p>
+                          Strength: {detail.suggested_medicine.strength || "N/A"},{" "}
+                          Form: {detail.suggested_medicine.form || "N/A"}
+                        </p>
+                        <p>
+                          Manufacturer: {detail.suggested_medicine.manufacturer || "N/A"}
+                        </p>
+                        <p>
+                          Price: ₹{detail.suggested_medicine.current_selling_price || "0.00"}
+                        </p>
+                        <p>
+                          Stock: {detail.suggested_medicine.total_stock > 0 ? `${detail.suggested_medicine.total_stock} in stock` : "Out of stock"}
+                        </p>
+                      </div>
                     </div>
                     <button
                       onClick={() => {
                         setCurrentDetailId(detail.id);
                         setSearchTerm(
-                          detail.product_name ||
-                            detail.ai_extracted_medicine_name
+                          detail.suggested_medicine.name ||
+                            detail.extracted_medicine_name
                         );
                         setShowProductModal(true);
-                        console.log(
-                          "Change button clicked for detailId:",
-                          detail.id
-                        );
                       }}
                       className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
                     >
@@ -447,7 +443,7 @@ const PrescriptionReview = () => {
                     <button
                       onClick={() => {
                         setCurrentDetailId(detail.id);
-                        setSearchTerm(detail.ai_extracted_medicine_name);
+                        setSearchTerm(detail.extracted_medicine_name);
                         setShowProductModal(true);
                       }}
                       className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
@@ -467,8 +463,8 @@ const PrescriptionReview = () => {
                     <ul className="list-disc list-inside text-sm text-blue-700">
                       {detail.suggested_products.map((s_product) => (
                         <li key={s_product.id}>
-                          {s_product.name} ({s_product.strength}) - ₹
-                          {s_product.price}
+                          {s_product.name} ({s_product.strength || "N/A"}) - ₹
+                          {s_product.current_selling_price || "0.00"}
                         </li>
                       ))}
                     </ul>
