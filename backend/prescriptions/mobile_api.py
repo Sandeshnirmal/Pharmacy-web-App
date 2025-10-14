@@ -11,6 +11,7 @@ from .models import Prescription, PrescriptionMedicine
 from .ocr_service import OCRService
 from .tasks import process_prescription_ocr_task
 import logging
+from .pagination import PrescriptionPageNumberPagination # Import pagination class
 
 logger = logging.getLogger(__name__)
 
@@ -740,11 +741,15 @@ def get_user_prescriptions_mobile(request):
             # Anonymous users have no prescriptions, return an empty list
             return Response([], status=status.HTTP_200_OK)
 
-        prescriptions = Prescription.objects.filter(user=request.user).order_by('-upload_date')
-        serializer = PrescriptionSerializer(prescriptions, many=True)
+        queryset = Prescription.objects.filter(user=request.user).order_by('-upload_date')
+        
+        paginator = PrescriptionPageNumberPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
+        serializer = PrescriptionSerializer(paginated_queryset, many=True)
         serialized_data = serializer.data
         logger.info(f"Raw serialized data for get_user_prescriptions_mobile: {serialized_data}")
-        return Response(serialized_data, status=status.HTTP_200_OK)
+        return paginator.get_paginated_response(serialized_data)
     except Exception as e:
         logger.error(f"Error fetching user prescriptions: {e}", exc_info=True)
         return Response({

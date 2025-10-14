@@ -13,9 +13,11 @@ from .serializers import (
 )
 from product.models import Product, Batch
 from product.serializers import BatchSerializer
+from .pagination import CustomPageNumberPagination
 
 class StockMovementViewSet(viewsets.ModelViewSet):
     queryset = StockMovement.objects.all().order_by('-created_at')
+    pagination_class = CustomPageNumberPagination
     serializer_class = StockMovementSerializer
     permission_classes = [IsAuthenticated]
 
@@ -33,6 +35,7 @@ class StockMovementViewSet(viewsets.ModelViewSet):
 
 class StockAlertViewSet(viewsets.ModelViewSet):
     queryset = StockAlert.objects.all().order_by('-created_at')
+    pagination_class = CustomPageNumberPagination
     serializer_class = StockAlertSerializer
     permission_classes = [IsAuthenticated]
 
@@ -60,6 +63,7 @@ class StockAlertViewSet(viewsets.ModelViewSet):
 
 class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all().order_by('name')
+    pagination_class = CustomPageNumberPagination
     serializer_class = SupplierSerializer
     permission_classes = [IsAuthenticated]
 
@@ -74,6 +78,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
 
 class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.all().order_by('-created_at')
+    pagination_class = CustomPageNumberPagination
     serializer_class = BatchSerializer
     permission_classes = [IsAuthenticated]
 

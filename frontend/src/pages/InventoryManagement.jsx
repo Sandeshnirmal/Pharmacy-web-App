@@ -22,6 +22,12 @@ const InventoryManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); // Default page size
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -36,11 +42,11 @@ const InventoryManagement = () => {
   const [successMessage, setSuccessMessage] = useState(null); // New state for success messages
 
   useEffect(()=>{
-    fetchMedicines();
+    fetchMedicines(currentPage, pageSize); // Pass current page and page size
     fetchCategory();
     fetchGericname();
     fetchCompositions(); // Fetch compositions
-  },[]);
+  },[currentPage, pageSize]); // Re-fetch when page or page size changes
 
   // Clear success message after a few seconds
   useEffect(() => {
@@ -52,15 +58,17 @@ const InventoryManagement = () => {
     }
   }, [successMessage]);
 
-  const fetchMedicines = async()=>{
+  const fetchMedicines = async(page, size)=>{
 
     try{
       setLoading(true);
       setError(null);
-      const response = await productAPI.getProducts();
+      const response = await productAPI.getProducts(page, size); // Pass page and size
       console.log("product",response);
-      const fetchedProducts = Array.isArray(response.data)? response.data:response.data.results || [];
+      const fetchedProducts = response.data.results || []; // Access results for paginated data
       setProducts(fetchedProducts);
+      setTotalItems(response.data.count);
+      setTotalPages(Math.ceil(response.data.count / size));
 
       // Extract all batches from the fetched products
       const allBatches = fetchedProducts.flatMap(product => product.batches || []);
@@ -803,6 +811,42 @@ const fetchCompositions = async () => {
             </div>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center space-x-4 mt-6">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-gray-700">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1); // Reset to first page when page size changes
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="5">5 per page</option>
+              <option value="10">10 per page</option>
+              <option value="20">20 per page</option>
+              <option value="50">50 per page</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* --- Modals --- */}

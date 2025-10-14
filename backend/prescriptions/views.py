@@ -6,6 +6,7 @@ from django.db.models import Count, Q
 from .models import Prescription, PrescriptionMedicine
 from .serializers import PrescriptionSerializer, PrescriptionMedicineSerializer
 from .prescription_scanner import PrescriptionScanner
+from .pagination import PrescriptionPageNumberPagination # Import pagination class
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
     """
@@ -13,6 +14,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     Supports full CRUD operations and statistics.
     """
     queryset = Prescription.objects.all().order_by('-upload_date')
+    pagination_class = PrescriptionPageNumberPagination # Add pagination class
     serializer_class = PrescriptionSerializer
     permission_classes = [AllowAny]
 

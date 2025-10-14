@@ -24,6 +24,7 @@ from .ocr_service import OCRService
 from .tasks import process_prescription_ocr_task # Import Celery task
 from usermanagement.models import UserRole
 from product.models import Product
+from .pagination import PrescriptionPageNumberPagination # Import pagination class
 
 User = get_user_model()
 
@@ -47,15 +48,38 @@ class IsVerifierOrAbove(permissions.BasePermission):
 
 class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
     """Enhanced prescription management with intelligent workflow"""
-    queryset = Prescription.objects.all()
+    queryset = Prescription.objects.all().order_by('-upload_date') # Order by upload_date by default
     serializer_class = PrescriptionSerializer
     permission_classes = [AllowAny] # Ensure AllowAny is explicitly set
+    pagination_class = PrescriptionPageNumberPagination # Add pagination class
     
     def get_queryset(self):
-        """Temporarily remove filtering to debug 404 issue."""
-        # For debugging, return all prescriptions without filtering
-        queryset = Prescription.objects.all().order_by('-upload_date')
-        print(f"EnhancedPrescriptionViewSet.get_queryset returning {queryset.count()} prescriptions.")
+        """
+        Optionally filters prescriptions by status, user, or other criteria.
+        Admin/Pharmacist/Verifier can see all, regular users only their own.
+        """
+        queryset = super().get_queryset()
+        user = self.request.user
+
+        # Filter by user if not staff
+        if user.is_authenticated and not user.is_staff:
+            queryset = queryset.filter(user=user)
+
+        # Apply additional filters from query parameters
+        status_filter = self.request.query_params.get('status', None)
+        verification_status_filter = self.request.query_params.get('verification_status', None)
+        user_id_filter = self.request.query_params.get('user_id', None)
+
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if verification_status_filter:
+            queryset = queryset.filter(verification_status=verification_status_filter)
+        if user_id_filter and (user.is_staff or str(user.id) == user_id_filter):
+            queryset = queryset.filter(user_id=user_id_filter)
+        elif user_id_filter and not user.is_staff and str(user.id) != user_id_filter:
+            # Regular user trying to filter by another user's ID
+            return Prescription.objects.none() # Return empty queryset
+
         return queryset
     
     def perform_create(self, serializer):
@@ -117,7 +141,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         current_status = prescription.verification_status
         print(f"Current Prescription Status: {current_status}") # Debug print
         
-        if current_status not in ['pending_verification', 'Pending_Review', 'AI_Processed']:
+        if current_status not in ['pending_verification', 'Pending_Review', 'AI_Processed', 'Pending_AI_Processing']:
             return Response(
                 {'error': f'Prescription is not in pending verification status. Current status: {current_status}'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -219,7 +243,10 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         # Sort by priority score (descending)
         queue_data.sort(key=lambda x: x['priority_score'], reverse=True)
 
-        return Response(queue_data)
+        paginator = PrescriptionPageNumberPagination()
+        paginated_queue = paginator.paginate_queryset(queue_data, request)
+
+        return paginator.get_paginated_response(paginated_queue)
     
     @action(detail=False, methods=['get'], permission_classes=[IsPharmacistOrAdmin])
     def analytics(self, request):
