@@ -70,8 +70,10 @@ class Product(models.Model):
         ('injection', 'Injection'),
         ('cream', 'Cream'),
         ('drops', 'Drops'),
+        ('ointment', 'Ointment'),
         ('inhaler', 'Inhaler'),
         ('other', 'Other'),
+        
     ]
     medicine_type = models.CharField(max_length=20, choices=MEDICINE_TYPES, default='tablet')
 

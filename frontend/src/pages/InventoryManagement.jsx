@@ -172,6 +172,7 @@ const fetchCompositions = async () => {
 
   const [newProduct, setNewProduct] = useState({
     name: "",
+    brand_name: "",
     category_id: "",
     generic_name: "",
     strength: "",
@@ -191,6 +192,15 @@ const fetchCompositions = async () => {
     selling_price: "",
     min_stock_level: "10", // Keep min_stock_level for product
     selectedCompositions: [], // Array of { composition_id, strength, unit, is_primary }
+    description: "",
+    uses: "",
+    side_effects: "",
+    how_to_use: "",
+    precautions: "",
+    storage: "",
+    is_featured: false,
+    image_url: "",
+    
   });
 
   const [newCategory, setNewCategory] = useState({ name: "", description: "" });
@@ -372,6 +382,7 @@ const fetchCompositions = async () => {
     try {
       const productData = {
         name: newProduct.name,
+        brand_name: newProduct.brand_name,
         strength: newProduct.strength,
         manufacturer: newProduct.manufacturer,
         is_prescription_required: newProduct.is_prescription_required,
@@ -380,28 +391,31 @@ const fetchCompositions = async () => {
         category: newProduct.category_id,
         generic_name: newProduct.generic_name,
         dosage_form: newProduct.dosage_form,
-        brand_name: newProduct.name, // Defaulting brand_name to name
-        medicine_type: 'tablet', // Default
-        prescription_type: newProduct.is_prescription_required ? 'prescription' : 'otc',
+        // medicine_type: newProduct.medicine_type,
+        prescription_type: newProduct.is_prescription_required
+          ? "prescription"
+          : "otc",
         hsn_code: newProduct.hsn_code,
-        // The product price and mrp will be derived from the initial batch's selling_price
-        price: newProduct.selling_price,
-        mrp: newProduct.selling_price,
+        description: newProduct.description,
+        uses: newProduct.uses,
+        side_effects: newProduct.side_effects,
+        how_to_use: newProduct.how_to_use,
+        precautions: newProduct.precautions,
+        storage: newProduct.storage,
+        is_featured: newProduct.is_featured,
+        image_url: newProduct.image_url,
+        packaging_unit: newProduct.packaging_unit,
+        compositions: newProduct.selectedCompositions.map(
+            (comp) => ({
+              composition: comp.composition_id,
+              strength: comp.strength,
+              unit: comp.unit,
+            })
+          ),
       };
 
       const productResponse = await productAPI.createProduct(productData);
       const productId = productResponse.data.id; // Assuming the API returns the created product with an ID
-
-      // Link compositions if any were selected
-      if (newProduct.selectedCompositions.length > 0) {
-        const compositionsToLink = newProduct.selectedCompositions.map(comp => ({
-          composition_id: comp.composition_id,
-          strength: comp.strength,
-          unit: comp.unit,
-          is_primary: comp.is_primary,
-        }));
-        await productAPI.addCompositions(productId, { compositions: compositionsToLink });
-      }
 
       const batchData = {
         product: productId,
@@ -411,14 +425,20 @@ const fetchCompositions = async () => {
         cost_price: newProduct.cost_price,
         mrp_price: newProduct.mrp_price, // Pass mrp_price
         discount_percentage: newProduct.discount_percentage, // Pass discount_percentage
-        selling_price: parseFloat((newProduct.mrp_price - (newProduct.mrp_price * newProduct.discount_percentage / 100)).toFixed(2)),
+        selling_price: parseFloat(
+          (
+            newProduct.mrp_price -
+            (newProduct.mrp_price * newProduct.discount_percentage) / 100
+          ).toFixed(2)
+        ),
       };
 
       await productAPI.addBatch(batchData); // Using addBatch for adding initial batch
-      
+
       setShowProductModal(false);
       setNewProduct({
         name: "",
+        brand_name: "",
         category_id: "",
         generic_name: "",
         strength: "",
@@ -437,6 +457,16 @@ const fetchCompositions = async () => {
         discount_percentage: "",
         selling_price: "",
         selectedCompositions: [], // Reset selected compositions
+        description: "",
+        uses: "",
+        side_effects: "",
+        how_to_use: "",
+        precautions: "",
+        storage: "",
+        is_featured: false,
+        image_url: "",
+        // medicine_type: "capsule",
+        packaging_unit: "",
       });
       fetchMedicines(); // Refetch products
       setSuccessMessage("Product and associated compositions added successfully!");
@@ -816,6 +846,19 @@ const fetchCompositions = async () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
+                    Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newProduct.brand_name}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, brand_name: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
                     Strength
                   </label>
                   <input
@@ -845,7 +888,6 @@ const fetchCompositions = async () => {
                     <option value="">Select Category</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                      
                         {c.name}
                       </option>
                     ))}
@@ -903,15 +945,48 @@ const fetchCompositions = async () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
+                {/* <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Medicine Type
+                  </label>
+                  <select
+                    value={newProduct.medicine_type}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, medicine_type: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="capsule">Capsule</option>
+                    <option value="tablet">Tablet</option>
+                    <option value="syrup">Syrup</option>
+                    <option value="injection">Injection</option>
+                    <option value="ointment">Ointment</option>
+                    <option value="drops">Drops</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div> */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Pack Size
+                    Pack Contains (e.g., 10 tablets)
                   </label>
                   <input
                     type="text"
                     value={newProduct.pack_size}
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, pack_size: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Packaging Unit
+                  </label>
+                  <input
+                    type="text"
+                    value={newProduct.packaging_unit}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, packaging_unit: e.target.value })
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
@@ -933,6 +1008,92 @@ const fetchCompositions = async () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Image URL
+                  </label>
+                  <input
+                    type="text"
+                    value={newProduct.image_url}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, image_url: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  value={newProduct.description}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, description: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Uses
+                </label>
+                <textarea
+                  value={newProduct.uses}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, uses: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Side Effects
+                </label>
+                <textarea
+                  value={newProduct.side_effects}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, side_effects: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  How to Use
+                </label>
+                <textarea
+                  value={newProduct.how_to_use}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, how_to_use: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Precautions
+                </label>
+                <textarea
+                  value={newProduct.precautions}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, precautions: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Storage
+                </label>
+                <textarea
+                  value={newProduct.storage}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, storage: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
               </div>
 
               {/* Compositions Section */}
@@ -1166,6 +1327,19 @@ const fetchCompositions = async () => {
                 />
                 <label className="ml-2 block text-sm text-gray-900">
                   Prescription Required?
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={newProduct.is_featured}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, is_featured: e.target.checked })
+                  }
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                />
+                <label className="ml-2 block text-sm text-gray-900">
+                  Featured Product?
                 </label>
               </div>
               <div className="flex justify-end space-x-3 pt-4">

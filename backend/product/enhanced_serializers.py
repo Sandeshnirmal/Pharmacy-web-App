@@ -15,23 +15,6 @@ User = get_user_model()
 # INVENTORY AND BATCH SERIALIZERS
 # ============================================================================
 
-# Enhanced Serializers for Intelligent Pharmacy Management System
-# Comprehensive API serializers with composition handling and role-based permissions
-
-from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from django.db import models # Import models module
-from .models import (
-    Composition, Product, ProductComposition, Category, GenericName,
-    Batch, Inventory, ProductReview, ProductImage, Wishlist, ProductTag
-)
-
-User = get_user_model()
-
-# ============================================================================
-# INVENTORY AND BATCH SERIALIZERS
-# ============================================================================
-
 class BatchSerializer(serializers.ModelSerializer):
     """Batch serializer with enhanced tracking"""
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -119,11 +102,16 @@ class ProductCompositionSerializer(serializers.ModelSerializer):
             'strength', 'unit', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
-        extra_kwargs = {'composition': {'read_only': True}} # Ensure composition is fetched with select_related
+        extra_kwargs = {'composition': {'read_only': True}}
 
 # ============================================================================
 # ENHANCED PRODUCT SERIALIZERS
 # ============================================================================
+
+class ProductCompositionCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductComposition
+        fields = ['composition', 'strength', 'unit']
 
 class EnhancedProductSerializer(serializers.ModelSerializer):
     """Enhanced product serializer with composition support"""
@@ -131,23 +119,20 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     
-    # Composition relationships - use the prefetched attribute
+    compositions = ProductCompositionCreateSerializer(many=True, write_only=True)
     compositions_detail = ProductCompositionSerializer(
-        source='active_product_compositions', # Use the prefetched attribute
+        source='product_compositions',
         many=True, 
         read_only=True
     )
     composition_summary = serializers.SerializerMethodField()
     
-    # Stock status
-    total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True) # Use annotated field
+    total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True)
     stock_status = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     
-    # Pricing
-    current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True) # Use annotated field
+    current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True)
 
-    # Batches
     batches = BatchSerializer(many=True, read_only=True)
     
     class Meta:
@@ -155,35 +140,31 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_display',
             'manufacturer', 'medicine_type', 'prescription_type',
-            'strength', 'form', 'is_prescription_required',  # Legacy fields
+            'strength', 'form', 'is_prescription_required',
             'total_stock_quantity', 'min_stock_level', 'stock_status', 'is_low_stock',
             'current_selling_price',
             'dosage_form', 'pack_size', 'packaging_unit',
-            'description', 'composition', 'uses', 'side_effects',
+            'description', 'uses', 'side_effects',
             'how_to_use', 'precautions', 'storage',
-            'compositions_detail', 'composition_summary',
+            'compositions', 'compositions_detail', 'composition_summary',
             'image_url', 'hsn_code', 'category', 'category_name',
             'is_active', 'is_featured',
             'created_at', 'updated_at', 'created_by', 'created_by_name',
-            'batches' # Add batches to the fields
+            'batches'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
         extra_kwargs = {
-            'generic_name': {'read_only': True},
-            'category': {'read_only': True},
             'created_by': {'read_only': True}
         }
     
     def get_composition_summary(self, obj):
-        """Get a summary of all compositions using prefetched data"""
         return [
             f"{comp.composition.name} {comp.strength}{comp.unit}"
-            for comp in obj.active_product_compositions
+            for comp in obj.product_compositions.all()
         ]
     
     def get_stock_status(self, obj):
-        """Get stock status based on total quantity from batches"""
-        total_quantity = obj.total_stock # Use annotated field
+        total_quantity = obj.total_stock
         if total_quantity == 0:
             return 'out_of_stock'
         elif total_quantity <= obj.min_stock_level:
@@ -192,32 +173,16 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             return 'in_stock'
     
     def get_is_low_stock(self, obj):
-        """Check if product is low on stock based on total quantity from batches"""
-        total_quantity = obj.total_stock # Use annotated field
+        total_quantity = obj.total_stock
         return total_quantity <= obj.min_stock_level
     
     def create(self, validated_data):
-        """Create product with current user as creator"""
+        compositions_data = validated_data.pop('compositions', [])
         validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
-
-class ProductCompositionCreateSerializer(serializers.Serializer):
-    """Serializer for adding compositions to products"""
-    product_id = serializers.UUIDField()
-    compositions = serializers.ListField(
-        child=serializers.DictField(
-            child=serializers.CharField()
-        )
-    )
-    
-    def validate_compositions(self, value):
-        """Validate composition data"""
-        for comp_data in value:
-            required_fields = ['composition_id', 'strength', 'unit']
-            for field in required_fields:
-                if field not in comp_data:
-                    raise serializers.ValidationError(f"Missing required field: {field}")
-        return value
+        product = Product.objects.create(**validated_data)
+        for composition_data in compositions_data:
+            ProductComposition.objects.create(product=product, **composition_data)
+        return product
 
 # ============================================================================
 # SEARCH AND FILTER SERIALIZERS
@@ -228,8 +193,8 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     generic_name_display = serializers.CharField(source='generic_name.name', read_only=True)
     composition_summary = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
-    total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True) # Use annotated field
-    current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True) # Use annotated field
+    total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True)
+    current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True)
     
     class Meta:
         model = Product
@@ -245,12 +210,10 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         }
     
     def get_composition_summary(self, obj):
-        """Get simplified composition summary using prefetched data"""
-        return [comp.composition.name for comp in obj.active_product_compositions[:3]]
+        return [comp.composition.name for comp in obj.product_compositions.all()[:3]]
     
     def get_stock_status(self, obj):
-        """Get stock status based on total quantity from batches"""
-        total_quantity = obj.total_stock # Use annotated field
+        total_quantity = obj.total_stock
         if total_quantity == 0:
             return 'out_of_stock'
         elif total_quantity <= obj.min_stock_level:
@@ -260,7 +223,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
 
 class CompositionSearchSerializer(serializers.ModelSerializer):
     """Serializer for composition search"""
-    products_count = serializers.IntegerField(read_only=True) # Use annotated field
+    products_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Composition
@@ -276,20 +239,17 @@ class ProductSerializer(EnhancedProductSerializer):
 
 class CategorySerializer(serializers.ModelSerializer):
     """Category serializer"""
-    products_count = serializers.IntegerField(read_only=True) # Use annotated field
+    products_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Category
         fields = ['id', 'name', 'description', 'parent_category', 'products_count', 'created_at', 'updated_at']
     
-    # Removed get_products_count as it should be annotated in the queryset
 
 class GenericNameSerializer(serializers.ModelSerializer):
     """Generic name serializer"""
-    products_count = serializers.IntegerField(read_only=True) # Use annotated field
+    products_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = GenericName
         fields = ['id', 'name', 'description', 'products_count']
-    
-    # Removed get_products_count as it should be annotated in the queryset
