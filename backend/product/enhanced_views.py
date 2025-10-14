@@ -205,7 +205,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(brand_name__icontains=search) |
                 Q(generic_name__name__icontains=search) |
                 Q(manufacturer__icontains=search) |
-                Q(active_product_compositions__composition__name__icontains=search) # Use prefetched compositions
+                Q(product_compositions__composition__name__icontains=search)
             ).distinct()
         
         return queryset.order_by('name')

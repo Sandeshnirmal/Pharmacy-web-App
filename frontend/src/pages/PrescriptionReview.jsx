@@ -165,8 +165,10 @@ const PrescriptionReview = () => {
                   verified_dosage: product.strength,
                   verified_form: product.form,
                   is_valid_for_order: true,
-                  // The suggested_products should be updated by the backend, so we don't modify it here.
-                  // The full product details will be re-fetched by fetchPrescriptionData.
+                  // Update suggested_products to include the newly mapped product
+                  suggested_products: d.suggested_products 
+                    ? [...d.suggested_products.filter(sp => sp.id !== product.id), product]
+                    : [product],
                 }
               : d
           )
@@ -396,41 +398,40 @@ const PrescriptionReview = () => {
                   </div>
                 )}
 
-                {detail.suggested_medicine ? (
-                  <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500 flex justify-between items-center">
-                    <div>
+                {detail.mapped_product ? ( // Changed conditional from suggested_medicine to mapped_product
+                  <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500">
+                    <div className="flex justify-between items-center mb-2">
                       <p className="text-sm font-semibold text-green-800">
-                        Mapped to: {detail.suggested_medicine.name}
+                        Mapped to: {detail.product_name || "N/A"} {/* Use product_name from detail */}
                       </p>
-                      <div className="text-xs text-green-700 mt-1 space-y-0.5">
-                        <p>
-                          Strength: {detail.suggested_medicine.strength || "N/A"},{" "}
-                          Form: {detail.suggested_medicine.form || "N/A"}
-                        </p>
-                        <p>
-                          Manufacturer: {detail.suggested_medicine.manufacturer || "N/A"}
-                        </p>
-                        <p>
-                          Price: ₹{detail.suggested_medicine.current_selling_price || "0.00"}
-                        </p>
-                        <p>
-                          Stock: {detail.suggested_medicine.total_stock > 0 ? `${detail.suggested_medicine.total_stock} in stock` : "Out of stock"}
-                        </p>
-                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentDetailId(detail.id);
+                          setSearchTerm(
+                            detail.product_name || detail.extracted_medicine_name // Use product_name for search
+                          );
+                          setShowProductModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
+                      >
+                        Change
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setCurrentDetailId(detail.id);
-                        setSearchTerm(
-                          detail.suggested_medicine.name ||
-                            detail.extracted_medicine_name
-                        );
-                        setShowProductModal(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
-                    >
-                      Change
-                    </button>
+                    {detail.suggested_products && detail.suggested_products.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold text-green-700 mb-1">
+                          Available Options:
+                        </p>
+                        <ul className="list-disc list-inside text-xs text-green-700 space-y-0.5">
+                          {detail.suggested_products.map((s_product) => (
+                            <li key={s_product.id}>
+                              {s_product.name} ({s_product.strength || "N/A"}) - ₹
+                              {s_product.current_selling_price || "0.00"} (Stock: {s_product.total_stock > 0 ? s_product.total_stock : "Out of stock"})
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 flex justify-between items-center">
@@ -454,22 +455,6 @@ const PrescriptionReview = () => {
                   </div>
                 )}
               </div>
-              {detail.suggested_products &&
-                detail.suggested_products.length > 0 && (
-                  <div className="mt-4 p-4 bg-blue-50 border-l-4 border-blue-500">
-                    <p className="text-sm font-semibold text-blue-800 mb-2">
-                      Suggested Alternatives:
-                    </p>
-                    <ul className="list-disc list-inside text-sm text-blue-700">
-                      {detail.suggested_products.map((s_product) => (
-                        <li key={s_product.id}>
-                          {s_product.name} ({s_product.strength || "N/A"}) - ₹
-                          {s_product.current_selling_price || "0.00"}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
             </div>
           ))}
         </div>

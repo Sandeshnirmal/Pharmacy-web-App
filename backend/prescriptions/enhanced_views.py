@@ -67,8 +67,8 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
             prescription=prescription,
             from_status='',
             to_status='uploaded',
-            action_taken='Prescription uploaded',
-            performed_by=self.request.user if self.request.user.is_authenticated else None,
+            action='Prescription uploaded',
+            actor=self.request.user if self.request.user.is_authenticated else None,
             system_generated=False
         )
         
@@ -85,8 +85,8 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                     prescription=prescription,
                     from_status='uploaded',
                     to_status='pending_ocr',
-                    action_taken='OCR processing task initiated',
-                    performed_by=self.request.user if self.request.user.is_authenticated else None,
+                    action='OCR processing task initiated',
+                    actor=self.request.user if self.request.user.is_authenticated else None,
                     system_generated=True
                 )
                 print(f"OCR processing task initiated for prescription {prescription.id}")
@@ -100,9 +100,9 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                     prescription=prescription,
                     from_status='uploaded',
                     to_status='ocr_failed',
-                    action_taken='OCR task initiation failed',
+                    action='OCR task initiation failed',
                     notes=str(e),
-                    performed_by=self.request.user if self.request.user.is_authenticated else None,
+                    actor=self.request.user if self.request.user.is_authenticated else None,
                     system_generated=True
                 )
     
@@ -160,9 +160,9 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
             prescription=prescription,
             from_status=old_status,
             to_status=verification_action,
-            action_taken=f'Prescription {verification_action}',
+            action=f'Prescription {verification_action}',
             notes=notes or rejection_reason,
-            performed_by=request.user if request.user.is_authenticated else None,
+            actor=request.user if request.user.is_authenticated else None,
             system_generated=False
         )
         
@@ -426,9 +426,9 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                 prescription=medicine.prescription,
                 from_status='pending',
                 to_status='remapped',
-                action_taken=f'Medicine remapped: {medicine.extracted_medicine_name}',
+                action=f'Medicine remapped: {medicine.extracted_medicine_name}',
                 notes=f'Remapped to {new_product.name}',
-                performed_by=request.user if request.user.is_authenticated else None,
+                actor=request.user if request.user.is_authenticated else None,
                 system_generated=False
             )
             print("Workflow log created.")
@@ -565,9 +565,9 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                 prescription=prescription,
                 from_status=prescription.status,
                 to_status=prescription.status,
-                action_taken=f'Medicine added: {product.name}',
+                action=f'Medicine added: {product.name}',
                 notes=f'Added by pharmacist/verifier',
-                performed_by=request.user if request.user.is_authenticated else None,
+                actor=request.user if request.user.is_authenticated else None,
                 system_generated=False
             )
 
@@ -583,7 +583,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                     'frequency': medicine.extracted_frequency,
                     'duration': medicine.extracted_duration,
                     'quantity': medicine.quantity_prescribed,
-                    'price': float(product.price)
+                    'price': float(product.batches.first().selling_price if product.batches.first() else 0.0) # Get price from first batch
                 }
             })
 

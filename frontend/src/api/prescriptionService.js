@@ -114,7 +114,7 @@ export const prescriptionService = {
   updateMedicineSelection: async (prescriptionDetailId, newProductId) => {
     try {
       const response = await axiosInstance.post('/prescription/mobile/update-medicine-selection/', {
-        prescription_detail_id: prescriptionDetailId,
+        prescription_medicine_id: prescriptionDetailId,
         new_product_id: newProductId
       });
       return {

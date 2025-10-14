@@ -52,7 +52,7 @@ def process_prescription_ocr_task(self, prescription_id, image_path, user_id=Non
             if medicine_data.get('local_equivalent') and medicine_data['local_equivalent'].get('product_object'):
                 suggested_product_obj = medicine_data['local_equivalent']['product_object']
 
-            PrescriptionMedicine.objects.create(
+            prescription_medicine_instance = PrescriptionMedicine.objects.create(
                 prescription=prescription,
                 extracted_medicine_name=input_medicine_name,
                 extracted_dosage=extracted_dosage,
@@ -64,6 +64,9 @@ def process_prescription_ocr_task(self, prescription_id, image_path, user_id=Non
                 ai_confidence_score=medicine_data.get('match_confidence', 0.0),
                 # Other fields can be set as needed or left to their defaults
             )
+            # Add the suggested product to the ManyToMany field if it exists
+            if suggested_product_obj:
+                prescription_medicine_instance.suggested_products.add(suggested_product_obj)
         
         # Log workflow action
         # Determine from_status based on the prescription's status before this update

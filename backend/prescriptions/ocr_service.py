@@ -11,82 +11,29 @@ import os
 import re
 import difflib
 import json
-import logging # Import logging
+import logging
 from typing import List, Dict, Any, Optional
 from PIL import Image
 import google.generativeai as genai
 from django.conf import settings
-from django.db.models import Q, Sum # Import Sum
-from product.models import Product, GenericName
+from django.db.models import Q, Sum
+from product.models import Product, GenericName, Composition # Import Composition model
 from backend.settings import GOOGLE_API_KEY
 
-logger = logging.getLogger(__name__) # Get logger instance
+logger = logging.getLogger(__name__)
 
 class OCRService:
     def __init__(self):
-        # Configure Google Gemini AI
-        self.api_key = os.getenv('GOOGLE_API_KEY', GOOGLE_API_KEY) # Use environment variable
+        self.api_key = os.getenv('GOOGLE_API_KEY', GOOGLE_API_KEY)
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY environment variable is not set.")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel("models/gemini-2.0-flash")
 
-        # Comprehensive brand-to-generic mapping database
-        self.brand_to_generic_mapping = {
-            # Paracetamol brands
-            'dolo': {'generic': 'paracetamol', 'composition': 'paracetamol', 'common_strengths': ['500mg', '650mg']},
-            'crocin': {'generic': 'paracetamol', 'composition': 'paracetamol', 'common_strengths': ['500mg', '650mg']},
-            'tylenol': {'generic': 'paracetamol', 'composition': 'paracetamol', 'common_strengths': ['500mg', '650mg']},
-            'calpol': {'generic': 'paracetamol', 'composition': 'paracetamol', 'common_strengths': ['120mg/5ml', '250mg/5ml']},
-            'metacin': {'generic': 'paracetamol', 'composition': 'paracetamol', 'common_strengths': ['500mg', '650mg']},
-
-            # Ibuprofen brands
-            'brufen': {'generic': 'ibuprofen', 'composition': 'ibuprofen', 'common_strengths': ['200mg', '400mg', '600mg']},
-            'advil': {'generic': 'ibuprofen', 'composition': 'ibuprofen', 'common_strengths': ['200mg', '400mg']},
-            'nurofen': {'generic': 'ibuprofen', 'composition': 'ibuprofen', 'common_strengths': ['200mg', '400mg']},
-            'combiflam': {'generic': 'ibuprofen + paracetamol', 'composition': 'ibuprofen + paracetamol', 'common_strengths': ['400mg+325mg']},
-
-            # Antibiotics
-            'amoxil': {'generic': 'amoxicillin', 'composition': 'amoxicillin', 'common_strengths': ['250mg', '500mg']},
-            'cipmox': {'generic': 'amoxicillin', 'composition': 'amoxicillin', 'common_strengths': ['250mg', '500mg']},
-            'azithral': {'generic': 'azithromycin', 'composition': 'azithromycin', 'common_strengths': ['250mg', '500mg']},
-            'zithromax': {'generic': 'azithromycin', 'composition': 'azithromycin', 'common_strengths': ['250mg', '500mg']},
-            'azee': {'generic': 'azithromycin', 'composition': 'azithromycin', 'common_strengths': ['250mg', '500mg']},
-            'augmentin': {'generic': 'amoxicillin + clavulanic acid', 'composition': 'amoxicillin + clavulanic acid', 'common_strengths': ['625mg', '1g']},
-
-            # Antacids and PPI
-            'omez': {'generic': 'omeprazole', 'composition': 'omeprazole', 'common_strengths': ['20mg', '40mg']},
-            'prilosec': {'generic': 'omeprazole', 'composition': 'omeprazole', 'common_strengths': ['20mg', '40mg']},
-            'pantop': {'generic': 'pantoprazole', 'composition': 'pantoprazole', 'common_strengths': ['20mg', '40mg']},
-            'rantac': {'generic': 'ranitidine', 'composition': 'ranitidine', 'common_strengths': ['150mg', '300mg']},
-            'gelusil': {'generic': 'antacid', 'composition': 'aluminium hydroxide + magnesium hydroxide', 'common_strengths': ['tablet', 'syrup']},
-
-            # Diabetes medications
-            'glycomet': {'generic': 'metformin', 'composition': 'metformin', 'common_strengths': ['500mg', '850mg', '1g']},
-            'glucophage': {'generic': 'metformin', 'composition': 'metformin', 'common_strengths': ['500mg', '850mg', '1g']},
-            'amaryl': {'generic': 'glimepiride', 'composition': 'glimepiride', 'common_strengths': ['1mg', '2mg', '4mg']},
-
-            # Antihistamines
-            'cetrizine': {'generic': 'cetirizine', 'composition': 'cetirizine', 'common_strengths': ['5mg', '10mg']},
-            'zyrtec': {'generic': 'cetirizine', 'composition': 'cetirizine', 'common_strengths': ['5mg', '10mg']},
-            'allegra': {'generic': 'fexofenadine', 'composition': 'fexofenadine', 'common_strengths': ['120mg', '180mg']},
-            'avil': {'generic': 'pheniramine', 'composition': 'pheniramine maleate', 'common_strengths': ['25mg']},
-
-            # Cardiovascular
-            'norvasc': {'generic': 'amlodipine', 'composition': 'amlodipine', 'common_strengths': ['2.5mg', '5mg', '10mg']},
-            'telma': {'generic': 'telmisartan', 'composition': 'telmisartan', 'common_strengths': ['20mg', '40mg', '80mg']},
-            'ecosprin': {'generic': 'aspirin', 'composition': 'aspirin', 'common_strengths': ['75mg', '150mg']},
-
-            # Vitamins and supplements
-            'becosules': {'generic': 'vitamin b complex', 'composition': 'vitamin b complex', 'common_strengths': ['capsule', 'tablet']},
-            'calcimax': {'generic': 'calcium + vitamin d3', 'composition': 'calcium carbonate + vitamin d3', 'common_strengths': ['500mg+250iu']},
-            'zincovit': {'generic': 'multivitamin', 'composition': 'multivitamin + multimineral', 'common_strengths': ['tablet', 'syrup']},
-        }
-
-        # Common dosage forms
+        # Common dosage forms (still useful for validation/parsing)
         self.dosage_forms = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'ointment', 'drops', 'inhaler', 'patch']
 
-        # Common instruction patterns
+        # Common instruction patterns (still useful for validation/parsing)
         self.instruction_patterns = {
             'frequency': ['once daily', 'twice daily', 'thrice daily', 'four times daily', 'bid', 'tid', 'qid', 'od', 'bd', 'tds'],
             'timing': ['before food', 'after food', 'with food', 'empty stomach', 'bedtime', 'morning', 'evening'],
@@ -151,10 +98,12 @@ class OCRService:
 
             Analyze the provided image and extract all possible medicine-related details. This includes:
             1.  **Medicine Name**: Identify the brand name or generic name. If unsure, provide your best guess.
-            2.  **Strength/Dosage**: Extract the dosage with units (e.g., 500mg, 10ml, 1g).
-            3.  **Dosage Form**: Determine the form (e.g., tablet, capsule, syrup, injection, cream).
-            4.  **Frequency**: Extract how often the medicine should be taken (e.g., once daily, twice daily, BID, TID, QID, OD, BD, TDS).
-            5.  **Quantity/Duration**: If visible, extract the quantity (e.g., "60 tablets") or duration (e.g., "for 7 days").
+            2.  **Generic Name**: Explicitly identify the generic (active ingredient) name(s). If it's a combination drug, list all generic names.
+            3.  **Composition**: Provide the full chemical composition or active ingredients with their strengths (e.g., "Paracetamol 500mg", "Amoxicillin 250mg + Clavulanic Acid 125mg").
+            4.  **Strength/Dosage**: Extract the dosage with units (e.g., 500mg, 10ml, 1g).
+            5.  **Dosage Form**: Determine the form (e.g., tablet, capsule, syrup, injection, cream).
+            6.  **Frequency**: Extract how often the medicine should be taken (e.g., once daily, twice daily, BID, TID, QID, OD, BD, TDS).
+            7.  **Quantity/Duration**: If visible, extract the quantity (e.g., "60 tablets") or duration (e.g., "for 7 days").
 
             **CRITICAL INSTRUCTIONS FOR CHALLENGING HANDWRITING**:
             -   **Prioritize Extraction**: Even if the handwriting is difficult, make your best effort to interpret and extract *any* potential medicine information. Do not return empty if there's a plausible interpretation.
@@ -168,7 +117,9 @@ class OCRService:
             {
                 "medicines": [
                     {
-                        "medicine_name": "extracted medicine name",
+                        "medicine_name": "extracted brand or generic name",
+                        "generic_name": "identified generic name(s)",
+                        "composition": "full composition with strengths",
                         "strength": "dosage with unit",
                         "form": "tablet/capsule/syrup/etc",
                         "frequency": "how often to take",
@@ -185,13 +136,13 @@ class OCRService:
             extracted_text = response.text.strip()
             
             # Log the raw AI response for debugging
-            logger.info(f"Gemini AI Raw Response: {extracted_text}") # Changed from print to logger.info
+            logger.info(f"Gemini AI Raw Response: {extracted_text}")
             
             # Parse the JSON response
             medicines = self._parse_json_response(extracted_text)
             
             # Log the parsed medicines for debugging
-            logger.info(f"Parsed Medicines: {medicines}") # Changed from print to logger.info
+            logger.info(f"Parsed Medicines: {medicines}")
 
             return {
                 'success': True,
@@ -234,24 +185,27 @@ class OCRService:
             for medicine in medicines:
                 normalized = {
                     'medicine_name': (medicine.get('medicine_name') or '').strip(),
+                    'generic_name': (medicine.get('generic_name') or '').strip(), # New field
+                    'composition': (medicine.get('composition') or '').strip(),   # New field
                     'strength': (medicine.get('strength') or '').strip(),
                     'form': (medicine.get('form') or '').strip().lower(),
                     'frequency': (medicine.get('frequency') or '').strip(),
                 }
-                if normalized['medicine_name']:
+                if normalized['medicine_name'] or normalized['generic_name'] or normalized['composition']:
                     normalized_medicines.append(normalized)
             return normalized_medicines
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}. Attempting text-based parsing as fallback.")
+            logger.error(f"JSON decode error: {e}. Attempting text-based parsing as fallback.")
             return self._find_medicines_in_text(text)
         except Exception as e:
-            print(f"Error parsing JSON response: {e}. Returning empty list.")
+            logger.error(f"Error parsing JSON response: {e}. Returning empty list.")
             return []
 
     def _find_medicines_in_text(self, text: str) -> List[Dict[str, Any]]:
         """
         A more robust fallback parser for non-JSON responses.
         Uses a combination of keyword matching and regex to identify medicines.
+        This fallback will now also try to infer generic name and composition.
         """
         medicines = []
         lines = text.lower().split('\n')
@@ -261,35 +215,55 @@ class OCRService:
         form_pattern = re.compile(r'\b(tablet|capsule|syrup|injection|cream|ointment|drops|inhaler|patch)\b')
         frequency_pattern = re.compile(r'\b(once daily|twice daily|thrice daily|four times daily|bid|tid|qid|od|bd|tds|daily)\b')
         
-        # Combine all known brand and generic names for a comprehensive search
-        all_known_medicine_names = set(self.brand_to_generic_mapping.keys())
-        for generic_name_obj in GenericName.objects.all():
-            all_known_medicine_names.add(generic_name_obj.name.lower())
-        for product_obj in Product.objects.all():
-            all_known_medicine_names.add(product_obj.name.lower())
+        # Combine all known generic names and product names for a comprehensive search
+        all_known_generic_names = set(GenericName.objects.values_list('name', flat=True))
+        all_known_product_names = set(Product.objects.values_list('name', flat=True))
+        all_known_composition_names = set(Composition.objects.values_list('name', flat=True)) # Use Composition model
+
+        all_search_terms = set()
+        all_search_terms.update(name.lower() for name in all_known_generic_names)
+        all_search_terms.update(name.lower() for name in all_known_product_names)
+        all_search_terms.update(name.lower() for name in all_known_composition_names)
 
         # Sort by length to match longer names first
-        sorted_medicine_names = sorted(list(all_known_medicine_names), key=len, reverse=True)
+        sorted_search_terms = sorted(list(all_search_terms), key=len, reverse=True)
 
         for line in lines:
             if not line.strip():
                 continue
 
             found_medicine_name = None
+            found_generic_name = ''
+            found_composition = ''
             best_match_score = 0.0
-            for med_name in sorted_medicine_names:
-                # Use fuzzy matching for medicine names
-                score = difflib.SequenceMatcher(None, line, med_name).ratio()
-                if score > 0.6 and score > best_match_score: # Threshold for fuzzy match
+
+            for term in sorted_search_terms:
+                score = difflib.SequenceMatcher(None, line, term).ratio()
+                if score > 0.6 and score > best_match_score:
                     best_match_score = score
-                    found_medicine_name = med_name
-            
+                    found_medicine_name = term # Could be product, generic, or composition name
+
+                    # Try to infer generic/composition if a product name was matched
+                    product = Product.objects.filter(name__iexact=term).first()
+                    if product:
+                        found_generic_name = product.generic_name.name if product.generic_name else ''
+                        found_composition = self._build_product_composition(product)
+                    else: # If not a product, check if it's a generic or composition name directly
+                        generic = GenericName.objects.filter(name__iexact=term).first()
+                        if generic:
+                            found_generic_name = generic.name
+                            found_composition = generic.name # Simple fallback for composition
+                        else:
+                            composition_obj = Composition.objects.filter(name__iexact=term).first()
+                            if composition_obj:
+                                found_composition = composition_obj.name
+                                found_generic_name = composition_obj.name # Simple fallback for generic
+
             if found_medicine_name:
                 strength = ''
                 form = ''
                 frequency = ''
 
-                # Search for strength, form, frequency in the same line
                 strength_match = strength_pattern.search(line)
                 if strength_match:
                     strength = strength_match.group(0)
@@ -304,12 +278,13 @@ class OCRService:
 
                 medicines.append({
                     'medicine_name': found_medicine_name,
+                    'generic_name': found_generic_name,
+                    'composition': found_composition,
                     'strength': strength,
                     'form': form,
                     'frequency': frequency
                 })
         
-        # Remove duplicates based on medicine_name, strength, form, frequency
         unique_medicines = []
         seen = set()
         for med in medicines:
@@ -330,52 +305,67 @@ class OCRService:
         total_score = 0
         for medicine in medicines:
             score = 0.2  # Base score for having a name
+            if medicine.get('generic_name') or medicine.get('composition'): # Boost for generic/composition
+                score += 0.2
             if medicine.get('strength'):
                 score += 0.2
             if medicine.get('frequency'):
                 score += 0.2
-            if medicine.get('form'): # Added form to confidence calculation
+            if medicine.get('form'):
                 score += 0.1
             total_score += score
         
-        # Max score per medicine is 0.7 (name + strength + frequency + form)
-        return min(total_score / (len(medicines) * 0.7), 1.0) if medicines else 0.0
+        # Max score per medicine is 0.9 (name + generic/composition + strength + frequency + form)
+        return min(total_score / (len(medicines) * 0.9), 1.0) if medicines else 0.0
 
     def match_medicines_by_composition(self, extracted_medicines: List[Dict]) -> List[Dict[str, Any]]:
         """
         Match extracted medicines with local database based on composition
+        Now prioritizes Gemini's provided generic name and composition.
         """
         matched_results = []
 
         for medicine in extracted_medicines:
             medicine_name = medicine.get('medicine_name', '').strip()
-            if not medicine_name:
+            extracted_generic_name = medicine.get('generic_name', '').strip()
+            extracted_composition_str = medicine.get('composition', '').strip()
+
+            if not (medicine_name or extracted_generic_name or extracted_composition_str):
                 continue
 
-            # Step 1: Identify generic name and composition from medicine name
-            generic_info = self._identify_generic_from_medicine_name(medicine_name)
+            # Prioritize Gemini's extracted generic name and composition
+            generic_name_for_matching = extracted_generic_name if extracted_generic_name else medicine_name
+            composition_for_matching = extracted_composition_str
 
-            # Step 2: Extract strength from prescription or medicine name
+            # If Gemini didn't provide a full composition string, try to build it
+            if not composition_for_matching and (extracted_generic_name or medicine_name):
+                strength = self._extract_strength_from_medicine_data(medicine, medicine_name)
+                composition_for_matching = self._build_standardized_composition(
+                    extracted_generic_name if extracted_generic_name else medicine_name,
+                    strength,
+                    medicine.get('form', 'tablet')
+                )
+            
+            # If still no composition, use generic name as fallback
+            if not composition_for_matching:
+                composition_for_matching = generic_name_for_matching
+
+            # Extract strength from prescription or medicine name (still useful for building if composition is missing)
             strength = self._extract_strength_from_medicine_data(medicine, medicine_name)
 
-            # Step 3: Build standardized composition
-            standardized_composition = self._build_standardized_composition(
-                generic_info['generic_name'],
-                strength,
-                medicine.get('form', 'tablet')
-            )
-
-            # Step 4: Find local equivalent by composition matching
+            # Find local equivalent by composition matching
             local_equivalent = self._find_local_equivalent_by_composition(
-                standardized_composition,
+                composition_for_matching,
                 medicine.get('form', 'tablet')
             )
 
-            # Step 5: Compile result in required format
+            # Compile result in required format
             result = {
                 'input_medicine_name': medicine_name,
-                'generic_name': generic_info['generic_name'],
-                'composition': standardized_composition,
+                'extracted_generic_name': extracted_generic_name,
+                'extracted_composition_str': extracted_composition_str,
+                'generic_name_for_matching': generic_name_for_matching,
+                'composition_for_matching': composition_for_matching,
                 'form': medicine.get('form', 'tablet').title(),
                 'local_equivalent': local_equivalent,
                 'match_confidence': local_equivalent['confidence'] if local_equivalent else 0.0,
@@ -388,51 +378,17 @@ class OCRService:
 
     def _identify_generic_from_medicine_name(self, medicine_name: str) -> Dict[str, Any]:
         """
-        Identify generic name and composition from medicine name
+        This method is now largely redundant if Gemini provides generic_name and composition.
+        It can be kept as a very last resort fallback or for specific legacy cases,
+        but its primary role is diminished.
+        For now, it will simply return the medicine name as generic and 'Unknown' composition.
         """
-        medicine_lower = medicine_name.lower().strip()
-
-        # Remove common suffixes and numbers for better matching
-        clean_medicine_name = re.sub(r'\s*\d+\s*(mg|ml|g|mcg|iu).*$', '', medicine_lower)
-        clean_medicine_name = re.sub(r'\s*(tablet|capsule|syrup|injection).*$', '', clean_medicine_name)
-
-        # Direct mapping lookup
-        for brand_key, info in self.brand_to_generic_mapping.items():
-            if brand_key in clean_medicine_name or clean_medicine_name.startswith(brand_key):
-                return {
-                    'generic_name': info['generic'],
-                    'composition': info['composition'],
-                    'common_strengths': info['common_strengths'],
-                    'mapping_confidence': 1.0,
-                    'source': 'direct_mapping'
-                }
-
-        # Fuzzy matching for partial matches
-        best_match = None
-        best_score = 0.0
-
-        for brand_key, info in self.brand_to_generic_mapping.items():
-            score = difflib.SequenceMatcher(None, clean_medicine_name, brand_key).ratio()
-            if score > 0.7 and score > best_score:
-                best_score = score
-                best_match = info
-
-        if best_match:
-            return {
-                'generic_name': best_match['generic'],
-                'composition': best_match['composition'],
-                'common_strengths': best_match['common_strengths'],
-                'mapping_confidence': best_score,
-                'source': 'fuzzy_mapping'
-            }
-
-        # If no mapping found, try to extract from medicine name
         return {
-            'generic_name': medicine_name,  # Use medicine name as fallback
+            'generic_name': medicine_name,
             'composition': 'Unknown',
             'common_strengths': [],
-            'mapping_confidence': 0.3,
-            'source': 'fallback'
+            'mapping_confidence': 0.1,
+            'source': 'fallback_after_gemini'
         }
 
     def _extract_strength_from_medicine_data(self, medicine: Dict, medicine_name: str) -> str:
@@ -450,11 +406,13 @@ class OCRService:
             r'(\d+(?:\.\d+)?)\s*(milligram|gram|milliliter|microgram)',
         ]
 
-        for pattern in strength_patterns:
-            match = re.search(pattern, medicine_name.lower())
+        # Corrected loop: Iterate through predefined regex patterns
+        for pattern_regex in strength_patterns:
+            match = re.search(pattern_regex, medicine_name.lower()) # Apply pattern_regex to medicine_name
             if match:
-                return f"{match.group(1)}{match.group(2)}"
-
+                # Always return the full matched string (group 0) if a match is found
+                # This avoids IndexError if groups 1 and 2 are unexpectedly missing
+                return match.group(0)
         return ''
 
     def _build_standardized_composition(self, generic_name: str, strength: str, form: str = None) -> str:
@@ -492,70 +450,76 @@ class OCRService:
         Find local equivalent based on composition matching
         """
         if not composition:
+            logger.debug("No composition provided for matching.")
             return None
 
         # Normalize composition for matching
         normalized_composition = self._normalize_composition(composition)
+        logger.debug(f"Searching for normalized composition: '{normalized_composition}' (Form: '{form}')")
 
         # Search in local database by composition
-        # Filter products that have at least one composition matching a part of the normalized_composition
-        # This is a more robust way to search for products by composition
+        # Extract only the composition names from the normalized_composition for initial filtering
+        # This makes the initial filter less sensitive to strength variations
+        composition_names_only = re.findall(r'[a-zA-Z]+', normalized_composition)
         
-        # First, get all active compositions that are part of the normalized_composition
-        composition_names_in_query = [comp.strip() for comp in normalized_composition.replace('+', ' ').split()]
-        
-        # Filter for products that have any of these compositions
-        # Using Q objects to build a dynamic OR query for composition names
         composition_filters = Q()
-        for comp_name in composition_names_in_query:
+        for comp_name in composition_names_only:
             composition_filters |= Q(compositions__name__icontains=comp_name)
+        
+        logger.debug(f"Composition filters (names only): {composition_filters}")
 
         matching_products = Product.objects.annotate(
             total_stock=Sum('batches__current_quantity')
         ).filter(
             composition_filters,
-            total_stock__gt=0,  # Only in-stock items
             is_active=True
-        ).distinct() # Use distinct to avoid duplicate products if they have multiple matching compositions
+        ).distinct()
+        
+        logger.debug(f"Found {matching_products.count()} matching products initially based on names.")
 
         best_match = None
         best_score = 0.0
 
         for product in matching_products:
-            # Build product composition from available data
             product_composition = self._build_product_composition(product)
             normalized_product_comp = self._normalize_composition(product_composition)
 
-            # Calculate composition similarity
+            # Calculate similarity based on the full normalized composition (including strength)
+            # This allows for a more nuanced score even if initial filter was broad
             similarity = self._calculate_composition_similarity(
-                normalized_composition,
-                normalized_product_comp
+                normalized_composition, # This is the full composition from OCR (e.g., "amoxicillin 500mg")
+                normalized_product_comp # This is the full composition from DB (e.g., "amoxicillin 500mg")
             )
-
-            # Check form compatibility
             form_match = self._check_form_compatibility(form, product.form or 'tablet')
-
-            # Combined score
+            
+            # Adjust weights if needed, but 0.8/0.2 is a good starting point
             total_score = similarity * 0.8 + form_match * 0.2
 
-            if total_score > best_score and total_score >= 0.8:  # Minimum 80% match
+            logger.debug(f"  - Product: {product.name}, Comp: '{normalized_product_comp}', Form: '{product.form}'")
+            logger.debug(f"    - Similarity: {similarity:.2f}, Form Match: {form_match:.2f}, Total Score: {total_score:.2f}")
+
+            # A lower threshold for initial match might be acceptable if human verification is always present
+            if total_score > best_score and total_score >= 0.5: # Lowered threshold slightly for more matches
                 best_score = total_score
                 best_match = product
+                logger.debug(f"    - NEW BEST MATCH: {product.name} with score {best_score:.2f}")
 
         if best_match:
+            logger.debug(f"Final best match: {best_match.name} with score {best_score:.2f}")
             return {
-                'product_object': best_match, # Add the product object here
+                'product_object': best_match,
                 'product_name': best_match.name,
                 'composition': self._build_product_composition(best_match),
                 'form': (best_match.form or 'tablet').title(),
                 'manufacturer': best_match.manufacturer,
-                'price': float(best_match.price),
+                'price': float(best_match.batches.first().selling_price if best_match.batches.first() else 0.0),
                 'available': best_match.stock_quantity > 0,
                 'stock_quantity': best_match.stock_quantity,
                 'confidence': best_score,
                 'notes': 'Matched by composition.'
             }
-
+        
+        logger.debug(f"No best match found for composition '{normalized_composition}' above threshold 0.5.")
         return None
 
     def _normalize_composition(self, composition: str) -> str:
@@ -616,28 +580,43 @@ class OCRService:
 
     def _calculate_composition_similarity(self, comp1: str, comp2: str) -> float:
         """
-        Calculate similarity between two composition strings
+        Calculate similarity between two composition strings, with emphasis on names and then strength.
         """
         if not comp1 or not comp2:
             return 0.0
 
-        # Exact match
-        if comp1 == comp2:
-            return 1.0
+        # Extract composition names and strengths
+        comp1_names = set(re.findall(r'[a-zA-Z]+', comp1.lower()))
+        comp2_names = set(re.findall(r'[a-zA-Z]+', comp2.lower()))
 
-        # Use sequence matcher for similarity
-        similarity = difflib.SequenceMatcher(None, comp1, comp2).ratio()
+        comp1_strength_match = re.search(r'(\d+(?:\.\d+)?)\s*(mg|ml|g|mcg|iu|units?)', comp1.lower())
+        comp2_strength_match = re.search(r'(\d+(?:\.\d+)?)\s*(mg|ml|g|mcg|iu|units?)', comp2.lower())
 
-        # Boost score if key components match
-        comp1_parts = set(comp1.split())
-        comp2_parts = set(comp2.split())
-        
-        common_parts = comp1_parts.intersection(comp2_parts)
-        if common_parts:
-            # A simple boost based on the number of common words
-            similarity += (len(common_parts) / max(len(comp1_parts), len(comp2_parts))) * 0.1
+        comp1_strength = comp1_strength_match.group(0) if comp1_strength_match else ''
+        comp2_strength = comp2_strength_match.group(0) if comp2_strength_match else ''
 
-        return min(similarity, 1.0)
+        # 1. Compare composition names (higher weight)
+        name_similarity = 0.0
+        if comp1_names or comp2_names:
+            common_names = comp1_names.intersection(comp2_names)
+            name_similarity = len(common_names) / max(len(comp1_names), len(comp2_names))
+
+        # 2. Compare strengths (secondary weight)
+        strength_similarity = 0.0
+        if comp1_strength and comp2_strength:
+            if comp1_strength == comp2_strength:
+                strength_similarity = 1.0
+            else:
+                # Fuzzy match for strength if not exact
+                strength_similarity = difflib.SequenceMatcher(None, comp1_strength, comp2_strength).ratio()
+        elif not comp1_strength and not comp2_strength:
+            strength_similarity = 1.0 # Both missing strength, consider them similar in that aspect
+
+        # Combine similarities with weights
+        # Adjust weights as needed. Name is more critical than exact strength match for initial identification.
+        total_similarity = (name_similarity * 0.7) + (strength_similarity * 0.3)
+
+        return min(total_similarity, 1.0)
 
     def _check_form_compatibility(self, form1: str, form2: str) -> float:
         """
