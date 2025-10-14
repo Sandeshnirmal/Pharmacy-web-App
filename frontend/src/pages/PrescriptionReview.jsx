@@ -398,17 +398,17 @@ const PrescriptionReview = () => {
                   </div>
                 )}
 
-                {detail.mapped_product ? ( // Changed conditional from suggested_medicine to mapped_product
+                {detail.mapped_product ? (
                   <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500">
                     <div className="flex justify-between items-center mb-2">
                       <p className="text-sm font-semibold text-green-800">
-                        Mapped to: {detail.product_name || "N/A"} {/* Use product_name from detail */}
+                        Mapped to: {detail.product_name || "N/A"}
                       </p>
                       <button
                         onClick={() => {
                           setCurrentDetailId(detail.id);
                           setSearchTerm(
-                            detail.product_name || detail.extracted_medicine_name // Use product_name for search
+                            detail.product_name || detail.extracted_medicine_name
                           );
                           setShowProductModal(true);
                         }}
@@ -434,24 +434,41 @@ const PrescriptionReview = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 flex justify-between items-center">
-                    <div className="flex items-center">
-                      <AlertCircle className="text-red-500 mr-2" size={20} />
-                      <p className="text-sm font-semibold text-red-800">
-                        Needs Mapping
-                      </p>
+                  <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500">
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center">
+                        <AlertCircle className="text-red-500 mr-2" size={20} />
+                        <p className="text-sm font-semibold text-red-800">
+                          Needs Mapping
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentDetailId(detail.id);
+                          setSearchTerm(detail.extracted_medicine_name);
+                          setShowProductModal(true);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
+                      >
+                        <span>Find Product</span>
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setCurrentDetailId(detail.id);
-                        setSearchTerm(detail.extracted_medicine_name);
-                        setShowProductModal(true);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
-                    >
-                      <span>Find Product</span>
-                      <ChevronRight size={16} />
-                    </button>
+                    {detail.suggested_products && detail.suggested_products.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold text-red-700 mb-1">
+                          Suggested Options:
+                        </p>
+                        <ul className="list-disc list-inside text-xs text-red-700 space-y-0.5">
+                          {detail.suggested_products.map((s_product) => (
+                            <li key={s_product.id}>
+                              {s_product.name} ({s_product.strength || "N/A"}) - ₹
+                              {s_product.current_selling_price || "0.00"} (Stock: {s_product.total_stock > 0 ? s_product.total_stock : "Out of stock"})
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

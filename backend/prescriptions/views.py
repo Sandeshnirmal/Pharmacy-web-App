@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.db.models import Count, Q
-from .models import Prescription, PrescriptionDetail
-from .serializers import PrescriptionSerializer, PrescriptionDetailSerializer
+from .models import Prescription, PrescriptionMedicine
+from .serializers import PrescriptionSerializer, PrescriptionMedicineSerializer
 from .prescription_scanner import PrescriptionScanner
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
@@ -69,8 +69,8 @@ class PrescriptionDetailViewSet(viewsets.ModelViewSet):
     Simple read-only ViewSet for admin dashboard to view prescription details.
     All prescription processing is handled by mobile_api.py
     """
-    queryset = PrescriptionDetail.objects.all()
-    serializer_class = PrescriptionDetailSerializer
+    queryset = PrescriptionMedicine.objects.all()
+    serializer_class = PrescriptionMedicineSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):

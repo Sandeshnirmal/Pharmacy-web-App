@@ -1,18 +1,19 @@
 from rest_framework import serializers
 from datetime import date # Import date for current_selling_price calculation
-from .models import Prescription, PrescriptionDetail
+from .models import Prescription, PrescriptionMedicine
 from product.serializers import ProductSerializer
+from datetime import date # Import date for current_selling_price calculation
 
 class SuggestedProductSerializer(serializers.ModelSerializer):
     """Serializer for suggested products in prescription details"""
     current_selling_price = serializers.SerializerMethodField()
+    total_stock = serializers.SerializerMethodField() # Add total_stock
 
     class Meta:
         model = ProductSerializer.Meta.model
-        fields = ['id', 'name', 'strength', 'form', 'current_selling_price', 'manufacturer', 'is_prescription_required']
+        fields = ['id', 'name', 'strength', 'form', 'current_selling_price', 'manufacturer', 'is_prescription_required', 'total_stock']
 
     def get_current_selling_price(self, obj):
-        # This logic is duplicated from ProductSerializer, consider refactoring if possible
         primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
         if primary_batch:
             return primary_batch.selling_price
@@ -22,16 +23,30 @@ class SuggestedProductSerializer(serializers.ModelSerializer):
             return active_batches.first().selling_price
         return None
 
-class PrescriptionDetailSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='mapped_product.name', read_only=True)
-    product_price = serializers.DecimalField(source='mapped_product.current_selling_price', max_digits=10, decimal_places=2, read_only=True)
-    product_strength = serializers.CharField(source='mapped_product.strength', read_only=True)
-    product_form = serializers.CharField(source='mapped_product.form', read_only=True)
+    def get_total_stock(self, obj):
+        return obj.stock_quantity # Assuming stock_quantity is a property on Product model
+
+class PrescriptionMedicineSerializer(serializers.ModelSerializer): # Renamed from PrescriptionDetailSerializer
+    product_name = serializers.CharField(source='suggested_medicine.name', read_only=True)
+    product_strength = serializers.CharField(source='suggested_medicine.strength', read_only=True)
+    product_form = serializers.CharField(source='suggested_medicine.form', read_only=True)
+    product_price = serializers.SerializerMethodField() # Changed to SerializerMethodField
     suggested_products = SuggestedProductSerializer(many=True, read_only=True)
 
     class Meta:
-        model = PrescriptionDetail
+        model = PrescriptionMedicine # Changed model to PrescriptionMedicine
         fields = '__all__'
+
+    def get_product_price(self, obj):
+        if obj.suggested_medicine:
+            primary_batch = obj.suggested_medicine.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+            if primary_batch:
+                return primary_batch.selling_price
+            
+            active_batches = obj.suggested_medicine.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
+            if active_batches.exists():
+                return active_batches.first().selling_price
+        return None
 
 class PrescriptionUploadSerializer(serializers.ModelSerializer):
     """Serializer for prescription upload"""
@@ -51,14 +66,14 @@ class PrescriptionUploadSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class PrescriptionSerializer(serializers.ModelSerializer):
-    prescription_medicines = PrescriptionDetailSerializer(many=True, read_only=True)
+    prescription_medicines = PrescriptionMedicineSerializer(many=True, read_only=True) # Updated serializer name
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_phone = serializers.CharField(source='user.phone_number', read_only=True)
     verified_by_name = serializers.CharField(source='verified_by_admin.get_full_name', read_only=True)
     total_medicines = serializers.SerializerMethodField()
     verified_medicines = serializers.SerializerMethodField()
-    suggested_medicines = serializers.SerializerMethodField() # This will now return a list of products
+    suggested_medicines = serializers.SerializerMethodField()
     processing_status = serializers.SerializerMethodField()
 
     class Meta:

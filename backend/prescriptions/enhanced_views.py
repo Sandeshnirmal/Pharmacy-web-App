@@ -18,7 +18,7 @@ from .models import (
     Prescription, PrescriptionMedicine, PrescriptionWorkflowLog
 )
 from .serializers import (
-    PrescriptionSerializer, PrescriptionDetailSerializer, SuggestedProductSerializer
+    PrescriptionSerializer, PrescriptionMedicineSerializer, SuggestedProductSerializer
 )
 from .ocr_service import OCRService
 from .tasks import process_prescription_ocr_task # Import Celery task
@@ -284,7 +284,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
 class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
     """ViewSet for managing prescription medicines with AI mapping"""
     queryset = PrescriptionMedicine.objects.all()
-    serializer_class = PrescriptionDetailSerializer  # Use existing serializer
+    serializer_class = PrescriptionMedicineSerializer  # Use existing serializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
