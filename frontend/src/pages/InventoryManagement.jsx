@@ -541,6 +541,23 @@ const fetchCompositions = async () => {
     }
   };
 
+  const getFirstAvailableBatch = (batches) => {
+    if (!batches || batches.length === 0) {
+      return null;
+    }
+    const today = new Date();
+    // Filter for non-expired batches with quantity > 0
+    const availableBatches = batches.filter(batch => {
+      const expiry = new Date(batch.expiry_date);
+      return expiry > today && batch.current_quantity > 0 && batch.selling_price > 0;
+    });
+
+    // Sort by expiry date (earliest first) to get the "first available" in a logical sense
+    availableBatches.sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+
+    return availableBatches.length > 0 ? availableBatches[0] : null;
+  };
+
   const filteredProducts = products.filter((product) => {
     const genericName = getGenericName(product.generic_name);
     const matchesSearch =
@@ -740,13 +757,13 @@ const fetchCompositions = async () => {
                       {getGenericName(product.generic_name)}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
-                      ₹{product.current_selling_price !== null && product.current_selling_price !== undefined ? Number(product.current_selling_price).toFixed(2) : 'N/A'}
+                      {getFirstAvailableBatch(product.batches) ? `₹${Number(getFirstAvailableBatch(product.batches).selling_price).toFixed(2)}` : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      {product.batches && product.batches.length > 0 ? product.batches[0].batch_number : 'N/A'}
+                      {getFirstAvailableBatch(product.batches) ? getFirstAvailableBatch(product.batches).batch_number : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
-                      {product.batches && product.batches.length > 0 ? `₹${Number(product.batches[0].selling_price).toFixed(2)}` : 'N/A'}
+                      {getFirstAvailableBatch(product.batches) ? `₹${Number(getFirstAvailableBatch(product.batches).selling_price).toFixed(2)}` : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
                       {product.total_stock_quantity}
