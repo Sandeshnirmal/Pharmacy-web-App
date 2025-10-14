@@ -53,7 +53,7 @@ class CompositionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter compositions based on parameters and optimize for related counts"""
         queryset = Composition.objects.annotate(
-            products_count=Count('products', filter=Q(products__is_active=True))
+            products_count=Count('product_list', filter=Q(product_list__is_active=True))
         ).select_related('created_by') # Optimize for created_by_name in serializer
         
         # Filter by active status
@@ -93,7 +93,7 @@ class CompositionViewSet(viewsets.ModelViewSet):
     def products(self, request, pk=None):
         """Get products using this composition"""
         composition = self.get_object()
-        products = composition.products.filter(is_active=True)
+        products = composition.product_list.filter(is_active=True) # Corrected related_name
         serializer = ProductSearchSerializer(products, many=True)
         return Response(serializer.data)
     
@@ -143,7 +143,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                     Batch.objects.filter(
                         product=OuterRef('pk'),
                         current_quantity__gt=0
-                    ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
+                    ).order_by('expiry_date').values('selling_price')[:1]
                 ),
                 0.0, # Default to 0.0 if no available batch
                 output_field=DecimalField()

@@ -1,4 +1,4 @@
-  import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import axiosInstance from '../api/axiosInstance'
 import { apiUtils, productAPI } from "../api/apiService";
 // --- Sample Data ---
@@ -15,6 +15,7 @@ const InventoryManagement = () => {
   const [batches, setBatches] = useState([]);
   const [categories, setCategories] = useState([]);
   const [genericNames, setGenericNames] = useState([]);
+  const [compositions, setCompositions] = useState([]); // New state for compositions
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -25,6 +26,7 @@ const InventoryManagement = () => {
   const [showProductModal, setShowProductModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showGenericNameModal, setShowGenericNameModal] = useState(false);
+  const [showCompositionModal, setShowCompositionModal] = useState(false); // New state for composition modal
   const [showViewBatchModal, setShowViewBatchModal] = useState(false);
   const [showAddBatchForm, setShowAddBatchForm] = useState(false); // New state for add batch form visibility
   const [editingBatch, setEditingBatch] = useState(null); // New state for batch being edited
@@ -37,6 +39,7 @@ const InventoryManagement = () => {
     fetchMedicines();
     fetchCategory();
     fetchGericname();
+    fetchCompositions(); // Fetch compositions
   },[]);
 
   // Clear success message after a few seconds
@@ -132,6 +135,30 @@ const fetchGericname = async () => {
   }
 };
 
+const fetchCompositions = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    const response = await productAPI.getCompositions();
+    console.log("API response for compositions:", response);
+    const data = response.data;
+    if (Array.isArray(data)) {
+      setCompositions(data);
+    } else if (data && Array.isArray(data.results)) {
+      setCompositions(data.results);
+    } else {
+      console.warn("Unexpected API response format for compositions.");
+      setCompositions([]);
+    }
+  } catch (error) {
+    const errorInfo = apiUtils.handleError(error);
+    setError(errorInfo.message);
+    console.error("Error fetching compositions:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+
   const [newBatch, setNewBatch] = useState({
     product: "",
     batch_number: "",
@@ -163,12 +190,21 @@ const fetchGericname = async () => {
     discount_percentage: "", // Add discount_percentage for initial batch
     selling_price: "",
     min_stock_level: "10", // Keep min_stock_level for product
+    selectedCompositions: [], // Array of { composition_id, strength, unit, is_primary }
   });
 
   const [newCategory, setNewCategory] = useState({ name: "", description: "" });
   const [newGenericName, setNewGenericName] = useState({
     name: "",
     description: "",
+  });
+  const [newComposition, setNewComposition] = useState({
+    name: "",
+    scientific_name: "",
+    description: "",
+    category: "",
+    side_effects: "",
+    contraindications: "",
   });
 
 
@@ -177,6 +213,27 @@ const fetchGericname = async () => {
     categories.find((c) => c.id === id)?.name || "N/A";
   const getGenericName = (id) =>
     genericNames.find((g) => g.id === id)?.name || "N/A";
+
+  const handleAddComposition = async (e) => {
+    e.preventDefault();
+    try {
+      await productAPI.createComposition(newComposition);
+      setShowCompositionModal(false);
+      setNewComposition({
+        name: "",
+        scientific_name: "",
+        description: "",
+        category: "",
+        side_effects: "",
+        contraindications: "",
+      });
+      fetchCompositions(); // Refetch compositions
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error adding composition:", error);
+    }
+  };
 
   const EditBatchForm = ({ batch, onSave, onCancel }) => {
     // Ensure mrp_price and discount_percentage are numbers, defaulting to 0 if null/undefined
@@ -335,6 +392,17 @@ const fetchGericname = async () => {
       const productResponse = await productAPI.createProduct(productData);
       const productId = productResponse.data.id; // Assuming the API returns the created product with an ID
 
+      // Link compositions if any were selected
+      if (newProduct.selectedCompositions.length > 0) {
+        const compositionsToLink = newProduct.selectedCompositions.map(comp => ({
+          composition_id: comp.composition_id,
+          strength: comp.strength,
+          unit: comp.unit,
+          is_primary: comp.is_primary,
+        }));
+        await productAPI.addCompositions(productId, { compositions: compositionsToLink });
+      }
+
       const batchData = {
         product: productId,
         batch_number: newProduct.batch_number,
@@ -368,8 +436,10 @@ const fetchGericname = async () => {
         mrp_price: "",
         discount_percentage: "",
         selling_price: "",
+        selectedCompositions: [], // Reset selected compositions
       });
       fetchMedicines(); // Refetch products
+      setSuccessMessage("Product and associated compositions added successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -537,6 +607,12 @@ const fetchGericname = async () => {
             >
               Add Generic Name
             </button>
+            <button
+              onClick={() => setShowCompositionModal(true)}
+              className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              Add Composition
+            </button>
           </div>
         </div>
       </div>
@@ -621,7 +697,13 @@ const fetchGericname = async () => {
                   Generic Name
                 </th>
                 <th scope="col" className="px-6 py-3 text-center">
-                  Selling Price
+                  Product Selling Price
+                </th>
+                <th scope="col" className="px-6 py-3 text-center">
+                  Batch Name
+                </th>
+                <th scope="col" className="px-6 py-3 text-center">
+                  Batch Selling Price
                 </th>
                 <th scope="col" className="px-6 py-3 text-center">
                   Total Product Qty
@@ -659,6 +741,12 @@ const fetchGericname = async () => {
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
                       ₹{product.current_selling_price !== null && product.current_selling_price !== undefined ? Number(product.current_selling_price).toFixed(2) : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {product.batches && product.batches.length > 0 ? product.batches[0].batch_number : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 text-center font-bold text-lg">
+                      {product.batches && product.batches.length > 0 ? `₹${Number(product.batches[0].selling_price).toFixed(2)}` : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
                       {product.total_stock_quantity}
@@ -705,8 +793,8 @@ const fetchGericname = async () => {
 
       {/* Add Product Modal */}
       {showProductModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Add New Medicine
             </h3>
@@ -846,6 +934,116 @@ const fetchGericname = async () => {
                   />
                 </div>
               </div>
+
+              {/* Compositions Section */}
+              <h4 className="text-lg font-medium text-gray-900 mb-2 mt-4">
+                Compositions
+              </h4>
+              <div className="space-y-3">
+                {newProduct.selectedCompositions.map((comp, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end p-2 border rounded-md bg-gray-50">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Composition
+                      </label>
+                      <select
+                        required
+                        value={comp.composition_id}
+                        onChange={(e) => {
+                          const updatedCompositions = [...newProduct.selectedCompositions];
+                          updatedCompositions[index].composition_id = e.target.value;
+                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
+                        }}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Composition</option>
+                        {compositions.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Strength
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={comp.strength}
+                        onChange={(e) => {
+                          const updatedCompositions = [...newProduct.selectedCompositions];
+                          updatedCompositions[index].strength = e.target.value;
+                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
+                        }}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Unit
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={comp.unit}
+                        onChange={(e) => {
+                          const updatedCompositions = [...newProduct.selectedCompositions];
+                          updatedCompositions[index].unit = e.target.value;
+                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
+                        }}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between md:col-span-4">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={comp.is_primary}
+                          onChange={(e) => {
+                            const updatedCompositions = newProduct.selectedCompositions.map((item, i) => ({
+                              ...item,
+                              is_primary: i === index ? e.target.checked : false, // Only one can be primary
+                            }));
+                            setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
+                          }}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                        />
+                        <label className="ml-2 block text-sm text-gray-900">
+                          Primary Composition
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updatedCompositions = newProduct.selectedCompositions.filter((_, i) => i !== index);
+                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
+                        }}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewProduct({
+                      ...newProduct,
+                      selectedCompositions: [
+                        ...newProduct.selectedCompositions,
+                        { composition_id: "", strength: "", unit: "", is_primary: false },
+                      ],
+                    })
+                  }
+                  className="mt-2 px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50 transition-colors"
+                >
+                  Add Another Composition
+                </button>
+              </div>
+
               <h4 className="text-lg font-medium text-gray-900 mb-2 mt-4">
                 Initial Batch Details
               </h4>
@@ -909,20 +1107,50 @@ const fetchGericname = async () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Selling Price
+                    MRP (₹)
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     required
-                    value={newProduct.selling_price}
+                    value={newProduct.mrp_price}
                     onChange={(e) =>
-                      setNewProduct({ ...newProduct, selling_price: e.target.value })
+                      setNewProduct({ ...newProduct, mrp_price: e.target.value })
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
-                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Discount (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    required
+                    value={newProduct.discount_percentage}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, discount_percentage: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Selling Price (Calculated)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={
+                      (newProduct.mrp_price - (newProduct.mrp_price * newProduct.discount_percentage / 100)).toFixed(2)
+                    }
+                    readOnly
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                  />
+                </div>
               </div>
               <div className="flex items-center">
                 <input
@@ -962,8 +1190,8 @@ const fetchGericname = async () => {
 
       {/* Add Category Modal */}
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Add New Category
             </h3>
@@ -1019,8 +1247,8 @@ const fetchGericname = async () => {
 
       {/* Add Generic Name Modal */}
       {showGenericNameModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Add New Generic Name
             </h3>
@@ -1077,10 +1305,126 @@ const fetchGericname = async () => {
         </div>
       )}
 
+      {/* Add Composition Modal */}
+      {showCompositionModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Add New Composition
+            </h3>
+            <form onSubmit={handleAddComposition} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Composition Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newComposition.name}
+                  onChange={(e) =>
+                    setNewComposition({ ...newComposition, name: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Scientific Name
+                </label>
+                <input
+                  type="text"
+                  value={newComposition.scientific_name}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      scientific_name: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  value={newComposition.description}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      description: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={newComposition.category}
+                  onChange={(e) =>
+                    setNewComposition({ ...newComposition, category: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Side Effects
+                </label>
+                <textarea
+                  value={newComposition.side_effects}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      side_effects: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Contraindications
+                </label>
+                <textarea
+                  value={newComposition.contraindications}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      contraindications: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCompositionModal(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Add Composition
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* View Batches Modal */}
       {showViewBatchModal && selectedProduct && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Batches for:{" "}
               <span className="font-bold">{selectedProduct.name}</span>
