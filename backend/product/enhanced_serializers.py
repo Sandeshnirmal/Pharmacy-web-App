@@ -134,6 +134,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True)
 
     batches = BatchSerializer(many=True, read_only=True)
+    current_batch = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -150,7 +151,8 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'image_url', 'hsn_code', 'category', 'category_name',
             'is_active', 'is_featured',
             'created_at', 'updated_at', 'created_by', 'created_by_name',
-            'batches'
+            'batches', # Add batches to the fields
+            'current_batch' # Add current_batch to the fields
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
         extra_kwargs = {
@@ -175,6 +177,29 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     def get_is_low_stock(self, obj):
         total_quantity = obj.total_stock
         return total_quantity <= obj.min_stock_level
+    
+    def get_current_batch(self, obj):
+        """
+        Get the current batch details (MRP, selling price, discount) for the product,
+        prioritizing in-stock batches with the soonest expiry date.
+        """
+        from django.utils import timezone
+        
+        current_batch = obj.batches.filter(
+            quantity__gt=0, # In stock
+            expiry_date__gte=timezone.now().date() # Not expired
+        ).order_by('expiry_date').first()
+
+        if current_batch:
+            return {
+                'batch_id': current_batch.id,
+                'mrp': float(current_batch.mrp_price),
+                'selling_price': float(current_batch.selling_price),
+                'discount_percentage': float(current_batch.discount_percentage),
+                'expiry_date': current_batch.expiry_date.isoformat(),
+                'quantity': current_batch.quantity
+            }
+        return None
     
     def create(self, validated_data):
         compositions_data = validated_data.pop('compositions', [])

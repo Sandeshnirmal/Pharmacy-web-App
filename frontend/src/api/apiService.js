@@ -75,7 +75,8 @@ export const dashboardAPI = {
 
 export const productAPI = {
   // Enhanced product management
-  getProducts: () => axiosInstance.get('/api/products/enhanced-products/'),
+  getProducts: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/api/products/enhanced-products/', { params: { ...params, page, page_size: pageSize } }),
   getProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
   createProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
   updateProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),
@@ -121,7 +122,8 @@ export const productAPI = {
 
 export const prescriptionAPI = {
   // Enhanced prescription management
-  getPrescriptions: (params = {}) => axiosInstance.get('/prescription/enhanced-prescriptions/', { params }),
+  getPrescriptions: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/prescription/enhanced-prescriptions/', { params: { ...params, page, page_size: pageSize } }),
   getPrescription: (id) => axiosInstance.get(`/prescription/enhanced-prescriptions/${id}/`),
   createPrescription: (prescriptionData) => axiosInstance.post('/prescription/enhanced-prescriptions/', prescriptionData),
   updatePrescription: (id, prescriptionData) => axiosInstance.patch(`/prescription/enhanced-prescriptions/${id}/`, prescriptionData),
@@ -129,8 +131,8 @@ export const prescriptionAPI = {
   // Prescription verification workflow
   verifyPrescription: (id, verificationData) => 
     axiosInstance.post(`/prescription/enhanced-prescriptions/${id}/verify_prescription/`, verificationData),
-  getVerificationQueue: (params = {}) => 
-    axiosInstance.get('/prescription/enhanced-prescriptions/verification_queue/', { params }),
+  getVerificationQueue: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/prescription/enhanced-prescriptions/verification_queue/', { params: { ...params, page, page_size: pageSize } }),
   
   // Prescription medicines
   getPrescriptionMedicines: (params = {}) => axiosInstance.get('/prescription/medicines/', { params }),
@@ -219,7 +221,8 @@ export const courierAPI = {
 // ============================================================================
 
 export const orderAPI = {
-  getOrders: (params = {}) => axiosInstance.get('/order/orders/', { params }),
+  getOrders: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/order/orders/', { params: { ...params, page, page_size: pageSize } }),
   getOrder: (id) => axiosInstance.get(`/order/orders/${id}/`),
   createOrder: (orderData) => axiosInstance.post('/order/orders/', orderData),
   updateOrder: (id, orderData) => axiosInstance.patch(`/order/orders/${id}/`, orderData),

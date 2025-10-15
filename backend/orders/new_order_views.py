@@ -12,6 +12,7 @@ from prescriptions.ocr_service import OCRService
 from product.models import Product
 import logging
 import json
+from .views import OrderPagination # Import OrderPagination
 
 logger = logging.getLogger(__name__)
 
@@ -178,13 +179,16 @@ def get_orders_for_prescription_verification(request):
     """
     try:
         # Get orders that need prescription verification
-        orders = Order.objects.filter(
+        queryset = Order.objects.filter(
             order_status__in=['prescription_uploaded', 'awaiting_prescription'],
             is_prescription_order=True
         ).select_related('user', 'prescription').prefetch_related('items__product').order_by('-created_at')
         
+        paginator = OrderPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
         orders_data = []
-        for order in orders:
+        for order in paginated_queryset:
             order_data = {
                 'id': order.id,
                 'order_number': f'ORD{order.id:06d}',
@@ -219,11 +223,7 @@ def get_orders_for_prescription_verification(request):
             
             orders_data.append(order_data)
         
-        return Response({
-            'success': True,
-            'orders': orders_data,
-            'total_orders': len(orders_data)
-        }, status=status.HTTP_200_OK)
+        return paginator.get_paginated_response(orders_data)
         
     except Exception as e:
         logger.error(f"Error fetching orders for verification: {str(e)}")
@@ -307,12 +307,15 @@ def get_user_orders(request):
     }
     """
     try:
-        orders = Order.objects.filter(
+        queryset = Order.objects.filter(
             user=request.user
         ).prefetch_related('items__product').order_by('-created_at')
         
+        paginator = OrderPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
         orders_data = []
-        for order in orders:
+        for order in paginated_queryset:
             order_data = {
                 'id': order.id,
                 'order_number': f'ORD{order.id:06d}',
@@ -334,11 +337,7 @@ def get_user_orders(request):
             }
             orders_data.append(order_data)
         
-        return Response({
-            'success': True,
-            'orders': orders_data,
-            'total_orders': len(orders_data)
-        }, status=status.HTTP_200_OK)
+        return paginator.get_paginated_response(orders_data)
         
     except Exception as e:
         logger.error(f"Error fetching user orders: {str(e)}")

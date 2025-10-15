@@ -27,10 +27,16 @@ const PrescriptionUploadsTable = () => {
   const [sortBy, setSortBy] = useState("upload_date"); // Current column being sorted
   const [sortOrder, setSortOrder] = useState("desc"); // Sort order: 'asc' or 'desc'
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); // Default page size
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
   // useEffect hook to fetch prescriptions whenever statusFilter, sortBy, or sortOrder changes
   useEffect(() => {
     fetchPrescriptions();
-  }, [statusFilter, sortBy, sortOrder]); // Dependencies array: re-run effect if these states change
+  }, [statusFilter, sortBy, sortOrder, currentPage, pageSize]); // Dependencies array: re-run effect if these states change
 
   // Function to fetch prescriptions from the API
   const fetchPrescriptions = async () => {
@@ -40,6 +46,8 @@ const PrescriptionUploadsTable = () => {
 
       // Construct URLSearchParams for query parameters (sorting, filtering, searching)
       const params = new URLSearchParams({
+        page: currentPage,
+        page_size: pageSize,
         ordering: sortOrder === "desc" ? `-${sortBy}` : sortBy, // Add '-' for descending order
       });
 
@@ -53,18 +61,19 @@ const PrescriptionUploadsTable = () => {
 
       // Make GET request to the prescriptions API endpoint
       const response = await axiosInstance.get(
-        `prescription/prescriptions/?${params}`
+        `prescription/enhanced-prescriptions/?${params}` // Use enhanced-prescriptions endpoint
       );
 
       // Log the response data for debugging
       console.log(
         "Prescriptions API Response:",
-        response.data.results || response.data
+        response.data
       );
 
       // Update prescriptions state with the fetched data
-      // Assumes API response might have data in 'results' property or directly
-      setPrescriptions(response.data.results || response.data);
+      setPrescriptions(response.data.results || []);
+      setTotalItems(response.data.count || 0);
+      setTotalPages(Math.ceil((response.data.count || 0) / pageSize));
     } catch (err) {
       // Catch and handle any errors during the API call
       setError("Failed to fetch prescriptions. Please try again.");
@@ -453,6 +462,42 @@ const PrescriptionUploadsTable = () => {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center space-x-4 mt-6">
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <span className="text-gray-700">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1); // Reset to first page when page size changes
+            }}
+            className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="5">5 per page</option>
+            <option value="10">10 per page</option>
+            <option value="20">20 per page</option>
+            <option value="50">50 per page</option>
+          </select>
+        </div>
+      )}
     </div>
   );
 };

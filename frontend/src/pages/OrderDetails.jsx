@@ -62,8 +62,13 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
             <div className="flex items-center gap-4 mb-6 sm:mb-0">
               <PharmacyLogo />
               <div>
-                <h1 className="text-2xl font-bold text-gray-800">{invoice.vendor?.name || "Infixmart"}</h1>
-                <p className="text-gray-500 text-sm">{invoice.vendor?.address || "123 Health St, Wellness City, 12345"}</p>
+                <h1 className="text-2xl font-bold text-gray-800">
+                  {invoice.vendor?.name || "Infixmart"}
+                </h1>
+                <p className="text-gray-500 text-sm">
+                  {invoice.vendor?.address ||
+                    "123 Health St, Wellness City, 12345"}
+                </p>
               </div>
             </div>
             <div className="text-left sm:text-right">
@@ -74,9 +79,7 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
                 <span className="text-sm font-semibold text-gray-600">
                   Invoice #{" "}
                 </span>
-                <span className="font-mono">
-                  {invoice.invoice_number}
-                </span>
+                <span className="font-mono">{invoice.invoice_number}</span>
               </div>
             </div>
           </header>
@@ -84,15 +87,9 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
           <section className="grid md:grid-cols-2 gap-8 mt-8">
             <div>
               <h3 className="font-semibold text-gray-700 mb-2">Bill To:</h3>
-              <p className="font-bold text-gray-800">
-                {user.full_name}
-              </p>
-              <p className="text-gray-600 text-sm">
-                {order.address_full}
-              </p>
-              <p className="text-gray-600 text-sm">
-                {user.email}
-              </p>
+              <p className="font-bold text-gray-800">{user.full_name}</p>
+              <p className="text-gray-600 text-sm">{order.address_full}</p>
+              <p className="text-gray-600 text-sm">{user.email}</p>
               <p className="text-gray-600 text-sm">
                 {order.user_phone || "N/A"}
               </p>
@@ -120,10 +117,24 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-100 text-sm font-semibold text-gray-600">
-                    <th className="p-3">Description</th>
-                    <th className="p-3 text-center w-24">Qty</th>
-                    <th className="p-3 text-right w-32">Unit Price</th>
-                    <th className="p-3 text-right w-32">Total</th>
+                    <th className="p-3 sticky top-0 bg-gray-100">
+                      Description
+                    </th>
+                    <th className="p-3 text-center w-24 sticky top-0 bg-gray-100">
+                      Qty
+                    </th>
+                    <th className="p-3 text-right w-32 sticky top-0 bg-gray-100">
+                      MRP
+                    </th>
+                    <th className="p-3 text-right w-32 sticky top-0 bg-gray-100">
+                      Discount
+                    </th>
+                    <th className="p-3 text-right w-32 sticky top-0 bg-gray-100">
+                      Unit Price
+                    </th>
+                    <th className="p-3 text-right w-32 sticky top-0 bg-gray-100">
+                      Total
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -139,7 +150,16 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
                       </td>
                       <td className="p-3 text-center">{item.quantity}</td>
                       <td className="p-3 text-right">
-                        ₹{parseFloat(item.price || item.unit_price_at_order || 0).toFixed(2)}
+                        ₹{parseFloat(item.mrp_price || 0).toFixed(2)}
+                      </td>
+                      <td className="p-3 text-right">
+                        ₹{parseFloat(item.discount_at_order || 0).toFixed(2)}
+                      </td>
+                      <td className="p-3 text-right">
+                        ₹
+                        {parseFloat(
+                          item.selling_price || item.unit_price_at_order || 0
+                        ).toFixed(2)}
                       </td>
                       <td className="p-3 text-right font-medium text-gray-800">
                         ₹{parseFloat(item.total_price || 0).toFixed(2)}
@@ -153,44 +173,47 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
 
           <section className="mt-8 grid md:grid-cols-2 gap-8 items-start">
             <div className="space-y-6">
-              {invoice.payment_details && 
-              <div>
-                <h3 className="font-semibold text-gray-700 mb-2">
-                  Payment Summary:
-                </h3>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>
-                    <span className="font-medium text-gray-700">
-                      Payment Method:
-                    </span>{" "}
-                    {invoice.payment_details.payment_method}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-700">
-                      Transaction ID:
-                    </span>{" "}
-                    {invoice.payment_details.transaction_id}
+              {invoice.payment_details && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 mb-2">
+                    Payment Summary:
+                  </h3>
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p>
+                      <span className="font-medium text-gray-700">
+                        Payment Method:
+                      </span>{" "}
+                      {invoice.payment_details.payment_method}
+                    </p>
+                    <p>
+                      <span className="font-medium text-gray-700">
+                        Transaction ID:
+                      </span>{" "}
+                      {invoice.payment_details.transaction_id}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {invoice.terms_and_conditions && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 mb-2">
+                    Terms & Conditions:
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {invoice.terms_and_conditions}
                   </p>
                 </div>
-              </div>
-              }
-              {invoice.terms_and_conditions &&
-              <div>
-                <h3 className="font-semibold text-gray-700 mb-2">
-                  Terms & Conditions:
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {invoice.terms_and_conditions}
-                </p>
-              </div>
-              }
+              )}
             </div>
             <div className="flex flex-col items-end">
               <div className="w-full max-w-sm">
                 <div className="flex justify-between py-2 border-b">
                   <span className="font-semibold text-gray-600">Subtotal:</span>
                   <span className="font-medium text-gray-800">
-                  ₹{parseFloat(invoice.financial?.subtotal || order.total_amount || 0).toFixed(2)}
+                    ₹
+                    {parseFloat(
+                      invoice.financial?.subtotal || order.total_amount || 0
+                    ).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
@@ -202,7 +225,10 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="font-semibold text-gray-600">Discount:</span>
                   <span className="font-medium text-red-500">
-                    - ₹{parseFloat(invoice.financial?.discount_amount || 0).toFixed(2)}
+                    - ₹
+                    {parseFloat(
+                      invoice.financial?.discount_amount || 0
+                    ).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
@@ -210,27 +236,36 @@ const InvoiceTemplate = ({ invoice, order, user }) => {
                     Total Amount:
                   </span>
                   <span className="text-lg font-bold text-gray-800">
-                    ₹{parseFloat(invoice.financial?.total_price || order.total_amount || 0).toFixed(2)}
+                    ₹
+                    {parseFloat(
+                      invoice.financial?.total_price || order.total_amount || 0
+                    ).toFixed(2)}
                   </span>
                 </div>
                 {isPaid && (
                   <>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="font-semibold text-gray-600">
-                      Amount Paid:
-                    </span>
-                    <span className="font-medium text-green-600">
-                      - ₹{parseFloat(invoice.financial?.amount_paid || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-4 bg-green-100 rounded-b-lg px-4 mt-2">
-                    <span className="text-lg font-bold text-gray-800">
-                      Balance Due:
-                    </span>
-                    <span className="text-lg font-bold text-green-600">
-                      ₹{parseFloat(invoice.financial?.balance_due || 0).toFixed(2)}
-                    </span>
-                  </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="font-semibold text-gray-600">
+                        Amount Paid:
+                      </span>
+                      <span className="font-medium text-green-600">
+                        - ₹
+                        {parseFloat(
+                          invoice.financial?.amount_paid || 0
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-4 bg-green-100 rounded-b-lg px-4 mt-2">
+                      <span className="text-lg font-bold text-gray-800">
+                        Balance Due:
+                      </span>
+                      <span className="text-lg font-bold text-green-600">
+                        ₹
+                        {parseFloat(
+                          invoice.financial?.balance_due || 0
+                        ).toFixed(2)}
+                      </span>
+                    </div>
                   </>
                 )}
               </div>
