@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI } from '../api/apiService';
 import PurchaseOrderForm from './PurchaseOrderForm'; // Import the form component
+import { useNavigate } from 'react-router-dom'; // Import useNavigate for navigation
 
 const PurchaseBillInventoryUpload = () => {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showForm, setShowForm] = useState(false); // State to control form visibility
+  const [showForm, setShowForm] = useState(false); // State to control PurchaseOrderForm visibility
   const [currentOrder, setCurrentOrder] = useState(null); // State to hold order data for editing
+
+  const navigate = useNavigate(); // Initialize navigate hook
 
   const fetchPurchaseOrders = async () => {
     try {
@@ -29,12 +32,17 @@ const PurchaseBillInventoryUpload = () => {
 
   const handleAddNewClick = () => {
     setCurrentOrder(null); // Clear any existing order data
-    setShowForm(true); // Show the form for adding new
+    setShowForm(true); // Show the PurchaseOrderForm for adding new
   };
 
   const handleEditClick = (order) => {
     setCurrentOrder(order); // Set the order data for editing
-    setShowForm(true); // Show the form
+    setShowForm(true); // Show the PurchaseOrderForm
+  };
+
+  const handleReturnClick = (order) => {
+    // Navigate to the Purchase Bill Return page, passing the purchase order ID
+    navigate(`/purchase-bill/return?poId=${order.id}`);
   };
 
   const handleDeleteClick = async (orderId) => {
@@ -50,7 +58,7 @@ const PurchaseBillInventoryUpload = () => {
   };
 
   const handleFormClose = () => {
-    setShowForm(false); // Hide the form
+    setShowForm(false); // Hide the PurchaseOrderForm
     setCurrentOrder(null); // Clear current order
     fetchPurchaseOrders(); // Refresh the list after form action
   };

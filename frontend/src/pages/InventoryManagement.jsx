@@ -64,14 +64,21 @@ const InventoryManagement = () => {
       setLoading(true);
       setError(null);
       const response = await productAPI.getProducts(page, size); // Pass page and size
-      console.log("product",response);
-      const fetchedProducts = response.data.results || []; // Access results for paginated data
-      setProducts(fetchedProducts);
-      setTotalItems(response.data.count);
-      setTotalPages(Math.ceil(response.data.count / size));
+      console.log("API Response for Products:", response.data); // Debug log for raw response
+      const data = response.data;
+      let productsToSet = [];
+      if (Array.isArray(data)) {
+        productsToSet = data;
+      } else if (data && Array.isArray(data.results)) {
+        productsToSet = data.results;
+      }
+      console.log("Fetched Products (after processing):", productsToSet); // Debug log for processed products
+      setProducts(productsToSet);
+      setTotalItems(data.count || productsToSet.length); // Adjust totalItems based on actual data or count
+      setTotalPages(Math.ceil((data.count || productsToSet.length) / size));
 
       // Extract all batches from the fetched products
-      const allBatches = fetchedProducts.flatMap(product => product.batches || []);
+      const allBatches = productsToSet.flatMap(product => product.batches || []);
       setBatches(allBatches);
 
     } catch(error){
