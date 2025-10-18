@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem
+from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
 from product.models import Batch, Product
 from product.serializers import ProductSerializer, BatchSerializer
 
@@ -70,7 +70,26 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PurchaseOrderItem
         fields = '__all__'
-        read_only_fields = ('subtotal', 'received_quantity') # received_quantity should not be set by client
+        read_only_fields = ('subtotal', 'received_quantity', 'returned_quantity') # received_quantity and returned_quantity should not be set by client
+
+class PurchaseReturnItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    
+    class Meta:
+        model = PurchaseReturnItem
+        fields = '__all__'
+        read_only_fields = ('unit_price',) # unit_price is derived from PurchaseOrderItem
+
+class PurchaseReturnSerializer(serializers.ModelSerializer):
+    items = PurchaseReturnItemSerializer(many=True, read_only=True) # Items are read-only for display
+    purchase_order_id = serializers.IntegerField(source='purchase_order.id', read_only=True)
+    supplier_name = serializers.CharField(source='purchase_order.supplier.name', read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = PurchaseReturn
+        fields = '__all__'
+        read_only_fields = ('total_amount', 'created_by', 'updated_by', 'created_at', 'updated_at')
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True)

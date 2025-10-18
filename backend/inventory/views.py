@@ -6,11 +6,13 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
-from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem
+from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
 from .serializers import (
     StockMovementSerializer, StockAlertSerializer, SupplierSerializer,
     BatchCreateSerializer, InventoryStatsSerializer,
-    PurchaseOrderSerializer, PurchaseOrderItemSerializer
+    PurchaseOrderSerializer, PurchaseOrderItemSerializer,
+    PurchaseReturnItemSerializer, # Import the new serializer
+    PurchaseReturnSerializer # Import the new serializer
 )
 from product.models import Product, Batch
 from product.serializers import BatchSerializer
@@ -266,6 +268,112 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         purchase_order.save()
         serializer = self.get_serializer(purchase_order)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], serializer_class=PurchaseReturnItemSerializer)
+    def return_items(self, request, pk=None):
+        purchase_order = self.get_object()
+        if purchase_order.status == 'CANCELLED':
+            return Response({'detail': 'Cannot return items for a cancelled order.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        items_to_return_data = serializer.validated_data
+
+        # Create a new PurchaseReturn record
+        purchase_return = PurchaseReturn.objects.create(
+            purchase_order=purchase_order,
+            reason=request.data.get('reason', 'Items returned to supplier.'),
+            created_by=request.user,
+            status='PROCESSED' # Assuming immediate processing for now
+        )
+        total_return_amount = 0
+
+        for item_data in items_to_return_data:
+            item_id = item_data.get('id')
+            return_quantity = item_data.get('quantity')
+
+            try:
+                po_item = purchase_order.items.get(id=item_id)
+            except PurchaseOrderItem.DoesNotExist:
+                return Response({'detail': f'Purchase order item with id {item_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if return_quantity > (po_item.received_quantity - po_item.returned_quantity):
+                return Response({'detail': f'Return quantity for item {po_item.product.name} exceeds available received quantity not yet returned.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            po_item.returned_quantity += return_quantity
+            po_item.save()
+
+            # Update product stock and create stock movement
+            product = po_item.product
+            product.stock_quantity -= return_quantity
+            product.save()
+
+            # Handle batch update
+            batch_number = po_item.batch_number
+            expiry_date = po_item.expiry_date
+
+            try:
+                batch = Batch.objects.get(
+                    product=product,
+                    batch_number=batch_number,
+                    expiry_date=expiry_date
+                )
+                if batch.current_quantity < return_quantity:
+                    return Response({'detail': f'Insufficient batch quantity for item {product.name} batch {batch_number} to return.'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                batch.current_quantity -= return_quantity
+                batch.save()
+            except Batch.DoesNotExist:
+                return Response({'detail': f'Batch for product {product.name} with batch number {batch_number} and expiry date {expiry_date} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Create StockMovement record
+            StockMovement.objects.create(
+                product=product,
+                batch=batch,
+                movement_type='SUPPLIER_RETURN',
+                quantity=-return_quantity, # Negative quantity for OUT movement
+                reference_number=f"PR-{purchase_return.id}-PO-{purchase_order.id}",
+                notes=f"Returned {return_quantity} units for Purchase Return #{purchase_return.id} from PO #{purchase_order.id} from batch {batch.batch_number}",
+                created_by=request.user
+            )
+
+            # Create PurchaseReturnItem record
+            PurchaseReturnItem.objects.create(
+                purchase_return=purchase_return,
+                purchase_order_item=po_item,
+                product=product,
+                quantity=return_quantity,
+                unit_price=po_item.unit_price
+            )
+            total_return_amount += (return_quantity * po_item.unit_price)
+        
+        purchase_return.total_amount = total_return_amount
+        purchase_return.save()
+
+        # Optionally update purchase order status if all received items are returned
+        # For simplicity, we'll just return the updated PurchaseReturn data.
+        serializer = PurchaseReturnSerializer(purchase_return)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PurchaseReturnViewSet(viewsets.ModelViewSet):
+    queryset = PurchaseReturn.objects.all().order_by('-created_at')
+    pagination_class = CustomPageNumberPagination
+    serializer_class = PurchaseReturnSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        purchase_order_id = self.request.query_params.get('purchase_order', None)
+        status = self.request.query_params.get('status', None)
+
+        if purchase_order_id:
+            queryset = queryset.filter(purchase_order_id=purchase_order_id)
+        if status:
+            queryset = queryset.filter(status=status)
+        return queryset
+
 
 class PurchaseOrderItemViewSet(viewsets.ModelViewSet):
     queryset = PurchaseOrderItem.objects.all()
