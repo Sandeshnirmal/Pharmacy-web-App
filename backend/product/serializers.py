@@ -1,49 +1,55 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db.models import Avg
-from datetime import date, timedelta # Import date and timedelta here
-from .models import (
-    Category, Product, Batch, Inventory, GenericName,
-    ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductTagAssignment, ProductViewHistory
-)
-
-User = get_user_model()
-
-class CategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Category
-        fields = '__all__'
-
-
-class GenericNameSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = GenericName
-        fields = '__all__'
-
-class BulkCategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Category
-        fields = ['name', 'description', 'parent_category']
-        extra_kwargs = {'parent_category': {'required': False, 'allow_null': True}}
-
-class BulkGenericNameSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = GenericName
-        fields = ['name', 'description']
-
-from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from django.db.models import Avg
 from datetime import date, timedelta
 
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductTagAssignment, ProductViewHistory
+    ProductTagAssignment, ProductViewHistory, Composition, Discount
 )
 
 User = get_user_model()
+
+
+# ----------------------------
+# Discount Serializer
+# ----------------------------
+class DiscountSerializer(serializers.ModelSerializer):
+    product_name = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = Discount
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at', 'created_by')
+
+    def get_product_name(self, obj):
+        return obj.product.name if obj.product else None
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else None
+
+    def validate(self, data):
+        target_type = data.get('target_type')
+        product = data.get('product')
+        category = data.get('category')
+
+        if target_type == 'product' and not product:
+            raise serializers.ValidationError({'product': 'Product must be specified for product-wise discounts.'})
+        if target_type == 'category' and not category:
+            raise serializers.ValidationError({'category': 'Category must be specified for category-wise discounts.'})
+        if target_type == 'product' and category:
+            raise serializers.ValidationError({'category': 'Cannot specify category for product-wise discounts.'})
+        if target_type == 'category' and product:
+            raise serializers.ValidationError({'product': 'Cannot specify product for category-wise discounts.'})
+        
+        return data
+
+    def create(self, validated_data):
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 # ----------------------------
@@ -62,6 +68,23 @@ class GenericNameSerializer(serializers.ModelSerializer):
     class Meta:
         model = GenericName
         fields = '__all__'
+
+# ----------------------------
+# Bulk Category Serializer
+# ----------------------------
+class BulkCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['name', 'description', 'parent_category']
+        extra_kwargs = {'parent_category': {'required': False, 'allow_null': True}}
+
+# ----------------------------
+# Bulk Generic Name Serializer
+# ----------------------------
+class BulkGenericNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GenericName
+        fields = ['name', 'description']
 
 
 # ----------------------------
@@ -90,7 +113,6 @@ class BatchSerializer(serializers.ModelSerializer):
     expiry_status = serializers.SerializerMethodField()
     days_to_expiry = serializers.SerializerMethodField()
     is_expired = serializers.SerializerMethodField()
-    # Changed mrp_price and discount_percentage to DecimalField for writeability
     mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
 
@@ -171,16 +193,12 @@ class ProductSerializer(serializers.ModelSerializer):
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        # User wants price to be based on the earliest expiring batch, not necessarily the cheapest.
-        # First, sort active batches by expiry date.
         active_batches.sort(key=lambda b: b.expiry_date)
 
-        # If a primary batch exists and is active, it still takes precedence for selling price.
         primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.selling_price
 
-        # Otherwise, take the selling price of the earliest expiring active batch.
         if active_batches:
             return active_batches[0].selling_price
         return 0
@@ -189,15 +207,12 @@ class ProductSerializer(serializers.ModelSerializer):
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        # Sort active batches by expiry date.
         active_batches.sort(key=lambda b: b.expiry_date)
 
-        # If a primary batch exists and is active, it still takes precedence for cost price.
         primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.cost_price
 
-        # Otherwise, take the cost price of the earliest expiring active batch.
         if active_batches:
             return active_batches[0].cost_price
         return 0
@@ -224,7 +239,7 @@ class ProductSerializer(serializers.ModelSerializer):
 # Enhanced Product Serializer
 # ----------------------------
 class EnhancedProductSerializer(serializers.ModelSerializer):
-    batches = SimpleBatchSerializer(many=True, read_only=True)  # Temporarily use SimpleBatchSerializer for debugging
+    batches = SimpleBatchSerializer(many=True, read_only=True)
     tags = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     total_reviews = serializers.SerializerMethodField()
@@ -284,16 +299,12 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        # User wants price to be based on the earliest expiring batch, not necessarily the cheapest.
-        # First, sort active batches by expiry date.
         active_batches.sort(key=lambda b: b.expiry_date)
 
-        # If a primary batch exists and is active, it still takes precedence for selling price.
         primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.selling_price
 
-        # Otherwise, take the selling price of the earliest expiring active batch.
         if active_batches:
             return active_batches[0].selling_price
         return 0
@@ -302,15 +313,12 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        # Sort active batches by expiry date.
         active_batches.sort(key=lambda b: b.expiry_date)
 
-        # If a primary batch exists and is active, it still takes precedence for cost price.
         primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.cost_price
 
-        # Otherwise, take the cost price of the earliest expiring active batch.
         if active_batches:
             return active_batches[0].cost_price
         return 0
@@ -375,8 +383,8 @@ class BulkProductSerializer(serializers.ModelSerializer):
             'is_active', 'is_featured', 'category_name', 'generic_name_str', 'created_by'
         ]
         extra_kwargs = {
-            'generic_name': {'required': False}, # Make generic_name not required at model level
-            'category': {'required': False}, # Make category not required at model level
+            'generic_name': {'required': False},
+            'category': {'required': False},
         }
 
     def create(self, validated_data):
@@ -408,7 +416,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-
 class WishlistSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
@@ -431,8 +438,8 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     total_reviews = serializers.SerializerMethodField()
     discount_percentage = serializers.SerializerMethodField()
     primary_image = serializers.SerializerMethodField()
-    current_selling_price = serializers.SerializerMethodField() # Add this line
-    current_cost_price = serializers.SerializerMethodField() # Add this line
+    current_selling_price = serializers.SerializerMethodField()
+    current_cost_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -446,38 +453,29 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         ]
 
     def get_current_selling_price(self, obj):
-        # from datetime import date # This import is already at the top of the file
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        # User wants price to be based on the earliest expiring batch, not necessarily the cheapest.
-        # First, sort active batches by expiry date.
         active_batches.sort(key=lambda b: b.expiry_date)
 
-        # If a primary batch exists and is active, it still takes precedence for selling price.
         primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.selling_price
         
-        # Otherwise, take the selling price of the earliest expiring active batch.
         if active_batches:
             return active_batches[0].selling_price
         return None
 
     def get_current_cost_price(self, obj):
-        # from datetime import date # This import is already at the top of the file
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        # Sort active batches by expiry date.
         active_batches.sort(key=lambda b: b.expiry_date)
 
-        # If a primary batch exists and is active, it still takes precedence for cost price.
         primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
         if primary_batch:
             return primary_batch.cost_price
 
-        # Otherwise, take the cost price of the earliest expiring active batch.
         if active_batches:
             return active_batches[0].cost_price
         return None
@@ -490,10 +488,6 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         return obj.reviews.count()
 
     def get_discount_percentage(self, obj):
-        # Discount calculation should now be based on batch selling prices
-        # For simplicity, let's assume we compare current_selling_price with a potential original_mrp from batches
-        # If no original_mrp is available, this field might need to be re-evaluated or removed.
-        # For now, returning 0 as there's no direct 'mrp' or 'price' on Product.
         return 0
 
     def get_primary_image(self, obj):

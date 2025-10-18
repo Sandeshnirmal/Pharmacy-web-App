@@ -274,3 +274,59 @@ class ProductViewHistory(models.Model):
 
     def __str__(self):
         return f"{self.user.username} viewed {self.product.name}"
+
+
+class Discount(models.Model):
+    DISCOUNT_TARGET_TYPES = [
+        ('product', 'Product'),
+        ('category', 'Category'),
+    ]
+
+    name = models.CharField(max_length=255)
+    percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Discount percentage (0-100)"
+    )
+    description = models.TextField(blank=True)
+    target_type = models.CharField(max_length=20, choices=DISCOUNT_TARGET_TYPES)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, related_name='discounts')
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, blank=True, related_name='discounts')
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_discounts')
+
+    class Meta:
+        verbose_name = 'Discount'
+        verbose_name_plural = 'Discounts'
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['target_type']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def clean(self):
+        if self.target_type == 'product' and not self.product:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'product': 'Product must be specified for product-wise discounts.'})
+        if self.target_type == 'category' and not self.category:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'category': 'Category must be specified for category-wise discounts.'})
+        if self.target_type == 'product' and self.category:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'category': 'Cannot specify category for product-wise discounts.'})
+        if self.target_type == 'category' and self.product:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'product': 'Cannot specify product for category-wise discounts.'})
+
+    def __str__(self):
+        target = ""
+        if self.target_type == 'product' and self.product:
+            target = f" for Product: {self.product.name}"
+        elif self.target_type == 'category' and self.category:
+            target = f" for Category: {self.category.name}"
+        return f"{self.name} ({self.percentage}%) {target}"

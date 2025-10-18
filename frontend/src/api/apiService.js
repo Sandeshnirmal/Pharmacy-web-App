@@ -186,6 +186,25 @@ export const prescriptionAPI = {
 };
 
 // ============================================================================
+// INVENTORY MANAGEMENT API
+// ============================================================================
+
+export const inventoryAPI = {
+  getPurchaseOrders: (page = 1, pageSize = 10, params = {}) =>
+    axiosInstance.get('/api/inventory/purchase-orders/', { params: { ...params, page, page_size: pageSize } }),
+  createPurchaseOrder: (orderData) =>
+    axiosInstance.post('/api/inventory/purchase-orders/', orderData),
+  getPurchaseOrder: (id) =>
+    axiosInstance.get(`/api/inventory/purchase-orders/${id}/`),
+  updatePurchaseOrder: (id, orderData) =>
+    axiosInstance.patch(`/api/inventory/purchase-orders/${id}/`, orderData),
+  deletePurchaseOrder: (id) =>
+    axiosInstance.delete(`/api/inventory/purchase-orders/${id}/`),
+  getSuppliers: (params = {}) =>
+    axiosInstance.get('/api/inventory/suppliers/', { params }),
+};
+
+// ============================================================================
 // COURIER MANAGEMENT API (TPC Specific)
 // ============================================================================
 
@@ -241,6 +260,18 @@ export const orderAPI = {
       'Accept': 'application/pdf',
     }
   }),
+};
+
+// ============================================================================
+// DISCOUNT MANAGEMENT API
+// ============================================================================
+
+export const discountAPI = {
+  getDiscounts: (params = {}) => axiosInstance.get('/api/discounts/', { params }),
+  getDiscount: (id) => axiosInstance.get(`/api/discounts/${id}/`),
+  createDiscount: (discountData) => axiosInstance.post('/api/discounts/', discountData),
+  updateDiscount: (id, discountData) => axiosInstance.patch(`/api/discounts/${id}/`, discountData),
+  deleteDiscount: (id) => axiosInstance.delete(`/api/discounts/${id}/`),
 };
 
 // ============================================================================

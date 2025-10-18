@@ -18,6 +18,8 @@ urlpatterns = [
     path('api/prescriptions/', include('prescriptions.urls')),
     path('api/order/', include('orders.urls')),
     path('api/inventory/', include('inventory.urls')),
+    path('api/offline-sales/', include('offline_sales.urls')),
+    path('api/discounts/', include('product.urls')), # Expose discounts directly under /api/discounts/
 
     # Legacy endpoints (for backward compatibility)
     path('user/', include('usermanagement.urls')),

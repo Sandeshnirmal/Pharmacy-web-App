@@ -98,8 +98,14 @@ const SidebarNavbar = () => {
           <SidebarItem label="Dashboard" to="/Dashboard" />
           {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
           
-          <SidebarItem label="Inventory Management" to="/Inventory" />
-          <SidebarItem label="Prescriptions" to="/Prescription" />
+          <SidebarItem label="Inventory Management" to="/inventory" />
+          <SidebarItem label="Purchase Bill" to="/purchase-bill">
+            <SidebarItem label="Purchase Bill Inventory Upload" to="/purchase-bill/inventory-upload" />
+            <SidebarItem label="Purchase Bill Return" to="/purchase-bill/return" />
+          </SidebarItem>
+          <SidebarItem label="Rate Master" to="/rate-master" />
+          <SidebarItem label="Discount Master" to="/discount-master" />
+          <SidebarItem label="Prescriptions" to="/prescriptions" />
           {/* <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" /> */}
           {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
           <SidebarItem label="Orders" to="/Orders" />

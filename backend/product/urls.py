@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, ProductViewSet, BatchViewSet, InventoryViewSet,
     GenericNameViewSet, EnhancedProductViewSet, ProductReviewViewSet,
-    WishlistViewSet,ExcelUploadView,
+    WishlistViewSet, ExcelUploadView, DiscountViewSet, # Import DiscountViewSet
     BulkCategoryCreateAPIView, BulkGenericNameCreateAPIView, BulkProductCreateAPIView # Import new views
 )
 
@@ -30,6 +30,7 @@ router.register(r'reviews', ProductReviewViewSet)
 router.register(r'wishlist', WishlistViewSet, basename='wishlist')
 router.register(r'batches', BatchViewSet)
 router.register(r'inventory', InventoryViewSet)
+router.register(r'discounts', DiscountViewSet) # Register DiscountViewSet
 
 urlpatterns = [
     # Enhanced API endpoints

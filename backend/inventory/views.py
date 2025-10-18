@@ -6,10 +6,11 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
-from .models import StockMovement, StockAlert, Supplier
+from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem
 from .serializers import (
     StockMovementSerializer, StockAlertSerializer, SupplierSerializer,
-    BatchCreateSerializer, InventoryStatsSerializer
+    BatchCreateSerializer, InventoryStatsSerializer,
+    PurchaseOrderSerializer, PurchaseOrderItemSerializer
 )
 from product.models import Product, Batch
 from product.serializers import BatchSerializer
@@ -171,3 +172,109 @@ class BatchViewSet(viewsets.ModelViewSet):
 
         serializer = InventoryStatsSerializer(stats_data)
         return Response(serializer.data)
+
+class PurchaseOrderViewSet(viewsets.ModelViewSet):
+    queryset = PurchaseOrder.objects.all().order_by('-order_date')
+    pagination_class = CustomPageNumberPagination
+    serializer_class = PurchaseOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        supplier_id = self.request.query_params.get('supplier', None)
+        status = self.request.query_params.get('status', None)
+
+        if supplier_id:
+            queryset = queryset.filter(supplier_id=supplier_id)
+        if status:
+            queryset = queryset.filter(status=status)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def receive_items(self, request, pk=None):
+        purchase_order = self.get_object()
+        if purchase_order.status == 'CANCELLED':
+            return Response({'detail': 'Cannot receive items for a cancelled order.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        items_data = request.data.get('items', [])
+        if not items_data:
+            return Response({'detail': 'No items provided for reception.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        for item_data in items_data:
+            item_id = item_data.get('id')
+            received_quantity = item_data.get('received_quantity')
+
+            if not item_id or received_quantity is None:
+                return Response({'detail': 'Each item must have an id and received_quantity.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                po_item = purchase_order.items.get(id=item_id)
+            except PurchaseOrderItem.DoesNotExist:
+                return Response({'detail': f'Purchase order item with id {item_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if received_quantity > (po_item.quantity - po_item.received_quantity):
+                return Response({'detail': f'Received quantity for item {po_item.product.name} exceeds outstanding quantity.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            po_item.received_quantity += received_quantity
+            po_item.save()
+
+            # Update product stock and create stock movement
+            product = po_item.product
+            product.stock_quantity += received_quantity
+            product.save()
+
+            # Handle batch creation/update and link to StockMovement
+            batch_number = po_item.batch_number # Get batch number from purchase order item
+            expiry_date = po_item.expiry_date # Get expiry date from purchase order item
+
+            batch, created = Batch.objects.get_or_create(
+                product=product,
+                batch_number=batch_number,
+                expiry_date=expiry_date,
+                defaults={'quantity': 0, 'current_quantity': 0} # Default values if creating a new batch
+            )
+            
+            # Update batch quantity
+            batch.quantity += received_quantity
+            batch.current_quantity += received_quantity
+            batch.save()
+
+            StockMovement.objects.create(
+                product=product,
+                batch=batch,
+                movement_type='IN',
+                quantity=received_quantity,
+                reference_number=f"PO-{purchase_order.id}",
+                notes=f"Received {received_quantity} units for Purchase Order #{purchase_order.id} into batch {batch.batch_number}",
+                created_by=request.user
+            )
+
+        # Check if all items are fully received
+        all_received = all(item.quantity == item.received_quantity for item in purchase_order.items.all())
+        if all_received:
+            purchase_order.status = 'RECEIVED'
+            purchase_order.delivery_date = timezone.now().date()
+            purchase_order.save()
+
+        purchase_order.save()
+        serializer = self.get_serializer(purchase_order)
+        return Response(serializer.data)
+
+class PurchaseOrderItemViewSet(viewsets.ModelViewSet):
+    queryset = PurchaseOrderItem.objects.all()
+    serializer_class = PurchaseOrderItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        purchase_order_id = self.request.query_params.get('purchase_order', None)
+        if purchase_order_id:
+            queryset = queryset.filter(purchase_order_id=purchase_order_id)
+        return queryset

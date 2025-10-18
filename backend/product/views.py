@@ -14,14 +14,15 @@ from django.utils.decorators import method_decorator
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductViewHistory
+    ProductViewHistory, Discount # Import Discount model
 )
 from .serializers import (
     CategorySerializer, ProductSerializer, BatchSerializer,
     InventorySerializer, GenericNameSerializer, EnhancedProductSerializer,
     ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer,
     BulkCategorySerializer, BulkGenericNameSerializer, BulkProductSerializer, # Import new serializers
-    FileSerializer # Import FileSerializer
+    FileSerializer, # Import FileSerializer
+    DiscountSerializer # Import DiscountSerializer
 )
 
 from django.db.models import Subquery, OuterRef # Import Subquery and OuterRef
@@ -502,3 +503,19 @@ class WishlistViewSet(viewsets.ModelViewSet):
                 'in_wishlist': True,
                 'data': serializer.data
             })
+
+
+class DiscountViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows discounts to be viewed or edited.
+    """
+    queryset = Discount.objects.all().select_related('product', 'category', 'created_by').order_by('-created_at')
+    serializer_class = DiscountSerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can manage discounts
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description', 'product__name', 'category__name']
+    ordering_fields = ['name', 'percentage', 'start_date', 'end_date', 'created_at']
+    ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

@@ -8,12 +8,15 @@ import Dashboard from '../pages/Dashboard';
 const MedicinesListPage = lazy(() => import('../pages/MedicinesListPage'));
 const GenericsTable = lazy(() => import('../pages/GenericsTable'));
 const InventoryManagement = lazy(() => import('../pages/InventoryManagement'));
+const PurchaseBillInventoryUpload = lazy(() => import('../pages/PurchaseBillInventoryUpload'));
+const PurchaseBillReturn = lazy(() => import('../pages/PurchaseBillReturn'));
 
 // Prescription Management - Lazy loaded
 const PrescriptionUploadsTable = lazy(() => import('../pages/PrescriptionUploadsTable'));
 const PrescriptionReview = lazy(() => import('../pages/PrescriptionReview'));
 const PendingPrescriptionsTable = lazy(() => import('../pages/PendingPrescriptionsTable'));
-const AITestPage = lazy(() => import('../pages/AITestPage'));
+const RateMaster = lazy(() => import('../pages/RateMaster'));
+const DiscountMaster = lazy(() => import('../pages/DiscountMaster'));
 
 // Order Management - Lazy loaded
 const OrderDetails = lazy(() => import('../pages/OrderDetails'));
@@ -68,6 +71,20 @@ export const routes = [
     lazy: true
   },
   {
+    path: '/purchase-bill/inventory-upload',
+    element: PurchaseBillInventoryUpload,
+    title: 'Purchase Bill Inventory Upload',
+    icon: 'Upload', // Placeholder icon
+    lazy: true
+  },
+  {
+    path: '/purchase-bill/return',
+    element: PurchaseBillReturn,
+    title: 'Purchase Bill Return',
+    icon: 'RotateCcw', // Placeholder icon
+    lazy: true
+  },
+  {
     path: '/prescriptions',
     element: PrescriptionUploadsTable,
     title: 'Prescriptions',
@@ -88,7 +105,6 @@ export const routes = [
     hidden: true, // Don't show in navigation
     lazy: true
   },
-
   {
     path: '/orders',
     element: OrdersTable,
@@ -129,6 +145,20 @@ export const routes = [
     element: TPCCourierManagementPage,
     title: 'TPC Courier Management',
     icon: 'Truck', // Using a truck icon for courier
+    lazy: true
+  },
+  {
+    path: '/rate-master',
+    element: RateMaster,
+    title: 'Rate Master',
+    icon: 'DollarSign', // Placeholder icon
+    lazy: true
+  },
+  {
+    path: '/discount-master',
+    element: DiscountMaster,
+    title: 'Discount Master',
+    icon: 'Percent', // Placeholder icon
     lazy: true
   }
 ];
