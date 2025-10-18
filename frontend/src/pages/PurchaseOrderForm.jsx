@@ -58,6 +58,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
         batch_number: item.batch_number || '',
         expiry_date: item.expiry_date || '',
         free: item.free || 0,
+        tax: item.tax || '5',
         disc: item.disc || 0,
         amount: (item.quantity * parseFloat(item.unit_price)).toFixed(2),
       }));
@@ -114,11 +115,12 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
       quantity: 0,
       unit_price: 0,
       product_details: null, // To store product object for display
-      mrp: '',
-      packing: '',
+      mrp: 0,
+      packing: 0,
       batch_number: '', // Renamed to match backend model
       expiry_date: '', // Renamed to match backend model
       free: 0, // Not directly mapped to backend, can be used for notes
+      tax: 5,
       disc: 0, // Not directly mapped to backend, can be used for notes
       amount: '0.00',
       },
@@ -220,13 +222,15 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     <div className="p-6 bg-gray-100 min-h-screen">
       <div className="bg-white p-6 rounded-lg shadow-md">
         <h1 className="text-xl font-bold text-gray-800 mb-4">
-          {initialData ? 'Edit Purchase Bill' : 'Create Purchase Bill'}
+          {initialData ? "Edit Purchase Bill" : "Create Purchase Bill"}
         </h1>
 
         {formMessage.text && (
           <div
             className={`mb-4 p-3 rounded-md text-center ${
-              formMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              formMessage.type === "success"
+                ? "bg-green-100 text-green-700"
+                : "bg-red-100 text-red-700"
             }`}
           >
             {formMessage.text}
@@ -237,7 +241,10 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
           {/* Top Form Fields */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div>
-              <label htmlFor="supplier" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="supplier"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Supplier <span className="text-red-500">*</span>
               </label>
               <select
@@ -257,7 +264,10 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
               </select>
             </div>
             <div>
-              <label htmlFor="order_date" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="order_date"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Order Date <span className="text-red-500">*</span>
               </label>
               <input
@@ -271,7 +281,10 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
               />
             </div>
             <div>
-              <label htmlFor="expected_delivery_date" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="expected_delivery_date"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Expected Delivery Date
               </label>
               <input
@@ -318,6 +331,9 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                     Disc %
                   </th>
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    tax
+                  </th>
+                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Amount
                   </th>
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -328,7 +344,10 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
               <tbody className="bg-white divide-y divide-gray-200">
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan="11" className="py-4 px-3 text-center text-gray-500">
+                    <td
+                      colSpan="11"
+                      className="py-4 px-3 text-center text-gray-500"
+                    >
                       No items added. Click "Add Item" to start.
                     </td>
                   </tr>
@@ -355,18 +374,23 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                       <input
                         type="text"
                         name="packing"
-                        value={item.product_details?.packing || ''}
-                        className="w-full p-1 border border-gray-200 rounded-md bg-gray-50"
-                        readOnly
+                        value={
+                          item.packing || item.product_details?.packing || ""
+                        }
+                        onChange={(e) => handleItemChange(index, e)}
+                        className="w-full p-1 border border-gray-200 rounded-md"
+                        placeholder="Packing"
                       />
                     </td>
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
-                        type="text"
+                        type="number"
                         name="mrp"
-                        value={item.product_details?.mrp || ''}
-                        className="w-full p-1 border border-gray-200 rounded-md bg-gray-50"
-                        readOnly
+                        value={item.mrp}
+                        onChange={(e) => handleItemChange(index, e)}
+                        className="w-full p-1 border border-gray-200 rounded-md"
+                        step="1"
+                        placeholder="MRP"
                       />
                     </td>
                     <td className="py-2 px-3 whitespace-nowrap">
@@ -421,6 +445,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                         required
                       />
                     </td>
+
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="number"
@@ -431,6 +456,16 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                         min="0"
                         max="100"
                         step="0.01"
+                      />
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <input
+                        type="number"
+                        name="tax"
+                        value={item.tax || 0}
+                        onChange={(e) => handleItemChange(index, e)}
+                        className="w-full p-1 border border-gray-200 rounded-md bg-gray-50"
+                        readOnly
                       />
                     </td>
                     <td className="py-2 px-3 whitespace-nowrap">
@@ -468,22 +503,31 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
             {/* Discount Info */}
             <div className="border p-4 rounded-md bg-gray-50">
-              <h3 className="font-semibold text-gray-700 mb-2">Discount Info</h3>
+              <h3 className="font-semibold text-gray-700 mb-2">
+                Discount Info
+              </h3>
               <div className="flex justify-between py-1">
-                <span className="text-sm text-gray-600">Total Item Disc. :</span>
-                <span className="text-sm font-medium">₹ {totalDiscount.toFixed(2)}</span>
+                <span className="text-sm text-gray-600">
+                  Total Item Disc. :
+                </span>
+                <span className="text-sm font-medium">
+                  ₹ {totalDiscount.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-sm text-gray-600">Item Disc. 1 :</span>
-                <span className="text-sm font-medium">₹ 0.00</span> {/* Placeholder for now */}
+                <span className="text-sm font-medium">₹ 0.00</span>{" "}
+                {/* Placeholder for now */}
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-sm text-gray-600">Item Disc. 2 :</span>
-                <span className="text-sm font-medium">₹ 0.00</span> {/* Placeholder for now */}
+                <span className="text-sm font-medium">₹ 0.00</span>{" "}
+                {/* Placeholder for now */}
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-sm text-gray-600">Scheme Disc. % :</span>
-                <span className="text-sm font-medium">0</span> {/* Placeholder for now */}
+                <span className="text-sm font-medium">0</span>{" "}
+                {/* Placeholder for now */}
               </div>
             </div>
 
@@ -492,10 +536,15 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
               <div className="border p-4 rounded-md bg-gray-50">
                 <h3 className="font-semibold text-gray-700 mb-2">Tax Info</h3>
                 {/* Tax info content here */}
-                <p className="text-sm text-gray-600">No tax details available.</p>
+                <p className="text-sm text-gray-600">
+                  No tax details available.
+                </p>
               </div>
               <div className="border p-4 rounded-md bg-gray-50">
-                <label htmlFor="billDisc" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="billDisc"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Bill Disc.
                 </label>
                 <div className="flex items-center mt-1">
@@ -516,7 +565,9 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
             {/* Goods Value & Invoice Value */}
             <div className="space-y-4">
               <div className="border p-4 rounded-md bg-gray-50">
-                <h3 className="font-semibold text-gray-700 mb-2">Additional Details</h3>
+                <h3 className="font-semibold text-gray-700 mb-2">
+                  Additional Details
+                </h3>
                 <textarea
                   name="notes"
                   value={formData.notes}
@@ -526,19 +577,33 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                 ></textarea>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">Goods Value:</span>
-                <span className="text-lg font-bold text-gray-800">₹ {goodsValue.toFixed(2)}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Goods Value:
+                </span>
+                <span className="text-lg font-bold text-gray-800">
+                  ₹ {goodsValue.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">Total Disc.:</span>
-                <span className="text-lg font-bold text-gray-800">₹ {totalDiscount.toFixed(2)}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Total Disc.:
+                </span>
+                <span className="text-lg font-bold text-gray-800">
+                  ₹ {totalDiscount.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">Bill Value:</span>
-                <span className="text-lg font-bold text-gray-800">₹ {billValue.toFixed(2)}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Bill Value:
+                </span>
+                <span className="text-lg font-bold text-gray-800">
+                  ₹ {billValue.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">Invoice Value:</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Invoice Value:
+                </span>
                 <input
                   type="text"
                   className="w-32 p-2 border border-gray-300 rounded-md shadow-sm text-lg font-bold text-right bg-gray-50"
@@ -556,14 +621,14 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
               className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
               disabled={submitting}
             >
-              {submitting ? 'Saving...' : 'F18 / End'}
+              {submitting ? "Saving..." : "F18 / End"}
             </button>
             <button
               type="submit"
               className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
               disabled={submitting}
             >
-              {submitting ? 'Saving...' : 'Save'}
+              {submitting ? "Saving..." : "Save"}
             </button>
             <button
               type="button"

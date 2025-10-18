@@ -8,8 +8,8 @@ import Dashboard from '../pages/Dashboard';
 const MedicinesListPage = lazy(() => import('../pages/MedicinesListPage'));
 const GenericsTable = lazy(() => import('../pages/GenericsTable'));
 const InventoryManagement = lazy(() => import('../pages/InventoryManagement'));
-const PurchaseBillInventoryUpload = lazy(() => import('../pages/PurchaseBillInventoryUpload'));
-const PurchaseBillReturn = lazy(() => import('../pages/PurchaseBillReturn'));
+const PurchaseBillInventoryUpload = lazy(() => import('../pages/PurchaseBillInventoryUpload.jsx'));
+// const PurchaseBillReturn = lazy(() => import('../pages/PurchaseBillReturn'));
 
 // Prescription Management - Lazy loaded
 const PrescriptionUploadsTable = lazy(() => import('../pages/PrescriptionUploadsTable'));
@@ -77,13 +77,13 @@ export const routes = [
     icon: 'Upload', // Placeholder icon
     lazy: true
   },
-  {
-    path: '/purchase-bill/return',
-    element: PurchaseBillReturn,
-    title: 'Purchase Bill Return',
-    icon: 'RotateCcw', // Placeholder icon
-    lazy: true
-  },
+  // {
+  //   path: '/purchase-bill/return',
+  //   element: PurchaseBillReturn,
+  //   title: 'Purchase Bill Return',
+  //   icon: 'RotateCcw', // Placeholder icon
+  //   lazy: true
+  // },
   {
     path: '/prescriptions',
     element: PrescriptionUploadsTable,
