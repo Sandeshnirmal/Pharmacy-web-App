@@ -200,8 +200,12 @@ export const inventoryAPI = {
     axiosInstance.patch(`/api/inventory/purchase-orders/${id}/`, orderData),
   deletePurchaseOrder: (id) =>
     axiosInstance.delete(`/api/inventory/purchase-orders/${id}/`),
+  returnPurchaseOrderItems: (id, items) =>
+    axiosInstance.post(`/api/inventory/purchase-orders/${id}/return_items/`, items),
   getSuppliers: (params = {}) =>
     axiosInstance.get('/api/inventory/suppliers/', { params }),
+  getPurchaseReturns: (page = 1, pageSize = 10, params = {}) =>
+    axiosInstance.get('/api/inventory/purchase-returns/', { params: { ...params, page, page_size: pageSize } }),
 };
 
 // ============================================================================
