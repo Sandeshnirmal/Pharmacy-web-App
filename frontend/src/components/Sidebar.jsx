@@ -101,9 +101,13 @@ const SidebarNavbar = () => {
             <SidebarItem label="Discount Master" to="/discount-master" />
             <SidebarItem label="Rate Master" to="/rate-master" />
           </SidebarItem>
-          <SidebarItem label="Purchase Bill" to="/purchase-bill">
+            <SidebarItem label="Purchase Bill" to="/purchase-bill">
             <SidebarItem label="Purchase Bill Inventory Upload" to="/purchase-bill/inventory-upload" />
             <SidebarItem label="Purchase Bill Return" to="/purchase-bill/return" />
+          </SidebarItem>
+          <SidebarItem label="Offline Sales" to="/offline-sales">
+            <SidebarItem label="Offline Sales Billing" to="/offline-sales/billing" />
+            <SidebarItem label="Bill Return" to="/offline-sales/return" />
           </SidebarItem>
           <SidebarItem label="Prescriptions" to="/prescriptions" />
           <SidebarItem label="Orders" to="/Orders" />

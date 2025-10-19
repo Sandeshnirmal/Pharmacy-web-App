@@ -18,6 +18,11 @@ const PendingPrescriptionsTable = lazy(() => import('../pages/PendingPrescriptio
 const RateMaster = lazy(() => import('../pages/RateMaster'));
 const DiscountMaster = lazy(() => import('../pages/DiscountMaster'));
 
+// Offline Sales Management - Lazy loaded
+const OfflineSalesBilling = lazy(() => import('../pages/offline_sales/OfflineSalesBilling'));
+const BillReturn = lazy(() => import('../pages/offline_sales/BillReturn'));
+const InvoiceViewer = lazy(() => import('../pages/offline_sales/InvoiceViewer'));
+
 // Order Management - Lazy loaded
 const OrderDetails = lazy(() => import('../pages/OrderDetails'));
 const OrdersTable = lazy(() => import('../pages/OrdersTable'));
@@ -159,6 +164,28 @@ export const routes = [
     element: DiscountMaster,
     title: 'Discount Master',
     icon: 'Percent', // Placeholder icon
+    lazy: true
+  },
+  {
+    path: '/offline-sales/billing',
+    element: OfflineSalesBilling,
+    title: 'Offline Sales Billing',
+    icon: 'Receipt', // Placeholder icon
+    lazy: true
+  },
+  {
+    path: '/offline-sales/return',
+    element: BillReturn,
+    title: 'Bill Return',
+    icon: 'RotateCcw', // Placeholder icon
+    lazy: true
+  },
+  {
+    path: '/offline-sales/invoice/:saleId',
+    element: InvoiceViewer,
+    title: 'Invoice Viewer',
+    icon: 'FileText', // Placeholder icon
+    hidden: true, // Can be accessed via a link from a sale, not directly in nav
     lazy: true
   },
 ];

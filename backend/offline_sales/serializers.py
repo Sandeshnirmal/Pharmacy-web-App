@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import OfflineSale, OfflineSaleItem
+from .models import OfflineSale, OfflineSaleItem, BillReturn, BillReturnItem
 from product.serializers import ProductSerializer, BatchSerializer # Assuming these exist
 
 class OfflineSaleItemSerializer(serializers.ModelSerializer):
@@ -106,3 +106,65 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             instance.save()
 
         return instance
+
+class BillReturnItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='offline_sale_item.product.name', read_only=True)
+    batch_number = serializers.CharField(source='offline_sale_item.batch.batch_number', read_only=True)
+
+    class Meta:
+        model = BillReturnItem
+        fields = '__all__'
+        read_only_fields = ('subtotal',)
+
+class BillReturnSerializer(serializers.ModelSerializer):
+    returned_items = BillReturnItemSerializer(many=True)
+    returned_by_username = serializers.CharField(source='returned_by.username', read_only=True)
+
+    class Meta:
+        model = BillReturn
+        fields = '__all__'
+        read_only_fields = ('total_return_amount', 'returned_by',)
+
+    def create(self, validated_data):
+        returned_items_data = validated_data.pop('returned_items')
+        bill_return = BillReturn.objects.create(**validated_data)
+        total_return_amount = 0
+
+        for item_data in returned_items_data:
+            offline_sale_item = item_data['offline_sale_item']
+            returned_quantity = item_data['returned_quantity']
+            price_per_unit = item_data['price_per_unit']
+            subtotal = returned_quantity * price_per_unit
+
+            if returned_quantity > offline_sale_item.quantity:
+                raise serializers.ValidationError(f"Returned quantity {returned_quantity} for product {offline_sale_item.product.name} exceeds original sale quantity {offline_sale_item.quantity}.")
+
+            BillReturnItem.objects.create(bill_return=bill_return, subtotal=subtotal, **item_data)
+            total_return_amount += subtotal
+
+            # Stock increment logic for returned items
+            batch = offline_sale_item.batch
+            batch.current_quantity += returned_quantity
+            batch.save()
+
+            # Create StockMovement record for IN
+            from inventory.models import StockMovement
+            StockMovement.objects.create(
+                product=offline_sale_item.product,
+                batch=batch,
+                movement_type='IN',
+                quantity=returned_quantity,
+                reference_number=f"OFFLINE-RETURN-{bill_return.id}",
+                notes=f"Returned {returned_quantity} units for Offline Sale Return #{bill_return.id} to batch {batch.batch_number}",
+                created_by=self.context.get('request').user if self.context.get('request') else None
+            )
+        
+        bill_return.total_return_amount = total_return_amount
+        bill_return.save()
+
+        # Update the original OfflineSale's is_returned status
+        bill_return.sale.is_returned = True
+        bill_return.sale.return_date = bill_return.return_date
+        bill_return.sale.save()
+
+        return bill_return
