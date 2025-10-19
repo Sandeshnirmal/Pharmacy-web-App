@@ -113,11 +113,11 @@ const SidebarNavbar = () => {
             <SidebarItem label="Sales bill" to="/sale-billing" />
             <SidebarItem label="sales return bill" to="/sale-return-billing" />
           </SidebarItem>
-          <SidebarItem label="Rate Master" to="/rate-master" />
-          <SidebarItem label="Discount Master" to="/discount-master" />
+          <SidebarItem label="Offline Sales" to="/offline-sales">
+            <SidebarItem label="Offline Sales Billing" to="/offline-sales/billing" />
+            <SidebarItem label="Bill Return" to="/offline-sales/return" />
+          </SidebarItem>
           <SidebarItem label="Prescriptions" to="/prescriptions" />
-          {/* <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" /> */}
-          {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
           <SidebarItem label="Orders" to="/Orders" />
           <SidebarItem label="Customers" to="/Customers" />
           <SidebarItem label="User Management" to="/Users" />

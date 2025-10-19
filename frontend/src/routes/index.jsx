@@ -20,6 +20,11 @@ const PendingPrescriptionsTable = lazy(() => import('../pages/PendingPrescriptio
 const RateMaster = lazy(() => import('../pages/RateMaster'));
 const DiscountMaster = lazy(() => import('../pages/DiscountMaster'));
 
+// Offline Sales Management - Lazy loaded
+const OfflineSalesBilling = lazy(() => import('../pages/offline_sales/OfflineSalesBilling'));
+const BillReturn = lazy(() => import('../pages/offline_sales/BillReturn'));
+const InvoiceViewer = lazy(() => import('../pages/offline_sales/InvoiceViewer'));
+
 // Order Management - Lazy loaded
 const OrderDetails = lazy(() => import('../pages/OrderDetails'));
 const OrdersTable = lazy(() => import('../pages/OrdersTable'));

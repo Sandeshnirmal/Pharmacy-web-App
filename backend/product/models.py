@@ -170,18 +170,43 @@ class Batch(models.Model):
     quantity = models.PositiveIntegerField(default=0)
     current_quantity = models.PositiveIntegerField()
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0 , null=False)
-    mrp_price = models.DecimalField(max_digits=10,decimal_places=2,default=0 ,null=False)
-    discount_percentage = models.DecimalField(max_digits=10,decimal_places=2,default=0)
+    
+    # Generic pricing fields (can be used as defaults or for single-channel scenarios)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    mrp_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    discount_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Online specific pricing
+    online_mrp_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    online_discount_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    online_selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+
+    # Offline specific pricing
+    offline_mrp_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    offline_discount_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    offline_selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+
     is_primary = models.BooleanField(default=False)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        # Calculate generic selling price
         if self.mrp_price is not None and self.discount_percentage is not None:
             discount_amount = self.mrp_price * (self.discount_percentage / 100)
             self.selling_price = self.mrp_price - discount_amount
+        
+        # Calculate online selling price
+        if self.online_mrp_price is not None and self.online_discount_percentage is not None:
+            online_discount_amount = self.online_mrp_price * (self.online_discount_percentage / 100)
+            self.online_selling_price = self.online_mrp_price - online_discount_amount
+        
+        # Calculate offline selling price
+        if self.offline_mrp_price is not None and self.offline_discount_percentage is not None:
+            offline_discount_amount = self.offline_mrp_price * (self.offline_discount_percentage / 100)
+            self.offline_selling_price = self.offline_mrp_price - offline_discount_amount
+            
         super().save(*args, **kwargs)
 
     def __str__(self):

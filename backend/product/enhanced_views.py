@@ -143,7 +143,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                     Batch.objects.filter(
                         product=OuterRef('pk'),
                         current_quantity__gt=0
-                    ).order_by('expiry_date').values('selling_price')[:1]
+                    ).order_by('expiry_date').values(
+                        'online_selling_price' if self.request.query_params.get('channel') == 'online' else \
+                        ('offline_selling_price' if self.request.query_params.get('channel') == 'offline' else 'selling_price')
+                    )[:1]
                 ),
                 0.0, # Default to 0.0 if no available batch
                 output_field=DecimalField()
@@ -323,6 +326,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                         current_quantity=0,
                         cost_price=0,
                         selling_price=0,
+                        online_mrp_price=0,
+                        online_discount_percentage=0,
+                        online_selling_price=0,
+                        offline_mrp_price=0,
+                        offline_discount_percentage=0,
+                        offline_selling_price=0,
                     )
 
             # Apply stock operation
@@ -337,6 +346,14 @@ class ProductViewSet(viewsets.ModelViewSet):
                     {'error': 'Invalid operation. Use "set", "add", or "subtract"'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            
+            # Update pricing fields if provided in request data
+            batch.mrp_price = request.data.get('mrp_price', batch.mrp_price)
+            batch.discount_percentage = request.data.get('discount_percentage', batch.discount_percentage)
+            batch.online_mrp_price = request.data.get('online_mrp_price', batch.online_mrp_price)
+            batch.online_discount_percentage = request.data.get('online_discount_percentage', batch.online_discount_percentage)
+            batch.offline_mrp_price = request.data.get('offline_mrp_price', batch.offline_mrp_price)
+            batch.offline_discount_percentage = request.data.get('offline_discount_percentage', batch.offline_discount_percentage)
 
             batch.save()
 
@@ -354,7 +371,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def create_batch(self, request, pk=None):
         """Create a new batch for a product."""
         product = self.get_object()
-        serializer = BatchSerializer(data=request.data)
+        serializer = BatchSerializer(data=request.data, context={'request': request}) # Pass request context
         if serializer.is_valid():
             # Ensure the batch is linked to the correct product
             serializer.save(product=product)
