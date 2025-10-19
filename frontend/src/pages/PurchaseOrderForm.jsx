@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { inventoryAPI, productAPI } from '../api/apiService';
+import {
+  inventoryAPI,
+  productAPI,
+  // createPurchaseOrder,
+  // updatePurchaseOrder,
+} from "../api/apiService";
 
-const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialData prop
+const PurchaseOrderForm = ({ onFormClose, initialData }) => {
+  // Accept initialData prop
   const [formData, setFormData] = useState({
-    supplier: '', // Supplier ID
-    order_date: new Date().toISOString().split('T')[0],
-    expected_delivery_date: new Date().toISOString().split('T')[0],
-    status: 'PENDING', // Default status
-    notes: '',
+    supplier: "", // Supplier ID
+    order_date: new Date().toISOString().split("T")[0],
+    expected_delivery_date: new Date().toISOString().split("T")[0],
+    status: "PENDING", // Default status
+    notes: "",
   });
 
   const [items, setItems] = useState([]); // Items for the purchase order
@@ -16,7 +22,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [formMessage, setFormMessage] = useState({ type: '', text: '' }); // For success/error messages
+  const [formMessage, setFormMessage] = useState({ type: "", text: "" }); // For success/error messages
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,8 +35,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
         setSuppliers(suppliersResponse.data.results || suppliersResponse.data);
         setProducts(productsResponse.data.results || productsResponse.data);
       } catch (err) {
-        setError('Failed to fetch initial data (suppliers, products).');
-        console.error('Error fetching initial data:', err);
+        setError("Failed to fetch initial data (suppliers, products).");
+        console.error("Error fetching initial data:", err);
       } finally {
         setLoading(false);
       }
@@ -43,22 +49,22 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
       setFormData({
         supplier: initialData.supplier,
         order_date: initialData.order_date,
-        expected_delivery_date: initialData.expected_delivery_date || '',
+        invoice_date: initialData.invoice_date || "",
         status: initialData.status,
-        notes: initialData.notes || '',
+        notes: initialData.notes || "",
       });
       // Map initialData.items to the local items state
-      const initialItems = initialData.items.map(item => ({
+      const initialItems = initialData.items.map((item) => ({
         product: item.product,
         quantity: item.quantity,
         unit_price: parseFloat(item.unit_price),
-        product_details: products.find(p => p.id === item.product) || null, // Find product details
-        mrp: item.mrp || '',
-        packing: item.packing || '',
-        batch_number: item.batch_number || '',
-        expiry_date: item.expiry_date || '',
+        product_details: products.find((p) => p.id === item.product) || null, // Find product details
+        mrp: item.mrp || "",
+        packing: item.packing || "",
+        batch_number: item.batch_number || "",
+        expiry_date: item.expiry_date || "",
         free: item.free || 0,
-        tax: item.tax || '5',
+        tax: item.tax || "5",
         disc: item.disc || 0,
         amount: (item.quantity * parseFloat(item.unit_price)).toFixed(2),
       }));
@@ -66,11 +72,11 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     } else {
       // Reset form for new entry if initialData is cleared
       setFormData({
-        supplier: '',
-        order_date: new Date().toISOString().split('T')[0],
-        expected_delivery_date: new Date().toISOString().split('T')[0],
-        status: 'PENDING',
-        notes: '',
+        supplier: "",
+        order_date: new Date().toISOString().split("T")[0],
+        expected_delivery_date: new Date().toISOString().split("T")[0],
+        status: "PENDING",
+        notes: "",
       });
       setItems([]);
     }
@@ -87,8 +93,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     newItems[index][name] = value;
 
     // If product is selected, try to find its details
-    if (name === 'product' && value) {
-      const selectedProduct = products.find(p => p.id === parseInt(value));
+    if (name === "product" && value) {
+      const selectedProduct = products.find((p) => p.id === parseInt(value));
       if (selectedProduct) {
         newItems[index].product_details = selectedProduct; // Store full product details
         newItems[index].unit_price = selectedProduct.price; // Set rate from product price
@@ -98,7 +104,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     }
 
     // Recalculate amount if quantity or rate changes
-    if (name === 'quantity' || name === 'unit_price') {
+    if (name === "quantity" || name === "unit_price") {
       const qty = parseFloat(newItems[index].quantity || 0);
       const rate = parseFloat(newItems[index].unit_price || 0);
       newItems[index].amount = (qty * rate).toFixed(2);
@@ -111,18 +117,18 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     setItems([
       ...items,
       {
-      product: '', // Product ID
-      quantity: 0,
-      unit_price: 0,
-      product_details: null, // To store product object for display
-      mrp: 0,
-      packing: 0,
-      batch_number: '', // Renamed to match backend model
-      expiry_date: '', // Renamed to match backend model
-      free: 0, // Not directly mapped to backend, can be used for notes
-      tax: 5,
-      disc: 0, // Not directly mapped to backend, can be used for notes
-      amount: '0.00',
+        product: "", // Product ID
+        quantity: 0,
+        unit_price: 0,
+        product_details: null, // To store product object for display
+        mrp: 0,
+        packing: 0,
+        batch_number: "", // Renamed to match backend model
+        expiry_date: "", // Renamed to match backend model
+        free: 0, // Not directly mapped to backend, can be used for notes
+        tax: 5,
+        disc: 0, // Not directly mapped to backend, can be used for notes
+        amount: "0.00",
       },
     ]);
   };
@@ -135,11 +141,13 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
   const calculateTotals = () => {
     let goodsValue = 0;
     let totalDiscount = 0; // Assuming disc is a percentage on rate
-    items.forEach(item => {
+    items.forEach((item) => {
       const qty = parseFloat(item.quantity || 0);
+      const mrp = parseFloat(item.mrp || 0);
       const rate = parseFloat(item.unit_price || 0);
       const disc = parseFloat(item.disc || 0);
-      const itemAmount = qty * rate;
+      const packing = parseFloat(item.packing || 0);
+      const itemAmount = qty * mrp + packing;
       const itemDiscount = itemAmount * (disc / 100);
       goodsValue += itemAmount;
       totalDiscount += itemDiscount;
@@ -154,21 +162,21 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     e.preventDefault();
     setSubmitting(true);
     setError(null);
-    setFormMessage({ type: '', text: '' });
+    setFormMessage({ type: "", text: "" });
 
     // Validate form data
     if (!formData.supplier || !formData.order_date || items.length === 0) {
-      setError('Please fill in all required fields and add at least one item.');
+      setError("Please fill in all required fields and add at least one item.");
       setSubmitting(false);
       return;
     }
 
-    const itemsPayload = items.map(item => ({
+    const itemsPayload = items.map((item) => ({
       product: parseInt(item.product),
       quantity: parseInt(item.quantity),
       unit_price: parseFloat(item.unit_price),
       batch_number: item.batch_number, // Include batch number
-      expiry_date: item.expiry_date,   // Include expiry date
+      expiry_date: item.expiry_date, // Include expiry date
       // Add other fields if needed by the backend, e.g., notes for free/disc
     }));
 
@@ -184,31 +192,89 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
     try {
       let response;
       if (initialData) {
-        response = await inventoryAPI.updatePurchaseOrder(initialData.id, payload);
-        setFormMessage({ type: 'success', text: 'Purchase Bill updated successfully!' });
+        response = await inventoryAPI.updatePurchaseOrder(
+          initialData.id,
+          payload
+        );
+        setFormMessage({
+          type: "success",
+          text: "Purchase Bill updated successfully!",
+        });
       } else {
         response = await inventoryAPI.createPurchaseOrder(payload);
-        setFormMessage({ type: 'success', text: 'Purchase Bill created successfully!' });
+        setFormMessage({
+          type: "success",
+          text: "Purchase Bill created successfully!",
+        });
       }
-      
+
       // Optionally clear form or navigate
       setFormData({
-        supplier: '',
-        order_date: new Date().toISOString().split('T')[0],
-        expected_delivery_date: new Date().toISOString().split('T')[0],
-        status: 'PENDING',
-        notes: '',
+        supplier: "",
+        order_date: new Date().toISOString().split("T")[0],
+        expected_delivery_date: new Date().toISOString().split("T")[0],
+        status: "PENDING",
+        notes: "",
       });
       setItems([]);
       if (onFormClose) onFormClose(); // Call parent's close handler
     } catch (err) {
-      setError(`Failed to ${initialData ? 'update' : 'create'} purchase bill. Please check your input.`);
-      console.error(`Error ${initialData ? 'updating' : 'creating'} purchase bill:`, err);
-      setFormMessage({ type: 'error', text: `Failed to ${initialData ? 'update' : 'create'} purchase bill.` });
+      setError(
+        `Failed to ${
+          initialData ? "update" : "create"
+        } purchase bill. Please check your input.`
+      );
+      console.error(
+        `Error ${initialData ? "updating" : "creating"} purchase bill:`,
+        err
+      );
+      setFormMessage({
+        type: "error",
+        text: `Failed to ${initialData ? "update" : "create"} purchase bill.`,
+      });
     } finally {
       setSubmitting(false);
     }
   };
+
+  
+  // ALTERNATIVE: Two-Step Frontend-Only Fix
+  // If you CANNOT change the backend, you would use this logic instead.
+  const handleSubmitAlternative = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    // Step 1: Create the main purchase order WITHOUT items
+    const orderPayload = { ...order, total_amount: 0 }; // temp amount
+    try {
+        const orderResponse = await inventoryAPI.createPurchaseOrder(orderPayload);
+        const newOrderId = orderResponse.data.id;
+
+        // Step 2: Create each item, now with the new purchase_order ID
+        for (const item of items) {
+            const itemPayload = {
+                ...item,
+                purchase_order: newOrderId, // Link the item to the order
+            };
+            // This assumes you have an endpoint for creating items
+            await inventoryAPI.createPurchaseOrderItem(itemPayload); 
+        }
+
+        // (Optional) Step 3: Update the PO with the final calculated total_amount
+        const total_amount = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+        await inventoryAPI.updatePurchaseOrder(newOrderId, { total_amount });
+
+        onFormClose();
+
+    } catch (err) {
+        console.error("Failed in two-step process:", err);
+        setError("An error occurred during the multi-step save.");
+    } finally {
+        setLoading(false);
+    }
+  };
+  
 
   if (loading) {
     return <div className="p-6 text-center">Loading form data...</div>;
@@ -268,13 +334,13 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                 htmlFor="order_date"
                 className="block text-sm font-medium text-gray-700"
               >
-                Order Date <span className="text-red-500">*</span>
+                Invoice Date <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
                 id="order_date"
                 name="order_date"
-                value={formData.order_date}
+                value={formData.invoice_date}
                 onChange={handleFormChange}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                 required
@@ -285,13 +351,13 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
                 htmlFor="expected_delivery_date"
                 className="block text-sm font-medium text-gray-700"
               >
-                Expected Delivery Date
+                order Date
               </label>
               <input
                 type="date"
-                id="expected_delivery_date"
-                name="expected_delivery_date"
-                value={formData.expected_delivery_date}
+                id="order_date"
+                name="order_date"
+                value={formData.order_date}
                 onChange={handleFormChange}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               />
@@ -533,13 +599,13 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => { // Accept initialD
 
             {/* Tax Info & Bill Disc */}
             <div className="space-y-4">
-              <div className="border p-4 rounded-md bg-gray-50">
-                <h3 className="font-semibold text-gray-700 mb-2">Tax Info</h3>
-                {/* Tax info content here */}
-                <p className="text-sm text-gray-600">
+              {/* <div className="border p-4 rounded-md bg-gray-50">
+                <h3 className="font-semibold text-gray-700 mb-2">Tax Info</h3> */}
+              {/* Tax info content here */}
+              {/* <p className="text-sm text-gray-600">
                   No tax details available.
-                </p>
-              </div>
+                </p> 
+              </div>*/}
               <div className="border p-4 rounded-md bg-gray-50">
                 <label
                   htmlFor="billDisc"

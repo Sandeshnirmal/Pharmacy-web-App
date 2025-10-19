@@ -93,15 +93,25 @@ const SidebarNavbar = () => {
         <h2 className="text-lg font-semibold mb-8 text-gray-900">
           Admin Panel
         </h2>
-      
+
         <nav className="space-y-2">
           <SidebarItem label="Dashboard" to="/Dashboard" />
           {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
-          
+
           <SidebarItem label="Inventory Management" to="/inventory" />
           <SidebarItem label="Purchase Bill" to="/purchase-bill">
-            <SidebarItem label="Purchase Bill Inventory Upload" to="/purchase-bill/inventory-upload" />
-            <SidebarItem label="Purchase Bill Return" to="/purchase-bill/return" />
+            <SidebarItem
+              label="Purchase Bill Inventory Upload"
+              to="/purchase-bill/inventory-upload"
+            />
+            <SidebarItem
+              label="Purchase Bill Return"
+              to="/purchase-bill/return"
+            />
+          </SidebarItem>
+          <SidebarItem label="Sales Management">
+            <SidebarItem label="Sales bill" to="/sale-billing" />
+            <SidebarItem label="sales return bill" to="/sale-return-billing" />
           </SidebarItem>
           <SidebarItem label="Rate Master" to="/rate-master" />
           <SidebarItem label="Discount Master" to="/discount-master" />

@@ -9,7 +9,9 @@ const MedicinesListPage = lazy(() => import('../pages/MedicinesListPage'));
 const GenericsTable = lazy(() => import('../pages/GenericsTable'));
 const InventoryManagement = lazy(() => import('../pages/InventoryManagement'));
 const PurchaseBillInventoryUpload = lazy(() => import('../pages/PurchaseBillInventoryUpload.jsx'));
-// const PurchaseBillReturn = lazy(() => import('../pages/PurchaseBillReturn'));
+const PurchaseBillReturn = lazy(() => import('../pages/PurchaseBillReturn'));
+const SalesBillPage = lazy(() => import('../pages/salesbillpage.jsx'))
+const SalesReturnPage = lazy(() => import("../pages/Salesbillreturn.jsx"))
 
 // Prescription Management - Lazy loaded
 const PrescriptionUploadsTable = lazy(() => import('../pages/PrescriptionUploadsTable'));
@@ -36,131 +38,143 @@ const ReportsAnalytics = lazy(() => import('../pages/ReportsAnalytics'));
 export const routes = [
   // Public routes
   {
-    path: '/login',
+    path: "/login",
     element: Login,
     public: true,
-    title: 'Login'
+    title: "Login",
   },
 
   // Protected routes (require authentication)
   {
-    path: '/dashboard',
+    path: "/dashboard",
     element: Dashboard,
-    title: 'Dashboard',
-    icon: 'LayoutDashboard'
+    title: "Dashboard",
+    icon: "LayoutDashboard",
   },
   {
-    path: '/medicines',
+    path: "/medicines",
     element: MedicinesListPage,
-    title: 'Medicines',
-    icon: 'Pill',
-    lazy: true
+    title: "Medicines",
+    icon: "Pill",
+    lazy: true,
   },
   {
-    path: '/generics',
+    path: "/generics",
     element: GenericsTable,
-    title: 'Generic Names',
-    icon: 'FileText',
-    lazy: true
+    title: "Generic Names",
+    icon: "FileText",
+    lazy: true,
   },
   {
-    path: '/inventory',
+    path: "/inventory",
     element: InventoryManagement,
-    title: 'Inventory',
-    icon: 'Package',
-    lazy: true
+    title: "Inventory",
+    icon: "Package",
+    lazy: true,
   },
   {
-    path: '/purchase-bill/inventory-upload',
+    path: "/purchase-bill/inventory-upload",
     element: PurchaseBillInventoryUpload,
-    title: 'Purchase Bill Inventory Upload',
-    icon: 'Upload', // Placeholder icon
-    lazy: true
+    title: "Purchase Bill Inventory Upload",
+    icon: "Upload", // Placeholder icon
+    lazy: true,
   },
-  // {
-  //   path: '/purchase-bill/return',
-  //   element: PurchaseBillReturn,
-  //   title: 'Purchase Bill Return',
-  //   icon: 'RotateCcw', // Placeholder icon
-  //   lazy: true
-  // },
   {
-    path: '/prescriptions',
+    path: "/purchase-bill/return",
+    element: PurchaseBillReturn,
+    title: "Purchase Bill Return",
+    icon: "RotateCcw", // Placeholder icon
+    lazy: true,
+  },
+  {
+    path: "/sale-billing",
+    element: SalesBillPage,
+    tittle: "sales table",
+    lazy: true,
+  },
+  {
+    path: "/sale-return-billing",
+    element: SalesReturnPage,
+    tittle: "sales return table",
+    lazy: true,
+  },
+  {
+    path: "/prescriptions",
     element: PrescriptionUploadsTable,
-    title: 'Prescriptions',
-    icon: 'FileImage',
-    lazy: true
+    title: "Prescriptions",
+    icon: "FileImage",
+    lazy: true,
   },
   {
-    path: '/pending-prescriptions',
+    path: "/pending-prescriptions",
     element: PendingPrescriptionsTable,
-    title: 'Pending Prescriptions',
-    icon: 'Clock',
-    lazy: true
+    title: "Pending Prescriptions",
+    icon: "Clock",
+    lazy: true,
   },
   {
-    path: '/prescription-review/:prescriptionId',
+    path: "/prescription-review/:prescriptionId",
     element: PrescriptionReview,
-    title: 'Prescription Review',
+    title: "Prescription Review",
     hidden: true, // Don't show in navigation
-    lazy: true
+    lazy: true,
   },
   {
-    path: '/orders',
+    path: "/orders",
     element: OrdersTable,
-    title: 'Orders',
-    icon: 'ShoppingCart',
-    lazy: true
+    title: "Orders",
+    icon: "ShoppingCart",
+    lazy: true,
   },
   {
-    path: '/orders/:orderId',
+    path: "/orders/:orderId",
     element: OrderDetails,
-    title: 'Order Details',
+    title: "Order Details",
     hidden: true,
-    lazy: true
+    lazy: true,
   },
   {
-    path: '/users',
+    path: "/users",
     element: UserManagement,
-    title: 'Users',
-    icon: 'Users',
-    lazy: true
+    title: "Users",
+    icon: "Users",
+    lazy: true,
   },
   {
-    path: '/customers',
+    path: "/customers",
     element: CustomerManagement,
-    title: 'Customers',
-    icon: 'UserCheck',
-    lazy: true
+    title: "Customers",
+    icon: "UserCheck",
+    lazy: true,
   },
   {
-    path: '/reports',
+    path: "/reports",
     element: ReportsAnalytics,
-    title: 'Reports & Analytics',
-    icon: 'BarChart3',
-    lazy: true
+    title: "Reports & Analytics",
+    icon: "BarChart3",
+    lazy: true,
   },
   {
-    path: '/tpc-courier-management',
+    path: "/tpc-courier-management",
     element: TPCCourierManagementPage,
-    title: 'TPC Courier Management',
-    icon: 'Truck', // Using a truck icon for courier
-    lazy: true
+    title: "TPC Courier Management",
+    icon: "Truck", // Using a truck icon for courier
+    lazy: true,
   },
   {
-    path: '/rate-master',
+    path: "/rate-master",
     element: RateMaster,
-    title: 'Rate Master',
-    icon: 'DollarSign', // Placeholder icon
-    lazy: true
+    title: "Rate Master",
+    icon: "DollarSign", // Placeholder icon
+    lazy: true,
   },
   {
-    path: '/discount-master',
+    path: "/discount-master",
     element: DiscountMaster,
-    title: 'Discount Master',
-    icon: 'Percent', // Placeholder icon
-    lazy: true
-  }
+    title: "Discount Master",
+    icon: "Percent", // Placeholder icon
+    lazy: true,
+  },
 ];
 
 // Get navigation routes (exclude hidden routes)
