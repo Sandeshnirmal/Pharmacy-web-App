@@ -3,38 +3,51 @@ import axiosInstance from '../api/axiosInstance';
 import { apiUtils } from "../api/apiService"; // Assuming apiUtils is generic
 
 const RateMaster = () => {
-  const [rates, setRates] = useState([]);
+  const [batches, setBatches] = useState([]); // Renamed from rates to batches
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showAddEditModal, setShowAddEditModal] = useState(false);
+  const [currentBatch, setCurrentBatch] = useState(null); // For editing
 
   useEffect(() => {
-    fetchRates();
+    fetchBatches(); // Renamed from fetchRates
   }, []);
 
-  const fetchRates = async () => {
+  const fetchBatches = async () => { // Renamed from fetchRates
     try {
       setLoading(true);
       setError(null);
-      // TODO: Replace with actual API call for rates
-      // const response = await axiosInstance.get('/api/rates/');
-      // setRates(response.data);
-      setRates([
-        { id: 1, name: "Standard Rate", value: 1.0, description: "Default selling rate multiplier" },
-        { id: 2, name: "Wholesale Rate", value: 0.8, description: "20% off for wholesale customers" },
-      ]);
+      // Fetch products with their batches
+      const response = await axiosInstance.get('/api/products/enhanced-products/'); // Corrected endpoint
+      console.log("API Response for /api/products/:", response.data); // Log the response data for debugging
+      
+      // Check if response.data.results exists and is an array
+      if (response.data && Array.isArray(response.data.results)) {
+        // Flatten all batches from all products into a single array
+        const allBatches = response.data.results.flatMap(product => 
+          product.batches.map(batch => ({
+            ...batch,
+            product_name: product.name // Add product name for display
+          }))
+        );
+        setBatches(allBatches);
+      } else {
+        console.warn("API response does not contain a 'results' array:", response.data);
+        setBatches([]); // Set to empty array to prevent further errors
+      }
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
-      console.error("Error fetching rates:", error);
+      console.error("Error fetching batches:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredRates = rates.filter((rate) =>
-    rate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    rate.description.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredBatches = batches.filter((batch) =>
+    batch.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -77,7 +90,7 @@ const RateMaster = () => {
         <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
           <input
             type="text"
-            placeholder="Search rates..."
+            placeholder="Search products or batch numbers..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full md:w-1/3 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -88,13 +101,37 @@ const RateMaster = () => {
             <thead className="text-xs text-gray-700 uppercase bg-gray-100">
               <tr>
                 <th scope="col" className="px-6 py-3">
-                  Rate Name
+                  Product Name
                 </th>
                 <th scope="col" className="px-6 py-3">
-                  Value/Multiplier
+                  Batch Number
                 </th>
                 <th scope="col" className="px-6 py-3">
-                  Description
+                  Generic MRP
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Generic Discount (%)
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Generic Selling Price
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Online MRP
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Online Discount (%)
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Online Selling Price
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Offline MRP
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Offline Discount (%)
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Offline Selling Price
                 </th>
                 <th scope="col" className="px-6 py-3 text-center">
                   Actions
@@ -102,22 +139,30 @@ const RateMaster = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredRates.map((rate) => (
-                <tr key={rate.id} className="bg-white border-b hover:bg-gray-50">
+              {filteredBatches.map((batch) => (
+                <tr key={batch.id} className="bg-white border-b hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">
-                    {rate.name}
+                    {batch.product_name}
                   </td>
-                  <td className="px-6 py-4">{rate.value}</td>
-                  <td className="px-6 py-4">{rate.description}</td>
+                  <td className="px-6 py-4">{batch.batch_number}</td>
+                  <td className="px-6 py-4">{batch.mrp_price}</td>
+                  <td className="px-6 py-4">{batch.discount_percentage}</td>
+                  <td className="px-6 py-4">{batch.selling_price}</td>
+                  <td className="px-6 py-4">{batch.online_mrp_price}</td>
+                  <td className="px-6 py-4">{batch.online_discount_percentage}</td>
+                  <td className="px-6 py-4">{batch.online_selling_price}</td>
+                  <td className="px-6 py-4">{batch.offline_mrp_price}</td>
+                  <td className="px-6 py-4">{batch.offline_discount_percentage}</td>
+                  <td className="px-6 py-4">{batch.offline_selling_price}</td>
                   <td className="px-6 py-4 text-center">
                     <button
-                      // onClick={() => handleEditRate(rate)}
+                      // onClick={() => handleEditBatch(batch)}
                       className="font-medium text-indigo-600 hover:underline mr-2"
                     >
                       Edit
                     </button>
                     <button
-                      // onClick={() => handleDeleteRate(rate.id)}
+                      // onClick={() => handleDeleteBatch(batch.id)}
                       className="font-medium text-red-600 hover:underline"
                     >
                       Delete
@@ -127,9 +172,9 @@ const RateMaster = () => {
               ))}
             </tbody>
           </table>
-          {filteredRates.length === 0 && (
+          {filteredBatches.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              No rates found.
+              No batches found.
             </div>
           )}
         </div>

@@ -160,7 +160,7 @@ export const routes = [
     title: 'Discount Master',
     icon: 'Percent', // Placeholder icon
     lazy: true
-  }
+  },
 ];
 
 // Get navigation routes (exclude hidden routes)

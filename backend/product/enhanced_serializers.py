@@ -43,11 +43,19 @@ class BatchSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'product', 'product_name', 'batch_number',
             'manufacturing_date', 'expiry_date', 'quantity', 'current_quantity',
-            'cost_price', 'mrp_price', 'discount_percentage', 'selling_price',
+            'cost_price', 
+            'mrp_price', 'discount_percentage', 'selling_price', # Generic
+            'online_mrp_price', 'online_discount_percentage', 'online_selling_price', # Online
+            'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price', # Offline
             'mfg_license_number', 'days_to_expiry', 'is_expired', 'created_at', 'updated_at'
         ]
         # Add extra_kwargs to ensure product is fetched with select_related
-        extra_kwargs = {'product': {'read_only': True}}
+        extra_kwargs = {
+            'product': {'read_only': True},
+            'selling_price': {'read_only': True},
+            'online_selling_price': {'read_only': True},
+            'offline_selling_price': {'read_only': True},
+        }
     
     def get_days_to_expiry(self, obj):
         """Calculate days until expiry"""
@@ -211,14 +219,29 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         ).order_by('expiry_date').first()
 
         if current_batch:
-            return {
+            request = self.context.get('request')
+            channel = request.query_params.get('channel', 'online') # Default to online if not specified
+
+            batch_data = {
                 'batch_id': current_batch.id,
-                'mrp': float(current_batch.mrp_price),
-                'selling_price': float(current_batch.selling_price),
-                'discount_percentage': float(current_batch.discount_percentage),
                 'expiry_date': current_batch.expiry_date.isoformat(),
                 'quantity': current_batch.quantity
             }
+
+            if channel == 'online':
+                batch_data['mrp'] = float(current_batch.online_mrp_price)
+                batch_data['selling_price'] = float(current_batch.online_selling_price)
+                batch_data['discount_percentage'] = float(current_batch.online_discount_percentage)
+            elif channel == 'offline':
+                batch_data['mrp'] = float(current_batch.offline_mrp_price)
+                batch_data['selling_price'] = float(current_batch.offline_selling_price)
+                batch_data['discount_percentage'] = float(current_batch.offline_discount_percentage)
+            else: # Generic or default
+                batch_data['mrp'] = float(current_batch.mrp_price)
+                batch_data['selling_price'] = float(current_batch.selling_price)
+                batch_data['discount_percentage'] = float(current_batch.discount_percentage)
+            
+            return batch_data
         return None
     
     def create(self, validated_data):

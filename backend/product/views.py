@@ -129,7 +129,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                     Batch.objects.filter(
                         product=OuterRef('pk'),
                         current_quantity__gt=0
-                    ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
+                    ).order_by('expiry_date', '-current_quantity').values(
+                        'online_selling_price' if self.request.query_params.get('channel') == 'online' else \
+                        ('offline_selling_price' if self.request.query_params.get('channel') == 'offline' else 'selling_price')
+                    )[:1]
                 ),
                 0.0 # Default to 0.0 if no available batch
             )
@@ -261,7 +264,10 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
                     Batch.objects.filter(
                         product=OuterRef('pk'),
                         current_quantity__gt=0
-                    ).order_by('expiry_date', '-current_quantity').values('selling_price')[:1]
+                    ).order_by('expiry_date', '-current_quantity').values(
+                        'online_selling_price' if self.request.query_params.get('channel') == 'online' else \
+                        ('offline_selling_price' if self.request.query_params.get('channel') == 'offline' else 'selling_price')
+                    )[:1]
                 ),
                 0.0 # Default to 0.0 if no available batch
             ),
@@ -395,6 +401,10 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
                 'cost_price': batch_data.get('cost_price', 0),
                 'mrp_price': batch_data.get('mrp_price', 0),
                 'discount_percentage': batch_data.get('discount_percentage', 0),
+                'online_mrp_price': batch_data.get('online_mrp_price', 0),
+                'online_discount_percentage': batch_data.get('online_discount_percentage', 0),
+                'offline_mrp_price': batch_data.get('offline_mrp_price', 0),
+                'offline_discount_percentage': batch_data.get('offline_discount_percentage', 0),
                 'is_primary': is_primary,
             }
         )
@@ -402,11 +412,15 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         if not created:
             # Update existing batch
             batch.quantity = batch_data.get('quantity', batch.quantity)
-            batch.current_quantity = batch_data.get('quantity', batch.current_quantity) # Assuming full replacement or adjustment
+            batch.current_quantity = batch_data.get('current_quantity', batch.current_quantity) # Assuming full replacement or adjustment
             batch.expiry_date = batch_data.get('expiry_date', batch.expiry_date)
             batch.cost_price = batch_data.get('cost_price', batch.cost_price)
             batch.mrp_price = batch_data.get('mrp_price', batch.mrp_price)
             batch.discount_percentage = batch_data.get('discount_percentage', batch.discount_percentage)
+            batch.online_mrp_price = batch_data.get('online_mrp_price', batch.online_mrp_price)
+            batch.online_discount_percentage = batch_data.get('online_discount_percentage', batch.online_discount_percentage)
+            batch.offline_mrp_price = batch_data.get('offline_mrp_price', batch.offline_mrp_price)
+            batch.offline_discount_percentage = batch_data.get('offline_discount_percentage', batch.offline_discount_percentage)
             batch.is_primary = is_primary # Update is_primary
             batch.save()
 

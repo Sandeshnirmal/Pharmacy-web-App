@@ -31,7 +31,26 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             subtotal = quantity * price_per_unit
             OfflineSaleItem.objects.create(sale=offline_sale, subtotal=subtotal, **item_data)
             total_amount += subtotal
-            # TODO: Implement stock reduction logic here
+
+            # Stock reduction logic
+            batch = item_data['batch']
+            if batch.current_quantity < quantity:
+                raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity}")
+            batch.current_quantity -= quantity
+            batch.save()
+
+            # Create StockMovement record for OUT
+            from inventory.models import StockMovement
+            StockMovement.objects.create(
+                product=product,
+                batch=batch,
+                movement_type='OUT',
+                quantity=quantity,
+                reference_number=f"OFFLINE-SALE-{offline_sale.id}",
+                notes=f"Sold {quantity} units for Offline Sale #{offline_sale.id} from batch {batch.batch_number}",
+                created_by=self.context.get('request').user if self.context.get('request') else None
+            )
+
         offline_sale.total_amount = total_amount
         offline_sale.change_amount = offline_sale.paid_amount - total_amount
         offline_sale.save()
@@ -59,9 +78,29 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 quantity = item_data['quantity']
                 price_per_unit = item_data['price_per_unit']
                 subtotal = quantity * price_per_unit
+                # For updates, we need to handle stock adjustments carefully.
+                # This simple implementation assumes a full replacement of items.
+                # A more robust solution would compare old vs. new items and adjust stock accordingly.
+                # For now, we'll just decrement stock for new items.
+                batch = item_data['batch']
+                if batch.current_quantity < quantity:
+                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity}")
+                batch.current_quantity -= quantity
+                batch.save()
+
+                # Create StockMovement record for OUT
+                from inventory.models import StockMovement
+                StockMovement.objects.create(
+                    product=product,
+                    batch=batch,
+                    movement_type='OUT',
+                    quantity=quantity,
+                    reference_number=f"OFFLINE-SALE-UPDATE-{instance.id}",
+                    notes=f"Sold {quantity} units for Offline Sale Update #{instance.id} from batch {batch.batch_number}",
+                    created_by=self.context.get('request').user if self.context.get('request') else None
+                )
                 OfflineSaleItem.objects.create(sale=instance, subtotal=subtotal, **item_data)
                 total_amount += subtotal
-                # TODO: Implement stock adjustment logic for updates
             instance.total_amount = total_amount
             instance.change_amount = instance.paid_amount - total_amount
             instance.save()

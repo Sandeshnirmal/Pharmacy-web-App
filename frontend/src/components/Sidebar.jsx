@@ -96,18 +96,16 @@ const SidebarNavbar = () => {
       
         <nav className="space-y-2">
           <SidebarItem label="Dashboard" to="/Dashboard" />
-          {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
-          
-          <SidebarItem label="Inventory Management" to="/inventory" />
+          <SidebarItem label="Main Nav" to="/main-nav-group">
+            <SidebarItem label="Product Master" to="/inventory" />
+            <SidebarItem label="Discount Master" to="/discount-master" />
+            <SidebarItem label="Rate Master" to="/rate-master" />
+          </SidebarItem>
           <SidebarItem label="Purchase Bill" to="/purchase-bill">
             <SidebarItem label="Purchase Bill Inventory Upload" to="/purchase-bill/inventory-upload" />
             <SidebarItem label="Purchase Bill Return" to="/purchase-bill/return" />
           </SidebarItem>
-          <SidebarItem label="Rate Master" to="/rate-master" />
-          <SidebarItem label="Discount Master" to="/discount-master" />
           <SidebarItem label="Prescriptions" to="/prescriptions" />
-          {/* <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" /> */}
-          {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
           <SidebarItem label="Orders" to="/Orders" />
           <SidebarItem label="Customers" to="/Customers" />
           <SidebarItem label="User Management" to="/Users" />
