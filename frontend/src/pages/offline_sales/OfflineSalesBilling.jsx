@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { productAPI, salesBillAPI } from '../../api/apiService'; // Adjust path as needed
 
 const OfflineSalesBilling = () => {
     const [customerName, setCustomerName] = useState('');
@@ -16,8 +16,7 @@ const OfflineSalesBilling = () => {
     useEffect(() => {
         const fetchProducts = async () => {
             try {
-                const response = await axios.get('/api/products/'); // Adjust API endpoint as needed
-                // Ensure products is always an array
+                const response = await productAPI.getProducts();
                 setProducts(Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : []);
             } catch (err) {
                 setError('Failed to fetch products.');
@@ -29,8 +28,7 @@ const OfflineSalesBilling = () => {
 
     const fetchBatches = async (productId) => {
         try {
-            const response = await axios.get(`/api/batches/?product=${productId}`); // Adjust API endpoint as needed
-            // Ensure batches for a product is always an array
+            const response = await productAPI.getBatches(productId);
             setBatches(prev => ({ ...prev, [productId]: Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [] }));
         } catch (err) {
             setError('Failed to fetch batches.');
@@ -47,7 +45,7 @@ const OfflineSalesBilling = () => {
             newItems[index]['batchId'] = ''; // Reset batch when product changes
             const selectedProduct = products.find(p => p.id === parseInt(value));
             if (selectedProduct) {
-                newItems[index]['pricePerUnit'] = selectedProduct.selling_price;
+                newItems[index]['pricePerUnit'] = selectedProduct.current_selling_price;
             }
         }
 
@@ -90,11 +88,7 @@ const OfflineSalesBilling = () => {
         };
 
         try {
-            const response = await axios.post('/api/offline-sales/', saleData, {
-                headers: {
-                    Authorization: `Token YOUR_AUTH_TOKEN`, // Replace with actual token
-                },
-            });
+            const response = await salesBillAPI.createSalesBill(saleData);
             setSuccess(`Sale created successfully! Sale ID: ${response.data.id}`);
             // Reset form
             setCustomerName('');

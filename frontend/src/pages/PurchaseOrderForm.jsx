@@ -10,8 +10,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
   // Accept initialData prop
   const [formData, setFormData] = useState({
     supplier: "", // Supplier ID
-    order_date: new Date().toISOString().split("T")[0],
-    expected_delivery_date: new Date().toISOString().split("T")[0],
+    invoice_date: new Date().toISOString().split("T")[0], // Added invoice_date
+    invoice_number: "", // Added invoice_number
     status: "PENDING", // Default status
     notes: "",
   });
@@ -48,8 +48,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     if (initialData) {
       setFormData({
         supplier: initialData.supplier,
-        order_date: initialData.order_date,
-        invoice_date: initialData.invoice_date || "",
+        invoice_date: initialData.invoice_date || new Date().toISOString().split("T")[0], // Ensure invoice_date is set
+        invoice_number: initialData.invoice_number || "", // Ensure invoice_number is set
         status: initialData.status,
         notes: initialData.notes || "",
       });
@@ -73,8 +73,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       // Reset form for new entry if initialData is cleared
       setFormData({
         supplier: "",
-        order_date: new Date().toISOString().split("T")[0],
-        expected_delivery_date: new Date().toISOString().split("T")[0],
+        invoice_date: new Date().toISOString().split("T")[0],
+        invoice_number: "",
         status: "PENDING",
         notes: "",
       });
@@ -97,9 +97,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       const selectedProduct = products.find((p) => p.id === parseInt(value));
       if (selectedProduct) {
         newItems[index].product_details = selectedProduct; // Store full product details
-        newItems[index].unit_price = selectedProduct.price; // Set rate from product price
-        newItems[index].mrp = selectedProduct.mrp; // Set MRP from product
-        newItems[index].packing = selectedProduct.packing; // Set packing from product
+        newItems[index].unit_price = selectedProduct.current_cost_price || 0; // Set rate from product's current cost price
+        newItems[index].packing = selectedProduct.pack_size || ""; // Set packing from product's pack_size
       }
     }
 
@@ -139,24 +138,31 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
   };
 
   const calculateTotals = () => {
-    let goodsValue = 0;
-    let totalDiscount = 0; // Assuming disc is a percentage on rate
+    let goodsValue = 0; // Sum of (quantity * unit_price)
+    let totalDiscountAmount = 0; // Sum of item-level discounts
+    let totalTaxAmount = 0; // Sum of item-level taxes
+
     items.forEach((item) => {
       const qty = parseFloat(item.quantity || 0);
-      const mrp = parseFloat(item.mrp || 0);
       const rate = parseFloat(item.unit_price || 0);
-      const disc = parseFloat(item.disc || 0);
-      const packing = parseFloat(item.packing || 0);
-      const itemAmount = qty * mrp + packing;
-      const itemDiscount = itemAmount * (disc / 100);
-      goodsValue += itemAmount;
-      totalDiscount += itemDiscount;
+      const disc = parseFloat(item.disc || 0); // Discount percentage
+      const tax = parseFloat(item.tax || 0); // Tax percentage
+
+      const itemBaseAmount = qty * rate;
+      const itemDiscount = itemBaseAmount * (disc / 100);
+      const itemTaxableAmount = itemBaseAmount - itemDiscount;
+      const itemTax = itemTaxableAmount * (tax / 100);
+
+      goodsValue += itemBaseAmount;
+      totalDiscountAmount += itemDiscount;
+      totalTaxAmount += itemTax;
     });
-    const billValue = goodsValue - totalDiscount;
-    return { goodsValue, totalDiscount, billValue };
+
+    const billValue = goodsValue - totalDiscountAmount + totalTaxAmount;
+    return { goodsValue, totalDiscount: totalDiscountAmount, totalTax: totalTaxAmount, billValue };
   };
 
-  const { goodsValue, totalDiscount, billValue } = calculateTotals();
+  const { goodsValue, totalDiscount, totalTax, billValue } = calculateTotals();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -165,7 +171,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     setFormMessage({ type: "", text: "" });
 
     // Validate form data
-    if (!formData.supplier || !formData.order_date || items.length === 0) {
+    if (!formData.supplier || !formData.invoice_date || items.length === 0) {
       setError("Please fill in all required fields and add at least one item.");
       setSubmitting(false);
       return;
@@ -175,6 +181,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       product: parseInt(item.product),
       quantity: parseInt(item.quantity),
       unit_price: parseFloat(item.unit_price),
+      tax_percentage: parseFloat(item.tax || 0), // Include tax_percentage
       batch_number: item.batch_number, // Include batch number
       expiry_date: item.expiry_date, // Include expiry date
       // Add other fields if needed by the backend, e.g., notes for free/disc
@@ -182,8 +189,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
 
     const payload = {
       supplier: parseInt(formData.supplier),
-      order_date: formData.order_date,
-      expected_delivery_date: formData.expected_delivery_date,
+      invoice_date: formData.invoice_date,
+      invoice_number: formData.invoice_number,
       status: formData.status,
       notes: formData.notes,
       items: itemsPayload,
@@ -211,8 +218,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       // Optionally clear form or navigate
       setFormData({
         supplier: "",
-        order_date: new Date().toISOString().split("T")[0],
-        expected_delivery_date: new Date().toISOString().split("T")[0],
+        invoice_date: new Date().toISOString().split("T")[0],
+        invoice_number: "",
         status: "PENDING",
         notes: "",
       });
@@ -236,45 +243,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       setSubmitting(false);
     }
   };
-
-  
-  // ALTERNATIVE: Two-Step Frontend-Only Fix
-  // If you CANNOT change the backend, you would use this logic instead.
-  const handleSubmitAlternative = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    // Step 1: Create the main purchase order WITHOUT items
-    const orderPayload = { ...order, total_amount: 0 }; // temp amount
-    try {
-        const orderResponse = await inventoryAPI.createPurchaseOrder(orderPayload);
-        const newOrderId = orderResponse.data.id;
-
-        // Step 2: Create each item, now with the new purchase_order ID
-        for (const item of items) {
-            const itemPayload = {
-                ...item,
-                purchase_order: newOrderId, // Link the item to the order
-            };
-            // This assumes you have an endpoint for creating items
-            await inventoryAPI.createPurchaseOrderItem(itemPayload); 
-        }
-
-        // (Optional) Step 3: Update the PO with the final calculated total_amount
-        const total_amount = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
-        await inventoryAPI.updatePurchaseOrder(newOrderId, { total_amount });
-
-        onFormClose();
-
-    } catch (err) {
-        console.error("Failed in two-step process:", err);
-        setError("An error occurred during the multi-step save.");
-    } finally {
-        setLoading(false);
-    }
-  };
-  
 
   if (loading) {
     return <div className="p-6 text-center">Loading form data...</div>;
@@ -305,7 +273,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Top Form Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
               <label
                 htmlFor="supplier"
@@ -331,15 +299,15 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
             </div>
             <div>
               <label
-                htmlFor="order_date"
+                htmlFor="invoice_date"
                 className="block text-sm font-medium text-gray-700"
               >
                 Invoice Date <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
-                id="order_date"
-                name="order_date"
+                id="invoice_date"
+                name="invoice_date"
                 value={formData.invoice_date}
                 onChange={handleFormChange}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -348,19 +316,40 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
             </div>
             <div>
               <label
-                htmlFor="expected_delivery_date"
+                htmlFor="invoice_number"
                 className="block text-sm font-medium text-gray-700"
               >
-                order Date
+                Invoice Number
               </label>
               <input
-                type="date"
-                id="order_date"
-                name="order_date"
-                value={formData.order_date}
+                type="text"
+                id="invoice_number"
+                name="invoice_number"
+                value={formData.invoice_number}
                 onChange={handleFormChange}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               />
+            </div>
+            <div>
+              <label
+                htmlFor="status"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="status"
+                name="status"
+                value={formData.status}
+                onChange={handleFormChange}
+                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="PENDING">Pending</option>
+                <option value="ORDERED">Ordered</option>
+                <option value="RECEIVED">Received</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
             </div>
           </div>
 
@@ -402,16 +391,13 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Amount
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
+                  </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {items.length === 0 && (
                   <tr>
                     <td
-                      colSpan="11"
+                      colSpan="10"
                       className="py-4 px-3 text-center text-gray-500"
                     >
                       No items added. Click "Add Item" to start.
@@ -543,15 +529,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                         readOnly
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(index)}
-                        className="text-red-600 hover:text-red-900 text-lg"
-                      >
-                        &times;
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -568,50 +545,32 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
           {/* Summary and Action Buttons */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
             {/* Discount Info */}
+            {/* Discount Info */}
             <div className="border p-4 rounded-md bg-gray-50">
               <h3 className="font-semibold text-gray-700 mb-2">
-                Discount Info
+                Discount & Tax Info
               </h3>
               <div className="flex justify-between py-1">
                 <span className="text-sm text-gray-600">
-                  Total Item Disc. :
+                  Total Item Discount:
                 </span>
                 <span className="text-sm font-medium">
                   ₹ {totalDiscount.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-sm text-gray-600">Item Disc. 1 :</span>
-                <span className="text-sm font-medium">₹ 0.00</span>{" "}
-                {/* Placeholder for now */}
+                <span className="text-sm text-gray-600">Total Tax:</span>
+                <span className="text-sm font-medium">
+                  ₹ {totalTax.toFixed(2)}
+                </span>
               </div>
-              <div className="flex justify-between py-1">
-                <span className="text-sm text-gray-600">Item Disc. 2 :</span>
-                <span className="text-sm font-medium">₹ 0.00</span>{" "}
-                {/* Placeholder for now */}
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-sm text-gray-600">Scheme Disc. % :</span>
-                <span className="text-sm font-medium">0</span>{" "}
-                {/* Placeholder for now */}
-              </div>
-            </div>
-
-            {/* Tax Info & Bill Disc */}
-            <div className="space-y-4">
-              {/* <div className="border p-4 rounded-md bg-gray-50">
-                <h3 className="font-semibold text-gray-700 mb-2">Tax Info</h3> */}
-              {/* Tax info content here */}
-              {/* <p className="text-sm text-gray-600">
-                  No tax details available.
-                </p> 
-              </div>*/}
-              <div className="border p-4 rounded-md bg-gray-50">
+              {/* Bill Disc. input can be added here if it's a separate field */}
+              <div className="mt-4">
                 <label
                   htmlFor="billDisc"
                   className="block text-sm font-medium text-gray-700"
                 >
-                  Bill Disc.
+                  Bill Discount (%)
                 </label>
                 <div className="flex items-center mt-1">
                   <input
@@ -619,7 +578,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                     id="billDisc"
                     name="billDisc"
                     className="block w-24 p-2 border border-gray-300 rounded-l-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    defaultValue="0.00"
+                    defaultValue="0.00" // This would need a state variable if it's interactive
                   />
                   <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
                     %
@@ -629,7 +588,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
             </div>
 
             {/* Goods Value & Invoice Value */}
-            <div className="space-y-4">
+            <div className="space-y-4 col-span-2">
               <div className="border p-4 rounded-md bg-gray-50">
                 <h3 className="font-semibold text-gray-700 mb-2">
                   Additional Details
@@ -652,10 +611,18 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-sm font-medium text-gray-700">
-                  Total Disc.:
+                  Total Discount:
                 </span>
                 <span className="text-lg font-bold text-gray-800">
                   ₹ {totalDiscount.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-sm font-medium text-gray-700">
+                  Total Tax:
+                </span>
+                <span className="text-lg font-bold text-gray-800">
+                  ₹ {totalTax.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1">
@@ -684,13 +651,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
           <div className="flex justify-end space-x-2 mt-6">
             <button
               type="submit"
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-              disabled={submitting}
-            >
-              {submitting ? "Saving..." : "F18 / End"}
-            </button>
-            <button
-              type="submit"
               className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
               disabled={submitting}
             >
@@ -701,14 +661,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
               className="bg-gray-400 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-500"
               onClick={onFormClose} // Use the prop to close the form
             >
-              Esc / Close
-            </button>
-            {/* <button
-              type="button"
-              className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
-            >
               Close
-            </button> */}
+            </button>
             <button
               type="button"
               className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700"

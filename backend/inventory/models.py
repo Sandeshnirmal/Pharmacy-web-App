@@ -84,6 +84,8 @@ class PurchaseOrderItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.IntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # Added discount_percentage
+    tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # Added tax_percentage
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     received_quantity = models.IntegerField(default=0)
     returned_quantity = models.IntegerField(default=0) # New field to track returned quantity

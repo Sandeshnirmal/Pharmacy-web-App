@@ -1,6 +1,12 @@
 from rest_framework import serializers
-from .models import OfflineSale, OfflineSaleItem, BillReturn, BillReturnItem
+from .models import OfflineSale, OfflineSaleItem, BillReturn, BillReturnItem, OfflineCustomer
 from product.serializers import ProductSerializer, BatchSerializer # Assuming these exist
+
+class OfflineCustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OfflineCustomer
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
 
 class OfflineSaleItemSerializer(serializers.ModelSerializer):
     product_details = ProductSerializer(source='product', read_only=True)
@@ -14,6 +20,15 @@ class OfflineSaleItemSerializer(serializers.ModelSerializer):
 class OfflineSaleSerializer(serializers.ModelSerializer):
     items = OfflineSaleItemSerializer(many=True)
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    customer_details = OfflineCustomerSerializer(source='customer', read_only=True) # Add customer details
+    
+    # Explicitly define customer as a PrimaryKeyRelatedField to accept ID
+    customer = serializers.PrimaryKeyRelatedField(
+        queryset=OfflineCustomer.objects.all(), 
+        allow_null=True, 
+        required=False,
+        source='customer' # Link to the 'customer' field in the model
+    )
 
     class Meta:
         model = OfflineSale
@@ -22,7 +37,15 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
-        offline_sale = OfflineSale.objects.create(**validated_data)
+        customer_instance = validated_data.pop('customer', None) # This will now be an OfflineCustomer instance or None
+
+        # Populate denormalized fields from the customer instance if available
+        if customer_instance:
+            validated_data['customer_name'] = customer_instance.name
+            validated_data['customer_phone'] = customer_instance.phone_number
+            validated_data['customer_address'] = customer_instance.address
+        
+        offline_sale = OfflineSale.objects.create(customer=customer_instance, **validated_data)
         total_amount = 0
         for item_data in items_data:
             product = item_data['product']
@@ -58,9 +81,19 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         items_data = validated_data.pop('items', None)
+        customer_instance = validated_data.pop('customer', None) # This will now be an OfflineCustomer instance or None
         
-        instance.customer_name = validated_data.get('customer_name', instance.customer_name)
-        instance.customer_phone = validated_data.get('customer_phone', instance.customer_phone)
+        # Update customer and denormalized fields
+        instance.customer = customer_instance
+        if customer_instance:
+            instance.customer_name = customer_instance.name
+            instance.customer_phone = customer_instance.phone_number
+            instance.customer_address = customer_instance.address
+        else:
+            instance.customer_name = validated_data.get('customer_name', instance.customer_name)
+            instance.customer_phone = validated_data.get('customer_phone', instance.customer_phone)
+            instance.customer_address = validated_data.get('customer_address', instance.customer_address)
+
         instance.paid_amount = validated_data.get('paid_amount', instance.paid_amount)
         instance.payment_method = validated_data.get('payment_method', instance.payment_method)
         instance.is_returned = validated_data.get('is_returned', instance.is_returned)

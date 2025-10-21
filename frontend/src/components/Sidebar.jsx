@@ -98,7 +98,7 @@ const SidebarNavbar = () => {
           <SidebarItem label="Dashboard" to="/Dashboard" />
           {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
 
-          <SidebarItem label="Inventory Management" to="/inventory" />
+          {/* <SidebarItem label="Inventory Management" to="/inventory" /> */}
           <SidebarItem label="Purchase Bill" to="/purchase-bill">
             <SidebarItem
               label="Purchase Bill Inventory Upload"
@@ -113,15 +113,17 @@ const SidebarNavbar = () => {
             <SidebarItem label="Sales bill" to="/sale-billing" />
             <SidebarItem label="sales return bill" to="/sale-return-billing" />
           </SidebarItem>
-          <SidebarItem label="Offline Sales" to="/offline-sales">
-            <SidebarItem label="Offline Sales Billing" to="/offline-sales/billing" />
-            <SidebarItem label="Bill Return" to="/offline-sales/return" />
-          </SidebarItem>
+            
           <SidebarItem label="Prescriptions" to="/prescriptions" />
           <SidebarItem label="Orders" to="/Orders" />
           <SidebarItem label="Customers" to="/Customers" />
           <SidebarItem label="User Management" to="/Users" />
           <SidebarItem label="Reports & Analytics" to="/Reports" />
+          <SidebarItem label="Master">
+            <SidebarItem label="Discount Master" to="/discount-master" />
+            <SidebarItem label="Rate Master" to="/rate-master" />
+            <SidebarItem label="Product Master" to="/inventory" />
+          </SidebarItem>
         </nav>
       </div>
       <img className="pt-3" src="/src/assets/full_logo.png" alt="logo" />

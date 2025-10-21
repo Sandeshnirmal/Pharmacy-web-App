@@ -101,6 +101,10 @@ export const productAPI = {
     axiosInstance.post('/api/products/legacy/batches/', batchData),
   updateBatch: (batchId, batchData) =>
     axiosInstance.patch(`/api/products/legacy/batches/${batchId}/`, batchData),
+  getBatches: (productId, params = {}) =>
+    axiosInstance.get(`/api/products/legacy/batches/`, { params: { ...params, product: productId } }),
+  deleteBatch: (batchId) =>
+    axiosInstance.delete(`/api/products/legacy/batches/${batchId}/`),
   
   // Original updateStock (if still needed for other purposes, otherwise remove)
   // For now, keeping it as it might be used elsewhere, but batch creation/update will use new functions.
@@ -276,6 +280,33 @@ export const discountAPI = {
   createDiscount: (discountData) => axiosInstance.post('/api/discounts/', discountData),
   updateDiscount: (id, discountData) => axiosInstance.patch(`/api/discounts/${id}/`, discountData),
   deleteDiscount: (id) => axiosInstance.delete(`/api/discounts/${id}/`),
+};
+
+// ============================================================================
+// OFFLINE SALES API
+// ============================================================================
+
+export const salesBillAPI = {
+  getSalesBills: (page = 1, pageSize = 10, params = {}) =>
+    axiosInstance.get('/api/offline-sales/', { params: { ...params, page, page_size: pageSize } }),
+  getSalesBill: (id) => axiosInstance.get(`/api/offline-sales/${id}/`),
+  createSalesBill: (billData) => axiosInstance.post('/api/offline-sales/', billData),
+  updateSalesBill: (id, billData) => axiosInstance.patch(`/api/offline-sales/${id}/`, billData),
+  deleteSalesBill: (id) => axiosInstance.delete(`/api/offline-sales/${id}/`),
+  generateInvoice: (id) => axiosInstance.get(`/api/offline-sales/${id}/generate-invoice/`),
+};
+
+// ============================================================================
+// OFFLINE CUSTOMER API
+// ============================================================================
+
+export const offlineCustomerAPI = {
+  findOrCreateCustomer: (customerData) => 
+    axiosInstance.post('/api/offline-sales/offline-customers/find-or-create/', customerData),
+  searchCustomerByPhone: (phoneNumber) =>
+    axiosInstance.get(`/api/offline-sales/offline-customers/search-by-phone/`, { params: { phone_number: phoneNumber } }),
+  getCustomers: (params = {}) =>
+    axiosInstance.get('/api/offline-sales/offline-customers/', { params }),
 };
 
 // ============================================================================

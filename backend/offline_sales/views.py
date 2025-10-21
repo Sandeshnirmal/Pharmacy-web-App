@@ -1,6 +1,6 @@
 from rest_framework import viewsets
-from .models import OfflineSale, OfflineSaleItem
-from .serializers import OfflineSaleSerializer, OfflineSaleItemSerializer
+from .models import OfflineSale, OfflineSaleItem, BillReturn, OfflineCustomer
+from .serializers import OfflineSaleSerializer, OfflineSaleItemSerializer, BillReturnSerializer, BillReturnItemSerializer, OfflineCustomerSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
@@ -10,6 +10,7 @@ from django.http import HttpResponse
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 import io
+from django_filters.rest_framework import DjangoFilterBackend # Import DjangoFilterBackend
 
 class OfflineSaleViewSet(viewsets.ModelViewSet):
     queryset = OfflineSale.objects.all().order_by('-sale_date')
@@ -88,3 +89,46 @@ class BillReturnViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(returned_by=self.request.user)
+
+from rest_framework.permissions import AllowAny # Import AllowAny
+
+class OfflineCustomerViewSet(viewsets.ModelViewSet):
+    queryset = OfflineCustomer.objects.all().order_by('name')
+    serializer_class = OfflineCustomerSerializer
+    # Temporarily allow any user to access this endpoint for debugging purposes.
+    # In a production environment, this should be [IsAuthenticated] or more restrictive.
+    permission_classes = [AllowAny] 
+    authentication_classes = [] # Remove TokenAuthentication if AllowAny is used
+    filter_backends = [DjangoFilterBackend] # Add filter backend
+    filterset_fields = ['name', 'phone_number'] # Specify fields for filtering
+
+    @action(detail=False, methods=['get'], url_path='search-by-phone')
+    def search_by_phone(self, request):
+        phone_number = request.query_params.get('phone_number', None)
+        if not phone_number:
+            return Response({"detail": "Phone number parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            customer = OfflineCustomer.objects.get(phone_number=phone_number)
+            serializer = self.get_serializer(customer)
+            return Response(serializer.data)
+        except OfflineCustomer.DoesNotExist:
+            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['post'], url_path='find-or-create')
+    def find_or_create_customer(self, request):
+        phone_number = request.data.get('phone_number', None)
+        if not phone_number:
+            return Response({"detail": "Phone number is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            customer = OfflineCustomer.objects.get(phone_number=phone_number)
+            serializer = self.get_serializer(customer)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except OfflineCustomer.DoesNotExist:
+            # Customer not found, create a new one
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

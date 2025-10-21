@@ -9,6 +9,7 @@ from .models import (
     ProductReview, ProductImage, Wishlist, ProductTag,
     ProductTagAssignment, ProductViewHistory, Composition, Discount
 )
+from .utils import calculate_current_selling_price, calculate_current_cost_price, calculate_effective_discount_percentage
 
 User = get_user_model()
 
@@ -196,72 +197,11 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
-        channel = request.query_params.get('channel', 'online') # Default to online if not specified
+        channel = request.query_params.get('channel', 'online')
+        return calculate_current_selling_price(obj, channel)
 
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
-
-        if not active_batches:
-            return 0
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        
-        if channel == 'online':
-            base_mrp = primary_batch.online_mrp_price if primary_batch else active_batches[0].online_mrp_price
-            batch_discount_percentage = primary_batch.online_discount_percentage if primary_batch else active_batches[0].online_discount_percentage
-        elif channel == 'offline':
-            base_mrp = primary_batch.offline_mrp_price if primary_batch else active_batches[0].offline_mrp_price
-            batch_discount_percentage = primary_batch.offline_discount_percentage if primary_batch else active_batches[0].offline_discount_percentage
-        else: # Default or generic
-            base_mrp = primary_batch.mrp_price if primary_batch else active_batches[0].mrp_price
-            batch_discount_percentage = primary_batch.discount_percentage if primary_batch else active_batches[0].discount_percentage
-
-
-        # Find the highest applicable discount from the Discount model
-        today = timezone.now().date()
-        product_discounts = obj.discounts.filter(
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='product'
-        )
-        category_discounts = Discount.objects.filter(
-            Q(category=obj.category) | Q(category__parent_category=obj.category), # Consider parent categories too
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='category'
-        )
-
-        max_discount_from_master = 0
-        if product_discounts.exists():
-            max_discount_from_master = max(d.percentage for d in product_discounts)
-        if category_discounts.exists():
-            max_discount_from_master = max(max_discount_from_master, max(d.percentage for d in category_discounts))
-
-        # Compare batch-specific discount with master discounts and take the highest
-        final_discount_percentage = max(batch_discount_percentage, max_discount_from_master)
-
-        # Calculate final selling price
-        if base_mrp is not None:
-            discount_amount = base_mrp * (final_discount_percentage / 100)
-            return base_mrp - discount_amount
-        return 0
     def get_current_cost_price(self, obj):
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        if primary_batch:
-            return primary_batch.cost_price
-
-        if active_batches:
-            return active_batches[0].cost_price
-        return 0
+        return calculate_current_cost_price(obj)
 
     def get_stock_quantity(self, obj):
         all_batches = list(obj.batches.all())
@@ -314,36 +254,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         ]
 
     def get_discount_percentage(self, obj):
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today()]
-
-        batch_max_discount = 0
-        if active_batches:
-            batch_max_discount = float(max(batch.discount_percentage for batch in active_batches))
-
-        # Find the highest applicable discount from the Discount model
-        today = timezone.now().date()
-        product_discounts = obj.discounts.filter(
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='product'
-        )
-        category_discounts = Discount.objects.filter(
-            Q(category=obj.category) | Q(category__parent_category=obj.category),
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='category'
-        )
-
-        max_discount_from_master = 0
-        if product_discounts.exists():
-            max_discount_from_master = max(d.percentage for d in product_discounts)
-        if category_discounts.exists():
-            max_discount_from_master = max(max_discount_from_master, max(d.percentage for d in category_discounts))
-
-        return max(batch_max_discount, max_discount_from_master)
+        return calculate_effective_discount_percentage(obj)
 
     def get_average_rating(self, obj):
         avg = obj.reviews.aggregate(avg_rating=Avg('rating'))['avg_rating']
@@ -368,72 +279,11 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
-        channel = request.query_params.get('channel', 'online') # Default to online if not specified
-
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
-
-        if not active_batches:
-            return 0
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        
-        if channel == 'online':
-            base_mrp = primary_batch.online_mrp_price if primary_batch else active_batches[0].online_mrp_price
-            batch_discount_percentage = primary_batch.online_discount_percentage if primary_batch else active_batches[0].online_discount_percentage
-        elif channel == 'offline':
-            base_mrp = primary_batch.offline_mrp_price if primary_batch else active_batches[0].offline_mrp_price
-            batch_discount_percentage = primary_batch.offline_discount_percentage if primary_batch else active_batches[0].offline_discount_percentage
-        else: # Default or generic
-            base_mrp = primary_batch.mrp_price if primary_batch else active_batches[0].mrp_price
-            batch_discount_percentage = primary_batch.discount_percentage if primary_batch else active_batches[0].discount_percentage
-
-        # Find the highest applicable discount from the Discount model
-        today = timezone.now().date()
-        product_discounts = obj.discounts.filter(
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='product'
-        )
-        category_discounts = Discount.objects.filter(
-            Q(category=obj.category) | Q(category__parent_category=obj.category),
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='category'
-        )
-
-        max_discount_from_master = 0
-        if product_discounts.exists():
-            max_discount_from_master = max(d.percentage for d in product_discounts)
-        if category_discounts.exists():
-            max_discount_from_master = max(max_discount_from_master, max(d.percentage for d in category_discounts))
-
-        # Compare batch-specific discount with master discounts and take the highest
-        final_discount_percentage = max(batch_discount_percentage, max_discount_from_master)
-
-        # Calculate final selling price
-        if base_mrp is not None:
-            discount_amount = base_mrp * (final_discount_percentage / 100)
-            return base_mrp - discount_amount
-        return 0
+        channel = request.query_params.get('channel', 'online')
+        return calculate_current_selling_price(obj, channel)
 
     def get_current_cost_price(self, obj):
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        if primary_batch:
-            return primary_batch.cost_price
-
-        if active_batches:
-            return active_batches[0].cost_price
-        return 0
+        return calculate_current_cost_price(obj)
 
     def get_stock_quantity(self, obj):
         all_batches = list(obj.batches.all())
@@ -566,72 +416,11 @@ class ProductSearchSerializer(serializers.ModelSerializer):
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
-        channel = request.query_params.get('channel', 'online') # Default to online if not specified
-
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
-
-        if not active_batches:
-            return None
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        
-        if channel == 'online':
-            base_mrp = primary_batch.online_mrp_price if primary_batch else active_batches[0].online_mrp_price
-            batch_discount_percentage = primary_batch.online_discount_percentage if primary_batch else active_batches[0].online_discount_percentage
-        elif channel == 'offline':
-            base_mrp = primary_batch.offline_mrp_price if primary_batch else active_batches[0].offline_mrp_price
-            batch_discount_percentage = primary_batch.offline_discount_percentage if primary_batch else active_batches[0].offline_discount_percentage
-        else: # Default or generic
-            base_mrp = primary_batch.mrp_price if primary_batch else active_batches[0].mrp_price
-            batch_discount_percentage = primary_batch.discount_percentage if primary_batch else active_batches[0].discount_percentage
-
-        # Find the highest applicable discount from the Discount model
-        today = timezone.now().date()
-        product_discounts = obj.discounts.filter(
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='product'
-        )
-        category_discounts = Discount.objects.filter(
-            Q(category=obj.category) | Q(category__parent_category=obj.category),
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='category'
-        )
-
-        max_discount_from_master = 0
-        if product_discounts.exists():
-            max_discount_from_master = max(d.percentage for d in product_discounts)
-        if category_discounts.exists():
-            max_discount_from_master = max(max_discount_from_master, max(d.percentage for d in category_discounts))
-
-        # Compare batch-specific discount with master discounts and take the highest
-        final_discount_percentage = max(batch_discount_percentage, max_discount_from_master)
-
-        # Calculate final selling price
-        if base_mrp is not None:
-            discount_amount = base_mrp * (final_discount_percentage / 100)
-            return base_mrp - discount_amount
-        return None
+        channel = request.query_params.get('channel', 'online')
+        return calculate_current_selling_price(obj, channel)
 
     def get_current_cost_price(self, obj):
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        if primary_batch:
-            return primary_batch.cost_price
-
-        if active_batches:
-            return active_batches[0].cost_price
-        return None
+        return calculate_current_cost_price(obj)
 
     def get_average_rating(self, obj):
         avg = obj.reviews.aggregate(avg_rating=Avg('rating'))['avg_rating']
@@ -641,36 +430,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         return obj.reviews.count()
 
     def get_discount_percentage(self, obj):
-        all_batches = list(obj.batches.all())
-        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today()]
-
-        batch_max_discount = 0
-        if active_batches:
-            batch_max_discount = float(max(batch.discount_percentage for batch in active_batches))
-
-        # Find the highest applicable discount from the Discount model
-        today = timezone.now().date()
-        product_discounts = obj.discounts.filter(
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='product'
-        )
-        category_discounts = Discount.objects.filter(
-            Q(category=obj.category) | Q(category__parent_category=obj.category),
-            is_active=True,
-            start_date__lte=today,
-            end_date__gte=today,
-            target_type='category'
-        )
-
-        max_discount_from_master = 0
-        if product_discounts.exists():
-            max_discount_from_master = max(d.percentage for d in product_discounts)
-        if category_discounts.exists():
-            max_discount_from_master = max(max_discount_from_master, max(d.percentage for d in category_discounts))
-
-        return max(batch_max_discount, max_discount_from_master)
+        return calculate_effective_discount_percentage(obj)
 
     def get_primary_image(self, obj):
         primary_image = obj.images.filter(is_primary=True).first()

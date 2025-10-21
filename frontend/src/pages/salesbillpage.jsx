@@ -1,89 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { PlusCircle, Search, Printer } from "lucide-react";
 
-// --- Mock API Service ---
-// To fix the import error and make this component runnable, we'll simulate the API.
-// In your real application, you would remove this and use your actual apiService.js file.
-const mockSalesBills = [
-  {
-    id: 101,
-    customer: 1,
-    customer_name: "John Doe",
-    bill_date: "2025-10-18",
-    due_date: "2025-11-18",
-    total_amount: "150.00",
-    status: "PAID",
-    items: [
-      {
-        product: 1,
-        packing: "10x1",
-        quantity: 2,
-        unit_price: 75.0,
-        hsn_code: "1234",
-        unit: "pcs",
-        batch_no: "B123",
-        expire_date: "2026-10-17",
-      },
-    ],
-  },
-  {
-    id: 102,
-    customer: 2,
-    customer_name: "Jane Smith",
-    bill_date: "2025-10-19",
-    due_date: "2025-11-19",
-    total_amount: "320.50",
-    status: "PENDING",
-    items: [
-      {
-        product: 2,
-        packing: "20x1",
-        quantity: 5,
-        unit_price: 64.1,
-        hsn_code: "5678",
-        unit: "box",
-        batch_no: "B456",
-        expire_date: "2027-05-20",
-      },
-    ],
-  },
-];
-const mockCustomers = [
-  { id: 1, name: "John Doe", address: "123 Main St", mobile: "555-1234" },
-  { id: 2, name: "Jane Smith", address: "456 Oak Ave", mobile: "555-5678" },
-];
-const mockProducts = [
-  { id: 1, name: "Product A", sale_price: 75.0, hsn_code: "1234" },
-  { id: 2, name: "Product B", sale_price: 64.1, hsn_code: "5678" },
-];
-
-const inventoryAPI = {
-  getSalesBills: () =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: mockSalesBills }), 500)
-    ),
-  deleteSalesBill: (id) =>
-    new Promise((resolve) => setTimeout(() => resolve(), 500)),
-  createSalesBill: (data) =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: { id: Math.random(), ...data } }), 500)
-    ),
-  updateSalesBill: (id, data) =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: { id, ...data } }), 500)
-    ),
-  getCustomers: () =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: mockCustomers }), 500)
-    ),
-};
-const productAPI = {
-  getProducts: () =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: mockProducts }), 500)
-    ),
-};
-// --- End Mock API Service ---
+import { productAPI, inventoryAPI, salesBillAPI, offlineCustomerAPI } from '../../api/apiService'; // Adjust path as needed
 
 // --- SalesBillForm Component (Updated Layout) ---
 const SalesBillForm = ({ onFormClose, initialData }) => {
@@ -123,11 +41,11 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
       try {
         setLoading(true);
         const [customersResponse, productsResponse] = await Promise.all([
-          inventoryAPI.getCustomers(),
+          offlineCustomerAPI.getCustomers(), // Use offlineCustomerAPI for customers
           productAPI.getProducts(),
         ]);
         setCustomers(customersResponse.data.results || customersResponse.data);
-        setProducts(productsResponse.data.results || productsResponse.data);
+        setProducts(Array.isArray(productsResponse.data.results) ? productsResponse.data.results : Array.isArray(productsResponse.data) ? productsResponse.data : []);
       } catch (err) {
         setError("Failed to fetch initial data (customers, products).");
       } finally {
@@ -190,7 +108,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         (p) => String(p.id) === String(value)
       );
       if (selectedProduct) {
-        newItems[index]["unit_price"] = selectedProduct.sale_price;
+        newItems[index]["unit_price"] = selectedProduct.current_selling_price; // Use current_selling_price
         newItems[index]["hsn_code"] = selectedProduct.hsn_code;
       }
     }
@@ -597,199 +515,240 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
 
 // --- Main Page Component ---
 const SalesBillPage = () => {
-  const [bills, setBills] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [currentBill, setCurrentBill] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
+    const [bills, setBills] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [showForm, setShowForm] = useState(false);
+    const [currentBill, setCurrentBill] = useState(null);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const pageSize = 10; // Define page size
 
-  const fetchSalesBills = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await inventoryAPI.getSalesBills();
-      setBills(response.data.results || response.data);
-    } catch (err) {
-      setError("Failed to fetch sales bills.");
-      console.error("Error fetching sales bills:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    const fetchSalesBills = useCallback(async () => {
+        try {
+            setLoading(true);
+            const response = await salesBillAPI.getSalesBills(currentPage, pageSize, { search: searchTerm });
+            setBills(Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : []);
+            setTotalPages(Math.ceil(response.data.count / pageSize));
+        } catch (err) {
+            setError("Failed to fetch sales bills.");
+            console.error("Error fetching sales bills:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentPage, searchTerm]);
 
-  useEffect(() => {
-    if (!showForm) {
-      fetchSalesBills();
-    }
-  }, [showForm, fetchSalesBills]);
+    useEffect(() => {
+        if (!showForm) {
+            fetchSalesBills();
+        }
+    }, [showForm, fetchSalesBills]);
 
-  const handleAddNewClick = () => {
-    setCurrentBill(null);
-    setShowForm(true);
-  };
+    const handleAddNewClick = () => {
+        setCurrentBill(null);
+        setShowForm(true);
+    };
 
-  const handleEditClick = (bill) => {
-    setCurrentBill(bill);
-    setShowForm(true);
-  };
+    const handleEditClick = (bill) => {
+        setCurrentBill(bill);
+        setShowForm(true);
+    };
 
-  const handleDeleteClick = async (id) => {
-    const isConfirmed = window.confirm(
-      "Are you sure you want to delete this bill?"
-    );
-    if (isConfirmed) {
-      try {
-        await inventoryAPI.deleteSalesBill(id);
-        fetchSalesBills();
-      } catch (err) {
-        setError("Failed to delete sales bill.");
-        console.error("Error deleting bill:", err);
-      }
-    }
-  };
+    const handleDeleteClick = async (id) => {
+        const isConfirmed = window.confirm(
+            "Are you sure you want to delete this bill?"
+        );
+        if (isConfirmed) {
+            try {
+                await salesBillAPI.deleteSalesBill(id);
+                fetchSalesBills();
+            } catch (err) {
+                setError("Failed to delete sales bill.");
+                console.error("Error deleting bill:", err);
+            }
+        }
+    };
 
-  const handleFormClose = () => {
-    setShowForm(false);
-    setCurrentBill(null);
-  };
+    const handleFormClose = () => {
+        setShowForm(false);
+        setCurrentBill(null);
+    };
 
-  const filteredBills = bills.filter(
-    (bill) =>
-      bill.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      String(bill.id).includes(searchTerm)
-  );
+    const handlePageChange = (page) => {
+        if (page > 0 && page <= totalPages) {
+            setCurrentPage(page);
+        }
+    };
 
-  return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      {showForm ? (
-        <SalesBillForm
-          onFormClose={handleFormClose}
-          initialData={currentBill}
-        />
-      ) : (
-        <div className="bg-white p-8 rounded-2xl shadow-lg">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-gray-800">Sales Bills</h1>
-            <button
-              onClick={handleAddNewClick}
-              className="flex items-center bg-indigo-600 text-white px-5 py-2 rounded-lg shadow-md hover:bg-indigo-700 transition duration-300"
-            >
-              <PlusCircle className="mr-2" size={20} />
-              Create New Bill
-            </button>
-          </div>
+    // No need for client-side filtering if backend handles search
+    // const filteredBills = bills.filter(
+    //     (bill) =>
+    //         bill.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    //         String(bill.id).includes(searchTerm)
+    // );
 
-          <div className="mb-4">
-            <div className="relative">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                size={20}
-              />
-              <input
-                type="text"
-                placeholder="Search by customer name or bill ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
+    return (
+        <div className="p-6 bg-gray-50 min-h-screen">
+            {showForm ? (
+                <SalesBillForm
+                    onFormClose={handleFormClose}
+                    initialData={currentBill}
+                />
+            ) : (
+                <div className="bg-white p-8 rounded-2xl shadow-lg">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-3xl font-bold text-gray-800">Sales Bills</h1>
+                        <button
+                            onClick={handleAddNewClick}
+                            className="flex items-center bg-indigo-600 text-white px-5 py-2 rounded-lg shadow-md hover:bg-indigo-700 transition duration-300"
+                        >
+                            <PlusCircle className="mr-2" size={20} />
+                            Create New Bill
+                        </button>
+                    </div>
 
-          {loading && (
-            <p className="text-center text-gray-600">Loading bills...</p>
-          )}
-          {error && (
-            <p className="text-center text-red-600 bg-red-100 p-3 rounded-lg">
-              {error}
-            </p>
-          )}
+                    <div className="mb-4">
+                        <div className="relative">
+                            <Search
+                                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                                size={20}
+                            />
+                            <input
+                                type="text"
+                                placeholder="Search by customer name or bill ID..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+                    </div>
 
-          {!loading && !error && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
-                      Bill ID
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
-                      Customer
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
-                      Date
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
-                      Amount
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
-                      Status
-                    </th>
-                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBills.length > 0 ? (
-                    filteredBills.map((bill) => (
-                      <tr key={bill.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4 text-gray-800">#{bill.id}</td>
-                        <td className="py-3 px-4 text-gray-800">
-                          {bill.customer_name}
-                        </td>
-                        <td className="py-3 px-4 text-gray-600">
-                          {new Date(bill.bill_date).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 px-4 text-gray-800 font-medium">
-                          ${parseFloat(bill.total_amount).toFixed(2)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                              bill.status === "PAID"
-                                ? "bg-green-100 text-green-800"
-                                : bill.status === "PENDING"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {bill.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => handleEditClick(bill)}
-                            className="text-indigo-600 hover:text-indigo-800 mr-4 font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(bill.id)}
-                            className="text-red-600 hover:text-red-800 font-medium"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan="6"
-                        className="py-6 px-4 text-center text-gray-500"
-                      >
-                        No sales bills found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+                    {loading && (
+                        <p className="text-center text-gray-600">Loading bills...</p>
+                    )}
+                    {error && (
+                        <p className="text-center text-red-600 bg-red-100 p-3 rounded-lg">
+                            {error}
+                        </p>
+                    )}
+
+                    {!loading && !error && (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full bg-white">
+                                <thead className="bg-gray-100">
+                                    <tr>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
+                                            Bill ID
+                                        </th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
+                                            Customer
+                                        </th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
+                                            Date
+                                        </th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
+                                            Amount
+                                        </th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
+                                            Status
+                                        </th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bills.length > 0 ? (
+                                        bills.map((bill) => (
+                                            <tr key={bill.id} className="border-b hover:bg-gray-50">
+                                                <td className="py-3 px-4 text-gray-800">#{bill.id}</td>
+                                                <td className="py-3 px-4 text-gray-800">
+                                                    {bill.customer_name}
+                                                </td>
+                                                <td className="py-3 px-4 text-gray-600">
+                                                    {new Date(bill.bill_date).toLocaleDateString()}
+                                                </td>
+                                                <td className="py-3 px-4 text-gray-800 font-medium">
+                                                    ${parseFloat(bill.total_amount).toFixed(2)}
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    <span
+                                                        className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                                                            bill.status === "PAID"
+                                                                ? "bg-green-100 text-green-800"
+                                                                : bill.status === "PENDING"
+                                                                    ? "bg-yellow-100 text-yellow-800"
+                                                                    : "bg-red-100 text-red-800"
+                                                        }`}
+                                                    >
+                                                        {bill.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    <button
+                                                        onClick={() => handleEditClick(bill)}
+                                                        className="text-indigo-600 hover:text-indigo-800 mr-4 font-medium"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteClick(bill.id)}
+                                                        className="text-red-600 hover:text-red-800 font-medium"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td
+                                                colSpan="6"
+                                                className="py-6 px-4 text-center text-gray-500"
+                                            >
+                                                No sales bills found.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="flex justify-center mt-4 space-x-2">
+                                    <button
+                                        onClick={() => handlePageChange(currentPage - 1)}
+                                        disabled={currentPage === 1}
+                                        className="px-4 py-2 border rounded-md bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
+                                    >
+                                        Previous
+                                    </button>
+                                    {[...Array(totalPages)].map((_, i) => (
+                                        <button
+                                            key={i + 1}
+                                            onClick={() => handlePageChange(i + 1)}
+                                            className={`px-4 py-2 border rounded-md ${
+                                                currentPage === i + 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                                            }`}
+                                        >
+                                            {i + 1}
+                                        </button>
+                                    ))}
+                                    <button
+                                        onClick={() => handlePageChange(currentPage + 1)}
+                                        disabled={currentPage === totalPages}
+                                        className="px-4 py-2 border rounded-md bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default SalesBillPage;

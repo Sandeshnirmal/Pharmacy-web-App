@@ -2,9 +2,21 @@ from django.db import models
 from product.models import Product, Batch
 from usermanagement.models import User
 
+class OfflineCustomer(models.Model):
+    name = models.CharField(max_length=255, blank=True, null=True) # Make name optional
+    phone_number = models.CharField(max_length=15, unique=True)
+    address = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.phone_number})"
+
 class OfflineSale(models.Model):
-    customer_name = models.CharField(max_length=255, blank=True, null=True)
-    customer_phone = models.CharField(max_length=15, blank=True, null=True)
+    customer = models.ForeignKey(OfflineCustomer, on_delete=models.SET_NULL, null=True, blank=True, related_name='offline_sales')
+    customer_name = models.CharField(max_length=255, blank=True, null=True) # Kept for flexibility/denormalization
+    customer_phone = models.CharField(max_length=15, blank=True, null=True) # Kept for flexibility/denormalization
+    customer_address = models.TextField(blank=True, null=True) # Kept for flexibility/denormalization
     sale_date = models.DateTimeField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     paid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
