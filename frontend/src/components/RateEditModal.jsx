@@ -55,9 +55,9 @@ const RateEditModal = ({ show, onClose, onSaveSuccess, initialData }) => {
                 mfg_license_number: initialData.mfg_license_number || '',
             });
         } else if (show && !initialData) {
-            // Reset form for new entry
+            // Reset form for new entry, pre-filling product if available from initialData prop
             setFormData({
-                product: '',
+                product: initialData?.product || '', // Pre-fill product if available
                 batch_number: '',
                 manufacturing_date: '',
                 expiry_date: '',

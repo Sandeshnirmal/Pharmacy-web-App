@@ -11,8 +11,9 @@ from .serializers import (
     StockMovementSerializer, StockAlertSerializer, SupplierSerializer,
     BatchCreateSerializer, InventoryStatsSerializer,
     PurchaseOrderSerializer, PurchaseOrderItemSerializer,
-    PurchaseReturnItemSerializer, # Import the new serializer
-    PurchaseReturnSerializer # Import the new serializer
+    PurchaseReturnItemSerializer,
+    PurchaseReturnSerializer,
+    PurchaseOrderReturnItemsSerializer # Import the new serializer
 )
 from product.models import Product, Batch
 from product.serializers import BatchSerializer
@@ -269,34 +270,42 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(purchase_order)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], serializer_class=PurchaseReturnItemSerializer)
+    @action(detail=True, methods=['post'], serializer_class=PurchaseOrderReturnItemsSerializer)
     def return_items(self, request, pk=None):
         purchase_order = self.get_object()
         if purchase_order.status == 'CANCELLED':
             return Response({'detail': 'Cannot return items for a cancelled order.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = self.get_serializer(data=request.data, many=True)
-        serializer = self.get_serializer(data=request.data, many=True)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        items_to_return_data = serializer.validated_data
+        validated_data = serializer.validated_data
+
+        items_to_return_data = validated_data.get('items', [])
+        reason = validated_data.get('reason', 'Items returned to supplier.')
+        notes = validated_data.get('notes', '')
+
+        if not items_to_return_data:
+            return Response({'detail': 'No items provided for return.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Create a new PurchaseReturn record
         purchase_return = PurchaseReturn.objects.create(
             purchase_order=purchase_order,
-            reason=request.data.get('reason', 'Items returned to supplier.'),
+            reason=reason,
             created_by=request.user,
             status='PROCESSED' # Assuming immediate processing for now
         )
+        # If notes are needed, they would need to be added to the PurchaseReturn model first.
         total_return_amount = 0
 
         for item_data in items_to_return_data:
-            item_id = item_data.get('id')
+            purchase_order_item_id = item_data.get('purchase_order_item')
+            product_id = item_data.get('product')
             return_quantity = item_data.get('quantity')
 
             try:
-                po_item = purchase_order.items.get(id=item_id)
+                po_item = purchase_order.items.get(id=purchase_order_item_id)
             except PurchaseOrderItem.DoesNotExist:
-                return Response({'detail': f'Purchase order item with id {item_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'detail': f'Purchase order item with id {purchase_order_item_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
             if return_quantity > (po_item.received_quantity - po_item.returned_quantity):
                 return Response({'detail': f'Return quantity for item {po_item.product.name} exceeds available received quantity not yet returned.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -305,7 +314,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             po_item.save()
 
             # Update product stock and create stock movement
-            product = po_item.product
+            product = Product.objects.get(id=product_id) # Retrieve product object
             product.stock_quantity -= return_quantity
             product.save()
 

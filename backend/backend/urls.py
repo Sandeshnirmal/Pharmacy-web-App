@@ -7,6 +7,12 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     TokenVerifyView,
 )
+from rest_framework.routers import DefaultRouter
+from product.views import DiscountViewSet # Import DiscountViewSet
+
+# Create a router for DiscountViewSet
+discount_router = DefaultRouter()
+discount_router.register(r'', DiscountViewSet, basename='discount')
 
 
 urlpatterns = [
@@ -19,7 +25,7 @@ urlpatterns = [
     path('api/order/', include('orders.urls')),
     path('api/inventory/', include('inventory.urls')),
     path('api/offline-sales/', include('offline_sales.urls')),
-    path('api/discounts/', include('product.urls')), # Expose discounts directly under /api/discounts/
+    path('api/discounts/', include(discount_router.urls)), # Expose discounts directly under /api/discounts/
 
     # Legacy endpoints (for backward compatibility)
     path('user/', include('usermanagement.urls')),

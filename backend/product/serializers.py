@@ -18,40 +18,96 @@ User = get_user_model()
 # Discount Serializer
 # ----------------------------
 class DiscountSerializer(serializers.ModelSerializer):
-    product_name = serializers.SerializerMethodField()
-    category_name = serializers.SerializerMethodField()
+    # Fields for reading (displaying target name)
+    product_name = serializers.CharField(source='product.name', read_only=True, allow_null=True)
+    category_name = serializers.CharField(source='category.name', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
+    # Fields for writing (from frontend)
+    target_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    target_type = serializers.CharField(write_only=True, required=False) # Will be 'product' or 'category'
 
     class Meta:
         model = Discount
-        fields = '__all__'
-        read_only_fields = ('created_at', 'updated_at', 'created_by')
-
-    def get_product_name(self, obj):
-        return obj.product.name if obj.product else None
-
-    def get_category_name(self, obj):
-        return obj.category.name if obj.category else None
+        fields = [
+            'id', 'name', 'percentage', 'description', 'target_type', 'target_id',
+            'product', 'category', # Keep these for internal model mapping
+            'start_date', 'end_date', 'is_active',
+            'created_at', 'updated_at', 'created_by', 'created_by_username',
+            'product_name', 'category_name' # For read-only display
+        ]
+        read_only_fields = ('created_at', 'updated_at', 'created_by', 'product_name', 'category_name')
+        extra_kwargs = {
+            'product': {'required': False, 'allow_null': True},
+            'category': {'required': False, 'allow_null': True},
+        }
 
     def validate(self, data):
+        # Custom validation to ensure target_type and target_id are consistent
         target_type = data.get('target_type')
+        target_id = data.get('target_id')
         product = data.get('product')
         category = data.get('category')
 
-        if target_type == 'product' and not product:
-            raise serializers.ValidationError({'product': 'Product must be specified for product-wise discounts.'})
-        if target_type == 'category' and not category:
-            raise serializers.ValidationError({'category': 'Category must be specified for category-wise discounts.'})
-        if target_type == 'product' and category:
-            raise serializers.ValidationError({'category': 'Cannot specify category for product-wise discounts.'})
-        if target_type == 'category' and product:
-            raise serializers.ValidationError({'product': 'Cannot specify product for category-wise discounts.'})
-        
+        if target_type == 'product':
+            if not target_id and not product:
+                raise serializers.ValidationError({'target_id': 'Product ID is required for product-wise discounts.'})
+            if target_id and product and target_id != product.id:
+                raise serializers.ValidationError({'target_id': 'Product ID in target_id does not match product field.'})
+            if category:
+                raise serializers.ValidationError({'category': 'Cannot specify category for product-wise discounts.'})
+        elif target_type == 'category':
+            if not target_id and not category:
+                raise serializers.ValidationError({'target_id': 'Category ID is required for category-wise discounts.'})
+            if target_id and category and target_id != category.id:
+                raise serializers.ValidationError({'target_id': 'Category ID in target_id does not match category field.'})
+            if product:
+                raise serializers.ValidationError({'product': 'Cannot specify product for category-wise discounts.'})
+        else:
+            # If target_type is not provided or invalid, ensure neither product nor category is set
+            if product or category:
+                raise serializers.ValidationError({'target_type': 'Target type must be specified if product or category is set.'})
+
         return data
 
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
+        target_id = validated_data.pop('target_id', None)
+        target_type = validated_data.pop('target_type', None)
+
+        if target_type == 'product' and target_id:
+            validated_data['product'] = Product.objects.get(id=target_id)
+            validated_data['category'] = None # Ensure category is null
+        elif target_type == 'category' and target_id:
+            validated_data['category'] = Category.objects.get(id=target_id)
+            validated_data['product'] = None # Ensure product is null
+        else:
+            validated_data['product'] = None
+            validated_data['category'] = None
+
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        target_id = validated_data.pop('target_id', None)
+        target_type = validated_data.pop('target_type', None)
+
+        if target_type == 'product':
+            if target_id:
+                instance.product = Product.objects.get(id=target_id)
+            else:
+                instance.product = None
+            instance.category = None
+        elif target_type == 'category':
+            if target_id:
+                instance.category = Category.objects.get(id=target_id)
+            else:
+                instance.category = None
+            instance.product = None
+        else:
+            instance.product = None
+            instance.category = None
+
+        return super().update(instance, validated_data)
 
 
 # ----------------------------

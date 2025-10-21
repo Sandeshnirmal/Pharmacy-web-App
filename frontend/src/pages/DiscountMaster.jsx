@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axiosInstance from '../api/axiosInstance';
 import { apiUtils, productAPI, discountAPI } from "../api/apiService";
+import DiscountAddEditModal from "../components/DiscountAddEditModal"; // Import the new modal component
 
 const DiscountMaster = () => {
   const [discounts, setDiscounts] = useState([]);
@@ -10,15 +11,20 @@ const DiscountMaster = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDiscountType, setSelectedDiscountType] = useState("product"); // "product" or "category"
+  const [showAddEditModal, setShowAddEditModal] = useState(false); // To control modal visibility
+  const [currentDiscount, setCurrentDiscount] = useState(null); // For editing a specific discount
 
-  // State for new discount form
-  const [newDiscount, setNewDiscount] = useState({
-    name: "",
-    percentage: "",
-    description: "",
-    target_type: "product", // 'product' or 'category'
-    target_id: null, // product_id or category_id
-  });
+  // State for new discount form (no longer needed as it's in the modal)
+  // const [newDiscount, setNewDiscount] = useState({
+  //   name: "",
+  //   percentage: "",
+  //   description: "",
+  //   target_type: "product",
+  //   target_id: null,
+  //   start_date: "",
+  //   end_date: "",
+  //   is_active: true,
+  // });
 
   useEffect(() => {
     fetchDiscounts();
@@ -31,7 +37,16 @@ const DiscountMaster = () => {
       setLoading(true);
       setError(null);
       const response = await discountAPI.getDiscounts();
-      setDiscounts(response.data.results || []);
+      const data = response.data;
+      if (data && Array.isArray(data.results)) {
+        setDiscounts(data.results);
+      } else if (Array.isArray(data)) {
+        setDiscounts(data);
+      } else {
+        console.warn("Unexpected API response format for discounts.");
+        setDiscounts([]);
+      }
+      console.log("Fetched discounts:", data); // Debug log
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -41,10 +56,38 @@ const DiscountMaster = () => {
     }
   };
 
+  const handleAddDiscountClick = () => {
+    setCurrentDiscount(null); // Clear current discount for new entry
+    setShowAddEditModal(true);
+  };
+
+  const handleEditDiscountClick = (discount) => {
+    setCurrentDiscount(discount);
+    setShowAddEditModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowAddEditModal(false);
+    setCurrentDiscount(null);
+  };
+
+  const handleSaveSuccess = () => {
+    fetchDiscounts(); // Refresh the list after save
+  };
+
   const fetchProducts = async (page = 1, size = 100) => { // Fetch more products for selection
     try {
       const response = await productAPI.getProducts(page, size);
-      setProducts(response.data.results || []);
+      const data = response.data;
+      if (data && Array.isArray(data.results)) {
+        setProducts(data.results);
+      } else if (Array.isArray(data)) {
+        setProducts(data);
+      } else {
+        console.warn("Unexpected API response format for products.");
+        setProducts([]);
+      }
+      console.log("Fetched products for modal:", data); // Debug log
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -64,6 +107,7 @@ const DiscountMaster = () => {
         console.warn("Unexpected API response format for categories.");
         setCategories([]);
       }
+      console.log("Fetched categories for modal:", categoriesResponse.data); // Debug log
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -71,42 +115,8 @@ const DiscountMaster = () => {
     }
   };
 
-  const handleAddDiscount = async (e) => {
-    e.preventDefault();
-    try {
-      await discountAPI.createDiscount(newDiscount);
-      setNewDiscount({
-        name: "",
-        percentage: "",
-        description: "",
-        target_type: "item",
-        target_id: null,
-      });
-      fetchDiscounts(); // Refresh the list
-    } catch (error) {
-      const errorInfo = apiUtils.handleError(error);
-      setError(errorInfo.message);
-      console.error("Error adding discount:", error);
-    }
-  };
-
-  const handleEditDiscount = async (discount) => {
-    try {
-      // For simplicity, let's assume we have a modal or a separate form for editing
-      // For now, we'll just log and then refresh
-      console.log("Editing discount:", discount);
-      // In a real application, you'd likely open a modal with the discount data
-      // and then call discountAPI.updateDiscount after the user saves changes.
-      // For this task, we'll just simulate an update and refresh.
-      const updatedDiscount = { ...discount, name: discount.name + " (Edited)" }; // Example change
-      await discountAPI.updateDiscount(discount.id, updatedDiscount);
-      fetchDiscounts(); // Refresh the list
-    } catch (error) {
-      const errorInfo = apiUtils.handleError(error);
-      setError(errorInfo.message);
-      console.error("Error editing discount:", error);
-    }
-  };
+  // Removed handleAddDiscount, handleEditClick, handleEditFormChange, handleEditTargetTypeChange, handleSaveEdit, handleCancelEdit
+  // as their logic is now encapsulated within DiscountAddEditModal or replaced by modal interactions.
 
   const handleDeleteDiscount = async (id) => {
     try {
@@ -154,122 +164,14 @@ const DiscountMaster = () => {
         </div>
       )}
 
-      {/* Add New Discount Form */}
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Add New Discount</h2>
-        <form onSubmit={handleAddDiscount} className="space-y-4">
-          <div className="flex items-center space-x-4 mb-4">
-            <label className="block text-sm font-medium text-gray-700">Discount Type:</label>
-            <div className="flex items-center">
-              <input
-                type="radio"
-                id="productDiscount"
-                name="discountType"
-                value="product"
-                checked={selectedDiscountType === "product"}
-                onChange={() => setSelectedDiscountType("product")}
-                className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-              />
-              <label htmlFor="productDiscount" className="ml-2 block text-sm text-gray-900">
-                Product-wise Discount
-              </label>
-            </div>
-            <div className="flex items-center">
-              <input
-                type="radio"
-                id="categoryDiscount"
-                name="discountType"
-                value="category"
-                checked={selectedDiscountType === "category"}
-                onChange={() => setSelectedDiscountType("category")}
-                className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-              />
-              <label htmlFor="categoryDiscount" className="ml-2 block text-sm text-gray-900">
-                Category-wise Discount
-              </label>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Discount Name</label>
-              <input
-                type="text"
-                required
-                value={newDiscount.name}
-                onChange={(e) => setNewDiscount({ ...newDiscount, name: e.target.value })}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Percentage (%)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                required
-                value={newDiscount.percentage}
-                onChange={(e) => setNewDiscount({ ...newDiscount, percentage: e.target.value })}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Description</label>
-              <textarea
-                value={newDiscount.description}
-                onChange={(e) => setNewDiscount({ ...newDiscount, description: e.target.value })}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-              ></textarea>
-            </div>
-
-            {selectedDiscountType === "product" && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Select Product</label>
-                <select
-                  required
-                  value={newDiscount.target_id || ""}
-                  onChange={(e) => setNewDiscount({ ...newDiscount, target_id: e.target.value, target_type: "product" })}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="">Select a Product</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name} ({product.strength})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {selectedDiscountType === "category" && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Select Category</label>
-                <select
-                  required
-                  value={newDiscount.target_id || ""}
-                  onChange={(e) => setNewDiscount({ ...newDiscount, target_id: e.target.value, target_type: "category" })}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="">Select a Category</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end pt-4">
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm transition-colors"
-            >
-              Add Discount
-            </button>
-          </div>
-        </form>
+      {/* Add New Discount Button */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleAddDiscountClick}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm transition-colors"
+        >
+          Add New Discount
+        </button>
       </div>
 
       {/* Existing Discounts Table */}
@@ -303,6 +205,15 @@ const DiscountMaster = () => {
                 <th scope="col" className="px-6 py-3">
                   Description
                 </th>
+                <th scope="col" className="px-6 py-3">
+                  Start Date
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  End Date
+                </th>
+                <th scope="col" className="px-6 py-3">
+                  Active
+                </th>
                 <th scope="col" className="px-6 py-3 text-center">
                   Actions
                 </th>
@@ -318,13 +229,22 @@ const DiscountMaster = () => {
                   <td className="px-6 py-4 capitalize">{discount.target_type}</td>
                   <td className="px-6 py-4">
                     {discount.target_type === "product"
-                      ? products.find(p => p.id === discount.target_id)?.name || "N/A"
-                      : categories.find(c => c.id === discount.target_id)?.name || "N/A"}
+                      ? products.find(p => p.id === discount.product)?.name || "N/A"
+                      : categories.find(c => c.id === discount.category)?.name || "N/A"}
                   </td>
                   <td className="px-6 py-4">{discount.description}</td>
+                  <td className="px-6 py-4">{discount.start_date || 'N/A'}</td>
+                  <td className="px-6 py-4">{discount.end_date || 'N/A'}</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        discount.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                      {discount.is_active ? 'Yes' : 'No'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <button
-                      onClick={() => handleEditDiscount(discount)}
+                      onClick={() => handleEditDiscountClick(discount)}
                       className="font-medium text-indigo-600 hover:underline mr-2"
                     >
                       Edit
@@ -347,6 +267,15 @@ const DiscountMaster = () => {
           )}
         </div>
       </div>
+
+      <DiscountAddEditModal
+        show={showAddEditModal}
+        onClose={handleModalClose}
+        onSaveSuccess={handleSaveSuccess}
+        initialData={currentDiscount}
+        products={products}
+        categories={categories}
+      />
     </div>
   );
 };

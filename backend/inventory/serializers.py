@@ -83,12 +83,21 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         }
 
 class PurchaseReturnItemSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.name', read_only=True)
+    purchase_order_item = serializers.PrimaryKeyRelatedField(queryset=PurchaseOrderItem.objects.all())
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), write_only=True)
     
     class Meta:
         model = PurchaseReturnItem
-        fields = '__all__'
-        read_only_fields = ('unit_price',) # unit_price is derived from PurchaseOrderItem
+        fields = ('purchase_return', 'purchase_order_item', 'product', 'quantity', 'unit_price')
+        read_only_fields = ('purchase_return', 'unit_price',)
+        extra_kwargs = {
+            'purchase_return': {'required': False},
+        }
+
+class PurchaseOrderReturnItemsSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=255, required=False, default='Items returned to supplier.')
+    notes = serializers.CharField(required=False, allow_blank=True)
+    items = PurchaseReturnItemSerializer(many=True)
 
 class PurchaseReturnSerializer(serializers.ModelSerializer):
     items = PurchaseReturnItemSerializer(many=True, read_only=True) # Items are read-only for display

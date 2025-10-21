@@ -1,163 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PlusCircle, Search } from "lucide-react";
-
-// --- Mock API Service ---
-// In a real application, this would be in its own apiService.js file.
-const mockSuppliers = [
-  { id: 1, name: "Supplier A" },
-  { id: 2, name: "Supplier B" },
-  { id: 3, name: "Supplier C" },
-];
-
-const mockPurchaseOrders = [
-  {
-    id: 101,
-    supplier: 1,
-    supplier_name: "Supplier A",
-    order_date: "2025-10-15",
-    total_amount: "150.00",
-    status: "COMPLETED",
-    items: [
-      {
-        id: 1,
-        product: 1,
-        product_name: "Product A",
-        quantity: 10,
-        unit_price: 10.0,
-      },
-      {
-        id: 2,
-        product: 2,
-        product_name: "Product B",
-        quantity: 5,
-        unit_price: 10.0,
-      },
-    ],
-  },
-  {
-    id: 102,
-    supplier: 2,
-    supplier_name: "Supplier B",
-    order_date: "2025-10-16",
-    total_amount: "200.50",
-    status: "COMPLETED",
-    items: [
-      {
-        id: 3,
-        product: 3,
-        product_name: "Product C",
-        quantity: 20,
-        unit_price: 5.0,
-      },
-      {
-        id: 4,
-        product: 4,
-        product_name: "Product D",
-        quantity: 1,
-        unit_price: 100.5,
-      },
-    ],
-  },
-  {
-    id: 103,
-    supplier: 1,
-    supplier_name: "Supplier A",
-    order_date: "2025-10-17",
-    total_amount: "300.00",
-    status: "COMPLETED",
-    items: [
-      {
-        id: 5,
-        product: 5,
-        product_name: "Product E",
-        quantity: 30,
-        unit_price: 10.0,
-      },
-    ],
-  },
-];
-
-let mockPurchaseReturns = [
-  {
-    id: 1,
-    purchase_order_id: 101,
-    supplier_name: "Supplier A",
-    return_date: "2025-10-18",
-    total_amount: "50.00",
-    reason: "Damaged Goods",
-    status: "PROCESSED",
-    items: [
-      {
-        product_id: 2,
-        quantity: 5,
-        unit_price: 10.0,
-        product_name: "Product B",
-      },
-    ],
-  },
-  {
-    id: 2,
-    purchase_order_id: 102,
-    supplier_name: "Supplier B",
-    return_date: "2025-10-19",
-    total_amount: "100.50",
-    reason: "Wrong Item Shipped",
-    status: "PENDING",
-    items: [
-      {
-        product_id: 4,
-        quantity: 1,
-        unit_price: 100.5,
-        product_name: "Product D",
-      },
-    ],
-  },
-];
-
-const inventoryAPI = {
-  getPurchaseReturns: () =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: mockPurchaseReturns }), 500)
-    ),
-  getPurchaseOrder: (id) =>
-    new Promise((resolve) => {
-      const order = mockPurchaseOrders.find(
-        (po) => String(po.id) === String(id)
-      );
-      setTimeout(() => resolve({ data: order }), 500);
-    }),
-  returnPurchaseOrderItems: (id, items) =>
-    new Promise((resolve) => {
-      const newReturn = {
-        id: Math.max(...mockPurchaseReturns.map((pr) => pr.id)) + 1,
-        purchase_order_id: id,
-        ...items,
-      };
-      mockPurchaseReturns.push(newReturn);
-      setTimeout(
-        () => resolve({ data: { message: "Return successful" } }),
-        500
-      );
-    }),
-  updatePurchaseReturn: (id, data) =>
-    new Promise((resolve) => {
-      let updatedReturn;
-      mockPurchaseReturns = mockPurchaseReturns.map((pr) => {
-        if (pr.id === id) {
-          updatedReturn = { ...pr, ...data };
-          return updatedReturn;
-        }
-        return pr;
-      });
-      setTimeout(() => resolve({ data: updatedReturn }), 500);
-    }),
-  getPurchaseOrders: () =>
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ data: mockPurchaseOrders }), 500)
-    ),
-};
-// --- End Mock API Service ---
+import { inventoryAPI } from "../api/apiService";
 
 // --- PurchaseReturnCreateForm Component ---
 const PurchaseReturnCreateForm = ({ onFormClose, initialData }) => {
@@ -188,7 +32,7 @@ const PurchaseReturnCreateForm = ({ onFormClose, initialData }) => {
         product_name: item.product_name,
         is_returning: true, // They are already returned
         return_quantity: item.quantity,
-        unit_price: item.unit_price,
+        unit_price: parseFloat(item.unit_price), // Parse to float
         quantity: item.quantity, // Original returned qty
       }));
       setItemsToReturn(returnedItems);
@@ -200,6 +44,7 @@ const PurchaseReturnCreateForm = ({ onFormClose, initialData }) => {
         ...item,
         return_quantity: 0,
         is_returning: false,
+        unit_price: parseFloat(item.unit_price), // Parse to float
       }));
       setItemsToReturn(itemsWithReturnState);
     }
@@ -241,18 +86,16 @@ const PurchaseReturnCreateForm = ({ onFormClose, initialData }) => {
     const returnedItemsPayload = itemsToReturn
       .filter((item) => item.is_returning && item.return_quantity > 0)
       .map((item) => ({
-        product_id: isEditMode ? item.id : item.product,
-        product_name: item.product_name,
+        purchase_order_item: item.id, // This is the ID of the item in the original purchase order
+        product: item.product, // This is the product ID
         quantity: item.return_quantity,
         unit_price: item.unit_price,
+        // product_name is not needed by the backend for this endpoint
       }));
 
     const returnPayload = {
-      return_date: returnDate,
       reason: reason,
       notes: notes,
-      supplier_name: supplierName,
-      total_amount: totalReturnAmount.toFixed(2),
       items: returnedItemsPayload,
     };
 
@@ -266,10 +109,12 @@ const PurchaseReturnCreateForm = ({ onFormClose, initialData }) => {
 
     try {
       if (isEditMode) {
+        // For editing an existing return, update the PurchaseReturn object
         await inventoryAPI.updatePurchaseReturn(initialData.id, returnPayload);
       } else {
+        // For creating a new return, use the custom action on PurchaseOrderViewSet
         await inventoryAPI.returnPurchaseOrderItems(
-          initialData.id,
+          initialData.id, // This is the purchase_order ID
           returnPayload
         );
       }
@@ -392,9 +237,9 @@ const PurchaseReturnCreateForm = ({ onFormClose, initialData }) => {
                         disabled={!item.is_returning}
                       />
                     </td>
-                    <td className="px-4 py-2">₹{item.unit_price.toFixed(2)}</td>
+                    <td className="px-4 py-2">₹{item.unit_price ? item.unit_price.toFixed(2) : '0.00'}</td>
                     <td className="px-4 py-2">
-                      ₹{(item.return_quantity * item.unit_price).toFixed(2)}
+                      ₹{item.unit_price && item.return_quantity ? (item.return_quantity * item.unit_price).toFixed(2) : '0.00'}
                     </td>
                   </tr>
                 ))}
@@ -472,8 +317,8 @@ const PurchaseBillReturn = () => {
         inventoryAPI.getPurchaseReturns(),
         inventoryAPI.getPurchaseOrders(),
       ]);
-      setPurchaseReturns(returnsResponse.data);
-      setAllPurchaseOrders(poResponse.data);
+      setPurchaseReturns(returnsResponse.data.results || []); // Assuming paginated response
+      setAllPurchaseOrders(poResponse.data.results || []); // Assuming paginated response
     } catch (err) {
       setError("Failed to fetch data.");
     } finally {
