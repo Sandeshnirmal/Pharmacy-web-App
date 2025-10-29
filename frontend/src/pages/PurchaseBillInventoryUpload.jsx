@@ -17,7 +17,8 @@ const PurchaseBillInventoryUpload = () => {
     try {
       setLoading(true);
       const response = await inventoryAPI.getPurchaseOrders();
-      setPurchaseOrders(response.data.results); // Assuming pagination with a 'results' array
+      setPurchaseOrders(response.data.results); 
+      console.log(response.data.results)// Assuming pagination with a 'results' array
     } catch (err) {
       setError('Failed to fetch purchase orders.');
       console.error('Error fetching purchase orders:', err);
@@ -42,7 +43,7 @@ const PurchaseBillInventoryUpload = () => {
 
   const handleReturnClick = (order) => {
     // Navigate to the Purchase Bill Return page, passing the purchase order ID
-    navigate(`/purchase-bill/return?poId=${order.id}`);
+    navigate(`/purchase-returns/new?poId=${order.id}`);
   };
 
   const handleDeleteClick = async (orderId) => {

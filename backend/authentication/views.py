@@ -45,10 +45,24 @@ def register_user(request):
             first_name=first_name,
             last_name=last_name,
             phone_number=phone_number if phone_number else None,  # Handle empty phone numbers
-            date_of_birth=date_of_birth if date_of_birth else None,
-            gender=gender if gender else None,
-            role='customer'  # Set default role for mobile app users
         )
+
+        # Handle UserRole
+        from usermanagement.models import UserRole, UserProfile # Import UserProfile
+        customer_role, created = UserRole.objects.get_or_create(name='customer', defaults={'display_name': 'Customer'})
+        user.user_role = customer_role
+        user.save()
+
+        # Create UserProfile and assign date_of_birth and gender
+        UserProfile.objects.create(
+            user=user,
+            birth_date=date_of_birth if date_of_birth else None,
+            # Removed gender as it's not in UserProfile model
+        )
+        # Set gender directly on the User model if it exists
+        if gender:
+            user.gender = gender
+            user.save()
 
         return Response({
             'message': 'User created successfully',
@@ -98,7 +112,7 @@ def login_user(request):
                     'last_name': user.last_name,
                     'phone': user.phone_number or '',  # Handle None values
                     'phone_number': user.phone_number or '',  # Alternative field name
-                    'role': user.role,
+                    'role': user.user_role.name if user.user_role else None,
                     'is_verified': getattr(user, 'is_verified', True),
                     'is_active': user.is_active,
                     'date_joined': user.date_joined.isoformat() if user.date_joined else None,

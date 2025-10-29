@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI } from '../api/apiService';
+import { CircularProgress, Alert } from '@mui/material'; // Assuming MUI is available for these components
 
 const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) => {
   const [itemsToReturn, setItemsToReturn] = useState([]);
@@ -21,7 +22,9 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
         setPoSelectionError(null);
         try {
           const response = await inventoryAPI.getPurchaseOrders();
-          setAvailablePurchaseOrders(response.data.results || response.data);
+          const fetchedOrders = response.data.results || response.data;
+          setAvailablePurchaseOrders(fetchedOrders);
+          console.log('Fetched available purchase orders:', fetchedOrders); // Debug log
         } catch (err) {
           setPoSelectionError('Failed to fetch available purchase orders.');
           console.error('Error fetching available purchase orders:', err);
@@ -31,6 +34,13 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
       }
     };
     fetchPurchaseOrders();
+  }, [purchaseOrder]);
+
+  // Effect to set selectedPurchaseOrderId if purchaseOrder prop is provided
+  useEffect(() => {
+    if (purchaseOrder) {
+      setSelectedPurchaseOrderId(purchaseOrder.id);
+    }
   }, [purchaseOrder]);
 
   // Effect to load items based on selectedPurchaseOrderId or purchaseOrder prop
@@ -125,7 +135,7 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
       await inventoryAPI.returnPurchaseOrderItems(targetPurchaseOrderId, payload);
       setFormMessage({ type: 'success', text: 'Items returned successfully!' });
       if (onReturnSuccess) onReturnSuccess(); // Notify parent to refresh list
-      setTimeout(onClose, 2000); // Close form after a delay
+      // onClose(); // Let parent component handle closing, or add a manual close button to success message
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to process return. Please check your input.';
       setError(errorMessage);
@@ -137,33 +147,43 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
   };
 
   if (poSelectionLoading || loading) {
-    return <div className="p-6 text-center">Loading data...</div>;
+    return (
+      <div className="flex justify-center items-center p-6">
+        <CircularProgress />
+        <span className="ml-2 text-gray-700">Loading data...</span>
+      </div>
+    );
   }
 
   if (poSelectionError || error || (formMessage.type === 'error' && formMessage.text)) {
-    return <div className="p-6 text-center text-red-500">{poSelectionError || error || formMessage.text}</div>;
+    return (
+      <div className="p-6">
+        <Alert severity="error">
+          {poSelectionError || error || formMessage.text}
+        </Alert>
+      </div>
+    );
   }
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h1 className="text-xl font-bold text-gray-800 mb-4">
+    <div className="p-4 sm:p-6 lg:p-8 bg-gray-100 min-h-screen">
+      <div className="bg-white p-6 rounded-lg shadow-md max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-800 mb-6">
           {purchaseOrder ? `Return Items from Purchase Order #${purchaseOrder.id}` : 'Initiate New Purchase Return'}
         </h1>
 
         {formMessage.text && (
-          <div
-            className={`mb-4 p-3 rounded-md text-center ${
-              formMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-            }`}
+          <Alert
+            severity={formMessage.type === 'success' ? 'success' : 'error'}
+            sx={{ mb: 2 }}
           >
             {formMessage.text}
-          </div>
+          </Alert>
         )}
 
         {!purchaseOrder && ( // Show PO selection if no purchaseOrder prop is provided
           <div className="mb-4">
-            <label htmlFor="purchaseOrderSelect" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="purchaseOrderSelect" className="block text-sm font-medium text-gray-700 mb-1">
               Select Purchase Order <span className="text-red-500">*</span>
             </label>
             <select
@@ -177,7 +197,7 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
               <option value="">Select a Purchase Order</option>
               {availablePurchaseOrders.map((po) => (
                 <option key={po.id} value={po.id}>
-                  PO #{po.id} - {po.supplier_name} - {po.order_date}
+                  PO #{po.id} - {po.supplier_name} - {new Date(po.order_date).toLocaleDateString()}
                 </option>
               ))}
             </select>
@@ -186,48 +206,48 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
 
         {(purchaseOrder || selectedPurchaseOrderId) && itemsToReturn.length > 0 ? (
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="overflow-x-auto border border-gray-200 rounded-md">
+            <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Product
                     </th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Batch No.
                     </th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Expiry Date
                     </th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Received Qty
                     </th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Already Returned
                     </th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Max Returnable
                     </th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Quantity to Return
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {itemsToReturn.map((item, index) => (
-                    <tr key={item.id}>
-                      <td className="py-2 px-3 whitespace-nowrap">{item.product_name}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">{item.batch_number}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">{item.expiry_date}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">{item.received_quantity}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">{item.returned_quantity}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">{item.max_returnable_quantity}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">{item.product_name}</td>
+                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">{item.batch_number}</td>
+                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">{item.expiry_date}</td>
+                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">{item.received_quantity}</td>
+                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">{item.returned_quantity}</td>
+                      <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">{item.max_returnable_quantity}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <input
                           type="number"
                           value={item.quantity_to_return}
                           onChange={(e) => handleQuantityChange(index, e.target.value)}
-                          className="w-full p-1 border border-gray-200 rounded-md"
+                          className="w-24 p-1 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
                           min="0"
                           max={item.max_returnable_quantity}
                           disabled={item.max_returnable_quantity === 0}
@@ -242,14 +262,14 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 type="submit"
-                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
+                className="bg-indigo-600 text-white px-5 py-2 rounded-md hover:bg-indigo-700 transition-colors duration-200"
                 disabled={submitting}
               >
                 {submitting ? 'Returning...' : 'Return Selected Items'}
               </button>
               <button
                 type="button"
-                className="bg-gray-400 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-500"
+                className="bg-gray-300 text-gray-800 px-5 py-2 rounded-md hover:bg-gray-400 transition-colors duration-200"
                 onClick={onClose}
                 disabled={submitting}
               >
@@ -258,7 +278,7 @@ const PurchaseReturnCreateForm = ({ purchaseOrder, onClose, onReturnSuccess }) =
             </div>
           </form>
         ) : (
-          <div className="p-4 text-center text-gray-600">
+          <div className="p-4 text-center text-gray-600 bg-white rounded-md shadow-sm">
             {purchaseOrder ? 'No items found for this purchase order.' : 'Please select a Purchase Order to view its items.'}
           </div>
         )}

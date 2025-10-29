@@ -236,6 +236,7 @@ class ProductSerializer(serializers.ModelSerializer):
     batches = BatchSerializer(many=True, read_only=True)
     current_selling_price = serializers.SerializerMethodField()
     current_cost_price = serializers.SerializerMethodField()
+    is_prescription_required = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -243,7 +244,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
             'medicine_type', 'prescription_type', 'strength', 'form',
             'is_prescription_required', 'min_stock_level', 'dosage_form',
-            'pack_size', 'packaging_unit', 'description', 'composition', 'uses',
+            'pack_size', 'packaging_unit', 'description', 'uses',
             'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions',
             'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
@@ -275,6 +276,10 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_total_batches(self, obj):
         return obj.batches.count()
+
+    def get_is_prescription_required(self, obj):
+        """Determine if a prescription is required based on prescription_type"""
+        return obj.prescription_type in ['prescription', 'controlled']
 
 
 # ----------------------------
@@ -458,16 +463,18 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     primary_image = serializers.SerializerMethodField()
     current_selling_price = serializers.SerializerMethodField()
     current_cost_price = serializers.SerializerMethodField()
+    is_prescription_required = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'manufacturer', 'strength',
             'category_name', 'average_rating', 'total_reviews',
-            'discount_percentage', 'primary_image', 'is_prescription_required',
+            'discount_percentage', 'primary_image',
             'batches',
             'current_selling_price',
-            'current_cost_price'
+            'current_cost_price',
+            'is_prescription_required'
         ]
 
     def get_current_selling_price(self, obj):
@@ -495,3 +502,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         elif obj.images.exists():
             return obj.images.first().image_url
         return obj.image_url
+
+    def get_is_prescription_required(self, obj):
+        """Determine if a prescription is required based on prescription_type"""
+        return obj.prescription_type in ['prescription', 'controlled']

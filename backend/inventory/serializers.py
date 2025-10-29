@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
 from product.models import Batch, Product
-from product.serializers import ProductSerializer, BatchSerializer
+from product.serializers import ProductSerializer, BatchSerializer, ProductSearchSerializer # Import ProductSearchSerializer
+from decimal import Decimal # Import Decimal for precise calculations
 
 class StockMovementSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -65,8 +66,8 @@ class InventoryStatsSerializer(serializers.Serializer):
     total_inventory_value = serializers.DecimalField(max_digits=15, decimal_places=2)
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
-    # Removed 'product' field definition here. It will be handled as a regular field in Meta.fields for input.
-    product_details = serializers.StringRelatedField(source='product', read_only=True) # Changed to StringRelatedField for simpler output
+    # Use ProductSearchSerializer to get detailed product information
+    product_details = ProductSearchSerializer(source='product', read_only=True)
 
     class Meta:
         model = PurchaseOrderItem
@@ -83,15 +84,17 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         }
 
 class PurchaseReturnItemSerializer(serializers.ModelSerializer):
-    purchase_order_item = serializers.PrimaryKeyRelatedField(queryset=PurchaseOrderItem.objects.all())
+    purchase_order_item = serializers.PrimaryKeyRelatedField(queryset=PurchaseOrderItem.objects.all(), required=False, allow_null=True) # Allow null for updates where item ID is passed
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), write_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True) # For display
     
     class Meta:
         model = PurchaseReturnItem
-        fields = ('purchase_return', 'purchase_order_item', 'product', 'quantity', 'unit_price')
-        read_only_fields = ('purchase_return', 'unit_price',)
+        fields = ('id', 'purchase_return', 'purchase_order_item', 'product', 'product_name', 'quantity', 'unit_price')
+        read_only_fields = ('purchase_return',) # unit_price should be writable
         extra_kwargs = {
             'purchase_return': {'required': False},
+            'id': {'read_only': False, 'required': False}, # Allow ID to be passed for updates
         }
 
 class PurchaseOrderReturnItemsSerializer(serializers.Serializer):
@@ -100,7 +103,7 @@ class PurchaseOrderReturnItemsSerializer(serializers.Serializer):
     items = PurchaseReturnItemSerializer(many=True)
 
 class PurchaseReturnSerializer(serializers.ModelSerializer):
-    items = PurchaseReturnItemSerializer(many=True, read_only=True) # Items are read-only for display
+    items = PurchaseReturnItemSerializer(many=True) # Make items writable
     purchase_order_id = serializers.IntegerField(source='purchase_order.id', read_only=True)
     supplier_name = serializers.CharField(source='purchase_order.supplier.name', read_only=True)
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
@@ -108,7 +111,122 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
     class Meta:
         model = PurchaseReturn
         fields = '__all__'
-        read_only_fields = ('total_amount', 'created_by', 'updated_by', 'created_at', 'updated_at')
+        read_only_fields = ('total_amount', 'created_by', 'updated_by', 'created_at', 'updated_at') # return_date is now writable
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items')
+        validated_data['created_by'] = self.context['request'].user
+        purchase_return = PurchaseReturn.objects.create(**validated_data)
+        total_amount = 0
+
+        for item_data in items_data:
+            product = item_data.pop('product')
+            purchase_order_item = item_data.pop('purchase_order_item', None)
+            quantity = item_data['quantity']
+            unit_price = item_data['unit_price']
+
+            PurchaseReturnItem.objects.create(
+                purchase_return=purchase_return,
+                purchase_order_item=purchase_order_item,
+                product=product,
+                quantity=quantity,
+                unit_price=unit_price,
+            )
+            total_amount += quantity * unit_price
+
+            # Update returned_quantity in the original PurchaseOrderItem if it exists
+            if purchase_order_item:
+                purchase_order_item.returned_quantity += quantity
+                purchase_order_item.save()
+
+            # Create StockMovement for supplier return
+            # Assuming there's a way to get the batch from the purchase_order_item
+            # For simplicity, let's assume we can find an active batch for the product
+            # In a real scenario, you might need to specify which batch is being returned from
+            batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+            if batch:
+                batch.current_quantity -= quantity
+                batch.save()
+                StockMovement.objects.create(
+                    product=product,
+                    batch=batch,
+                    movement_type='SUPPLIER_RETURN',
+                    quantity=quantity,
+                    reference_number=f"PR-{purchase_return.id}",
+                    notes=f"Returned {quantity} units of {product.name} from batch {batch.batch_number} for Purchase Return #{purchase_return.id}.",
+                    created_by=self.context.get('request').user
+                )
+            else:
+                # Handle case where no active batch is found (e.g., log a warning)
+                print(f"Warning: No active batch found for product {product.name} during return processing.")
+
+
+        purchase_return.total_amount = total_amount
+        purchase_return.save()
+        return purchase_return
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        validated_data['updated_by'] = self.context['request'].user
+
+        # Update PurchaseReturn fields
+        instance.return_date = validated_data.get('return_date', instance.return_date)
+        instance.reason = validated_data.get('reason', instance.reason)
+        instance.notes = validated_data.get('notes', instance.notes)
+        instance.status = validated_data.get('status', instance.status)
+        instance.save()
+
+        if items_data is not None:
+            # Get existing item IDs
+            existing_item_ids = [item.id for item in instance.items.all()]
+            incoming_item_ids = [item.get('id') for item in items_data if item.get('id')]
+
+            # Items to delete (exist in DB but not in incoming data)
+            for item_id in set(existing_item_ids) - set(incoming_item_ids):
+                item_to_delete = PurchaseReturnItem.objects.get(id=item_id)
+                # Reverse returned_quantity in original PurchaseOrderItem
+                item_to_delete.purchase_order_item.returned_quantity -= item_to_delete.quantity
+                item_to_delete.purchase_order_item.save()
+                item_to_delete.delete()
+
+            total_amount = 0
+            for item_data in items_data:
+                item_id = item_data.get('id')
+                product = item_data.pop('product')
+                purchase_order_item = item_data.pop('purchase_order_item', None) # Can be null for existing items
+
+                if item_id: # Update existing item
+                    return_item = PurchaseReturnItem.objects.get(id=item_id, purchase_return=instance)
+                    old_quantity = return_item.quantity
+                    new_quantity = item_data.get('quantity', old_quantity)
+
+                    return_item.quantity = new_quantity
+                    return_item.unit_price = item_data.get('unit_price', return_item.unit_price)
+                    return_item.save()
+
+                    # Update returned_quantity in original PurchaseOrderItem
+                    if return_item.purchase_order_item:
+                        return_item.purchase_order_item.returned_quantity += (new_quantity - old_quantity)
+                        return_item.purchase_order_item.save()
+
+                else: # Create new item
+                    return_item = PurchaseReturnItem.objects.create(
+                        purchase_return=instance,
+                        purchase_order_item=purchase_order_item,
+                        product=product,
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                    )
+                    # Update returned_quantity in original PurchaseOrderItem
+                    if purchase_order_item:
+                        purchase_order_item.returned_quantity += item_data['quantity']
+                        purchase_order_item.save()
+                
+                total_amount += return_item.quantity * return_item.unit_price
+            instance.total_amount = total_amount
+            instance.save()
+
+        return instance
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True)
@@ -119,6 +237,18 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = '__all__'
         read_only_fields = ('total_amount', 'created_by', 'updated_by')
+
+    def validate(self, data):
+        status = data.get('status', self.instance.status if self.instance else None)
+        invoice_number = data.get('invoice_number', self.instance.invoice_number if self.instance else None)
+        invoice_date = data.get('invoice_date', self.instance.invoice_date if self.instance else None)
+
+        if status == 'RECEIVED':
+            if not invoice_number:
+                raise serializers.ValidationError({"invoice_number": "Invoice number is required when status is RECEIVED."})
+            if not invoice_date:
+                raise serializers.ValidationError({"invoice_date": "Invoice date is required when status is RECEIVED."})
+        return data
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
@@ -145,7 +275,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             expiry_date = item_data.get('expiry_date')
 
             item_base_amount = quantity * unit_price
-            item_discount_amount = item_base_amount * (discount_percentage / 100)
+            item_discount_amount = item_base_amount * (Decimal(discount_percentage) / Decimal(100))
             item_taxable_amount = item_base_amount - item_discount_amount
             item_tax_amount = item_taxable_amount * (tax_percentage / 100)
             subtotal = item_taxable_amount + item_tax_amount
@@ -246,7 +376,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 expiry_date = item_data.get('expiry_date')
 
                 item_base_amount = quantity * unit_price
-                item_discount_amount = item_base_amount * (discount_percentage / 100) # Calculate discount amount
+                item_discount_amount = item_base_amount * (Decimal(discount_percentage) / Decimal(100)) # Calculate discount amount
                 item_taxable_amount = item_base_amount - item_discount_amount
                 item_tax_amount = item_taxable_amount * (tax_percentage / 100)
                 subtotal = item_taxable_amount + item_tax_amount # Subtotal after discount and tax

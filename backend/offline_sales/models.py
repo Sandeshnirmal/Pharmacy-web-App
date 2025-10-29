@@ -23,13 +23,22 @@ class OfflineSale(models.Model):
     change_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     payment_method = models.CharField(max_length=50, blank=True, null=True) # e.g., Cash, Card, UPI
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='offline_sales_created')
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+        ('CANCELLED', 'Cancelled'),
+        ('RETURNED', 'Returned'), # For full returns
+        ('PARTIALLY_RETURNED', 'Partially Returned'), # For partial item returns
+    ]
+
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='offline_sales_updated')
-    is_returned = models.BooleanField(default=False)
-    return_date = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    last_status_update_date = models.DateTimeField(auto_now=True) # Tracks last update to status
+    cancellation_reason = models.TextField(blank=True, null=True) # Reason for cancellation
     notes = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return f"Sale #{self.id} - {self.customer_name or 'Guest'} - {self.sale_date.strftime('%Y-%m-%d %H:%M')}"
+        return f"Sale #{self.id} - {self.customer_name or 'Guest'} - {self.sale_date.strftime('%Y-%m-%d %H:%M')} ({self.status})"
 
 class OfflineSaleItem(models.Model):
     sale = models.ForeignKey(OfflineSale, on_delete=models.CASCADE, related_name='items')
@@ -37,21 +46,30 @@ class OfflineSaleItem(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, null=True, blank=True) # Optional, if tracking by batch
     quantity = models.IntegerField()
     price_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # New field for item-level discount
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00) # New field for item-level discount amount
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
         return f"{self.product.name} ({self.quantity}) in Sale #{self.sale.id}"
 
 class BillReturn(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PROCESSED', 'Processed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
     sale = models.ForeignKey(OfflineSale, on_delete=models.CASCADE, related_name='returns')
     return_date = models.DateTimeField(auto_now_add=True)
     total_return_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     reason = models.TextField(blank=True, null=True)
-    returned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='bill_returns_created')
     notes = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING') # Added status field
+    returned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='bill_returns_created')
 
     def __str__(self):
-        return f"Return for Sale #{self.sale.id} on {self.return_date.strftime('%Y-%m-%d %H:%M')}"
+        return f"Return for Sale #{self.sale.id} on {self.return_date.strftime('%Y-%m-%d %H:%M')} ({self.status})"
 
 class BillReturnItem(models.Model):
     bill_return = models.ForeignKey(BillReturn, on_delete=models.CASCADE, related_name='returned_items')

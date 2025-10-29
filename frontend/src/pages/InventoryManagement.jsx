@@ -41,12 +41,77 @@ const InventoryManagement = () => {
   const [selectedProductBatches, setSelectedProductBatches] = useState([]);
   const [successMessage, setSuccessMessage] = useState(null); // New state for success messages
 
-  useEffect(()=>{
-    fetchMedicines(currentPage, pageSize); // Pass current page and page size
-    fetchCategory();
-    fetchGericname();
-    fetchCompositions(); // Fetch compositions
-  },[currentPage, pageSize]); // Re-fetch when page or page size changes
+  // Function to fetch all initial data
+  const fetchAllInitialData = async (page, size) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [productsResponse, categoriesResponse, genericNamesResponse, compositionsResponse] = await Promise.all([
+        productAPI.getProducts(page, size),
+        productAPI.getCategories(),
+        productAPI.getGenericNames(),
+        productAPI.getCompositions(),
+      ]);
+
+      // Process products
+      const productsData = productsResponse.data;
+      let productsToSet = [];
+      if (Array.isArray(productsData)) {
+        productsToSet = productsData;
+      } else if (productsData && Array.isArray(productsData.results)) {
+        productsToSet = productsData.results;
+      }
+      setProducts(productsToSet);
+      setTotalItems(productsData.count || productsToSet.length);
+      setTotalPages(Math.ceil((productsData.count || productsToSet.length) / size));
+      const allBatches = productsToSet.flatMap(product => product.batches || []);
+      setBatches(allBatches);
+
+      // Process categories
+      const categoriesData = categoriesResponse.data;
+      if (Array.isArray(categoriesData)) {
+        setCategories(categoriesData);
+      } else if (categoriesData && Array.isArray(categoriesData.results)) {
+        setCategories(categoriesData.results);
+      } else {
+        console.warn("Unexpected API response format for categories.");
+        setCategories([]);
+      }
+
+      // Process generic names
+      const genericNamesData = genericNamesResponse.data;
+      if (Array.isArray(genericNamesData)) {
+        setGenericNames(genericNamesData);
+      } else if (genericNamesData && Array.isArray(genericNamesData.results)) {
+        setGenericNames(genericNamesData.results);
+      } else {
+        console.warn("Unexpected API response format for generic names.");
+        setGenericNames([]);
+      }
+
+      // Process compositions
+      const compositionsData = compositionsResponse.data;
+      if (Array.isArray(compositionsData)) {
+        setCompositions(compositionsData);
+      } else if (compositionsData && Array.isArray(compositionsData.results)) {
+        setCompositions(compositionsData.results);
+      } else {
+        console.warn("Unexpected API response format for compositions.");
+        setCompositions([]);
+      }
+
+    } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message);
+      console.error("Error fetching initial data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllInitialData(currentPage, pageSize);
+  }, [currentPage, pageSize]);
 
   // Clear success message after a few seconds
   useEffect(() => {
@@ -57,122 +122,6 @@ const InventoryManagement = () => {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
-
-  const fetchMedicines = async(page, size)=>{
-
-    try{
-      setLoading(true);
-      setError(null);
-      const response = await productAPI.getProducts(page, size); // Pass page and size
-      console.log("API Response for Products:", response.data); // Debug log for raw response
-      const data = response.data;
-      let productsToSet = [];
-      if (Array.isArray(data)) {
-        productsToSet = data;
-      } else if (data && Array.isArray(data.results)) {
-        productsToSet = data.results;
-      }
-      console.log("Fetched Products (after processing):", productsToSet); // Debug log for processed products
-      setProducts(productsToSet);
-      setTotalItems(data.count || productsToSet.length); // Adjust totalItems based on actual data or count
-      setTotalPages(Math.ceil((data.count || productsToSet.length) / size));
-
-      // Extract all batches from the fetched products
-      const allBatches = productsToSet.flatMap(product => product.batches || []);
-      setBatches(allBatches);
-
-    } catch(error){
-      const errorInfo = apiUtils.handleError(error);
-      setError(errorInfo.message);
-      console.error("error fetching medicines",error);
-
-    }finally{
-      setLoading(false);
-    }
-  };
-
- const fetchCategory = async () => {
-    try {
-        setLoading(true);
-        setError(null);
-        const categoriesResponse = await productAPI.getCategories();
-        console.log("API response:", categoriesResponse); // Added a more descriptive log message
-        
-        // Use Array.isArray() for a reliable check
-        const data = categoriesResponse.data;
-        if (Array.isArray(data)) {
-            setCategories(data);
-        } else if (data && Array.isArray(data.results)) {
-            setCategories(data.results);
-        } else {
-            // Handle unexpected data format gracefully
-            console.warn("Unexpected API response format for categories.");
-            setCategories([]);
-        }
-
-    } catch (error) { // The error object is now correctly passed
-        const errorInfo = apiUtils.handleError(error);
-        setError(errorInfo.message);
-        console.error("Error fetching category:", error); // Use console.error for errors
-    } finally {
-        setLoading(false);
-    }
-};
-
-const fetchGericname = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-    const ResponsegenericName = await productAPI.getGenericNames();
-    console.log("API response:", ResponsegenericName);
-
-    // 1. Declare the data variable
-    const data = ResponsegenericName.data;
-
-    if (Array.isArray(data)) {
-      // 2. Correctly access the data property
-      setGenericNames(data);
-    } else if (data && Array.isArray(data.results)) {
-      // 3. Correctly update the generic names state
-      setGenericNames(data.results);
-    } else {
-      console.log("Unexpected API response format for generic names.");
-      // 3. Correctly update the generic names state
-      setGenericNames([]);
-    }
-
-  } catch (error) { // 4. Add the 'error' parameter
-    const errorInfo = apiUtils.handleError(error);
-    setError(errorInfo.message);
-    console.error("Error fetching generic name:", error); // Use console.error for errors
-  } finally {
-    setLoading(false);
-  }
-};
-
-const fetchCompositions = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-    const response = await productAPI.getCompositions();
-    console.log("API response for compositions:", response);
-    const data = response.data;
-    if (Array.isArray(data)) {
-      setCompositions(data);
-    } else if (data && Array.isArray(data.results)) {
-      setCompositions(data.results);
-    } else {
-      console.warn("Unexpected API response format for compositions.");
-      setCompositions([]);
-    }
-  } catch (error) {
-    const errorInfo = apiUtils.handleError(error);
-    setError(errorInfo.message);
-    console.error("Error fetching compositions:", error);
-  } finally {
-    setLoading(false);
-  }
-};
 
   const [newBatch, setNewBatch] = useState({
     product: "",
@@ -491,8 +440,8 @@ const fetchCompositions = async () => {
   };
 
   const getStockStatus = (product) => {
-    // Use the stock_quantity provided by the backend serializer
-    const totalStock = product.stock_quantity || 0; // Changed to product.stock_quantity
+    // Use the total_stock_quantity provided by the backend serializer for consistency
+    const totalStock = product.total_stock_quantity || 0;
     if (totalStock === 0)
       return { status: "Out of Stock", color: "bg-red-100 text-red-800" };
     if (totalStock < product.min_stock_level)
@@ -591,11 +540,11 @@ const fetchCompositions = async () => {
 
   const stats = {
     totalProducts: products.length,
-    total_stock_quantity: products.reduce((sum, product) => sum + (product.stock_quantity || 0), 0),
+    total_stock_quantity: products.reduce((sum, product) => sum + (product.total_stock_quantity || 0), 0),
     lowStock: products.filter(
-      (p) => p.stock_quantity > 0 && p.stock_quantity < p.min_stock_level
+      (p) => p.total_stock_quantity > 0 && p.total_stock_quantity < p.min_stock_level
     ).length,
-    outOfStock: products.filter((p) => p.stock_quantity === 0).length,
+    outOfStock: products.filter((p) => p.total_stock_quantity === 0).length,
     expired: batches.filter((b) => new Date(b.expiry_date) < new Date()).length,
   };
 
@@ -645,6 +594,12 @@ const fetchCompositions = async () => {
             >
               Add Composition
             </button>
+            <a
+              href="/purchase-returns/new"
+              className="bg-purple-600 text-white hover:bg-purple-700 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
+            >
+              Create Purchase Return
+            </a>
           </div>
         </div>
       </div>

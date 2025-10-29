@@ -1,23 +1,27 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { PlusCircle, Search, Printer } from "lucide-react";
+import { PlusCircle, Search, Printer, RotateCcw, XCircle } from "lucide-react"; // Added RotateCcw and XCircle icons
+import ModalSearchSelect from '../components/ModalSearchSelect'; // Import the new modal component
+import BillReturnPage from './offline_sales/BillReturnPage'; // Import the new BillReturnPage component
 
-import { productAPI, inventoryAPI, salesBillAPI, offlineCustomerAPI } from '../../api/apiService'; // Adjust path as needed
+import { productAPI, salesBillAPI, offlineCustomerAPI, apiUtils } from '../api/apiService'; // Adjust path as needed
+import { inventoryAPI } from '../api/apiService'; // Keep inventoryAPI for other uses if any, or remove if not needed.
 
 // --- SalesBillForm Component (Updated Layout) ---
 const SalesBillForm = ({ onFormClose, initialData }) => {
   const [formData, setFormData] = useState({
-    customer: "",
-    bill_date: new Date().toISOString().split("T")[0],
-    notes: "",
+    bill_date: initialData?.bill_date || new Date().toISOString().split("T")[0],
+    notes: initialData?.notes || "",
   });
 
-  const [customerDetails, setCustomerDetails] = useState({
-    address: "",
-    mobile: "",
-  });
+  const [selectedCustomer, setSelectedCustomer] = useState(null); // Stores the full customer object
+  const [customerMobileInput, setCustomerMobileInput] = useState(initialData?.customer_mobile || ""); // For new customer input or display
+  const [customerNameInput, setCustomerNameInput] = useState(initialData?.customer_name || "");
+  const [customerAddressInput, setCustomerAddressInput] = useState(initialData?.customer_address || "");
+
   const [items, setItems] = useState([
     {
-      product: "",
+      product: undefined, // Will store product object, use undefined instead of null for controlled components
+      batch: undefined, // Will store batch object, use undefined instead of null for controlled components
       packing: "",
       hsn_code: "",
       quantity: 1,
@@ -27,7 +31,6 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
       expire_date: "",
     },
   ]);
-  const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -36,82 +39,221 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
   const [discount, setDiscount] = useState(0);
   const [gst, setGst] = useState(18); // Default GST percentage
 
+  // Fetch products on component mount
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchProducts = async () => {
       try {
         setLoading(true);
-        const [customersResponse, productsResponse] = await Promise.all([
-          offlineCustomerAPI.getCustomers(), // Use offlineCustomerAPI for customers
-          productAPI.getProducts(),
-        ]);
-        setCustomers(customersResponse.data.results || customersResponse.data);
-        setProducts(Array.isArray(productsResponse.data.results) ? productsResponse.data.results : Array.isArray(productsResponse.data) ? productsResponse.data : []);
-      } catch (err) {
-        setError("Failed to fetch initial data (customers, products).");
-      } finally {
-        setLoading(false);
-      }
+        const productsResponse = await productAPI.getProducts();
+      setProducts(Array.isArray(productsResponse.data.results) ? productsResponse.data.results : Array.isArray(productsResponse.data) ? productsResponse.data : []);
+    } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message || "Failed to fetch products.");
+    } finally {
+      setLoading(false);
+    }
     };
-    fetchData();
+    fetchProducts();
   }, []);
 
+  // Populate form if initialData is provided (for editing)
   useEffect(() => {
     if (initialData) {
-      setFormData({
-        customer: initialData.customer,
-        bill_date: initialData.bill_date,
+      setFormData((prev) => ({
+        ...prev,
+        bill_date: initialData.bill_date || new Date().toISOString().split("T")[0],
         notes: initialData.notes || "",
-      });
+      }));
+
+      if (initialData.customer) {
+        const customerData = {
+          id: initialData.customer,
+          name: initialData.customer_name || "",
+          address: initialData.customer_address || "",
+          mobile: initialData.customer_mobile || "",
+        };
+        setSelectedCustomer(customerData);
+        setCustomerMobileInput(customerData.mobile);
+        setCustomerNameInput(customerData.name);
+        setCustomerAddressInput(customerData.address);
+      } else {
+        setSelectedCustomer(null);
+        setCustomerMobileInput("");
+        setCustomerNameInput("");
+        setCustomerAddressInput("");
+      }
+
       setItems(
-        initialData.items || [
+        initialData.items?.map(item => ({
+          ...item,
+          product: products.find(p => p.id === item.product) || null, // Find full product object
+          batch: null, // Batches will be fetched dynamically
+          packing: item.packing || "",
+          hsn_code: item.hsn_code || "",
+          quantity: parseFloat(item.quantity) || 1,
+          unit: item.unit || "pcs",
+          unit_price: parseFloat(item.unit_price) || 0,
+          batch_no: item.batch_no || "",
+          expire_date: item.expire_date || "",
+        })) || [
           {
-            product: "",
-            packing: "",
-            hsn_code: "",
-            quantity: 1,
-            unit: "pcs",
-            unit_price: 0,
-            batch_no: "",
-            expire_date: "",
-          },
+          product: undefined,
+          batch: undefined,
+          packing: "",
+          hsn_code: "",
+          quantity: 1,
+          unit: "pcs",
+          unit_price: 0,
+          batch_no: "",
+          expire_date: "",
+        },
         ]
       );
     }
-  }, [initialData]);
+  }, [initialData, products]); // Add products to dependency array
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-    if (name === "customer") {
-      const selectedCustomer = customers.find(
-        (c) => String(c.id) === String(value)
-      );
-      if (selectedCustomer) {
-        setCustomerDetails({
-          address: selectedCustomer.address,
-          mobile: selectedCustomer.mobile,
-        });
-      } else {
-        setCustomerDetails({ address: "", mobile: "" });
+  const searchCustomers = useCallback(async (searchTerm) => {
+    if (searchTerm.length > 0) {
+      try {
+        const response = await offlineCustomerAPI.getCustomers({ search: searchTerm });
+        return Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [];
+      } catch (err) {
+        console.error("Error searching customers:", err);
+        return [];
       }
     }
+    return [];
+  }, []);
+
+  const handleSelectCustomer = (customer) => {
+    setSelectedCustomer(customer);
+    if (customer) {
+      setCustomerMobileInput(customer.mobile);
+      setCustomerNameInput(customer.name);
+      setCustomerAddressInput(customer.address);
+    } else {
+      setCustomerMobileInput("");
+      setCustomerNameInput("");
+      setCustomerAddressInput("");
+    }
+  };
+
+  const handleCustomerNameChange = (e) => {
+    setCustomerNameInput(e.target.value);
+    // If customer name is manually typed, clear selectedCustomer
+    if (selectedCustomer && selectedCustomer.name !== e.target.value) {
+      setSelectedCustomer(null);
+    }
+  };
+
+  const handleCustomerAddressChange = (e) => {
+    setCustomerAddressInput(e.target.value);
+  };
+
+  const handleProductSelect = async (index, product) => {
+    const newItems = [...items];
+    if (product) {
+      newItems[index] = {
+        ...newItems[index],
+        product: product,
+        packing: product.packing || "",
+        hsn_code: product.hsn_code || "",
+        unit_price: parseFloat(product.current_selling_price) || 0,
+        batch: undefined, // Reset batch when product changes, use undefined
+        batch_no: "",
+        expire_date: "",
+      };
+
+      // Automatically select the first batch if available
+      try {
+        const batchesResponse = await productAPI.getBatches(product.id, {});
+        const availableBatches = Array.isArray(batchesResponse.data.results) ? batchesResponse.data.results : Array.isArray(batchesResponse.data) ? batchesResponse.data : [];
+        if (availableBatches.length > 0) {
+          // Sort batches by expiry date (earliest first)
+          const sortedBatches = [...availableBatches].sort((a, b) => {
+            const dateA = new Date(a.expire_date);
+            const dateB = new Date(b.expire_date);
+            return dateA.getTime() - dateB.getTime();
+          });
+          const defaultBatch = sortedBatches[0]; // Select the batch with the earliest expiry date
+          newItems[index] = {
+            ...newItems[index],
+            batch: defaultBatch,
+            batch_no: defaultBatch.batch_no || "",
+            expire_date: defaultBatch.expire_date || "",
+            unit_price: parseFloat(defaultBatch.selling_price) || newItems[index].unit_price,
+          };
+        }
+      } catch (batchErr) {
+        console.error("Error fetching batches for auto-selection:", batchErr);
+        // Continue without auto-selecting batch if there's an error
+      }
+
+    } else {
+      // Clear product and related fields
+      newItems[index] = {
+        ...newItems[index],
+        product: undefined,
+        packing: "",
+        hsn_code: "",
+        unit_price: 0,
+        batch: undefined,
+        batch_no: "",
+        expire_date: "",
+      };
+    }
+    setItems(newItems);
+  };
+
+  const searchBatches = useCallback(async (index, searchTerm) => {
+    const productId = items[index].product?.id;
+    if (!productId) {
+      return []; // No product selected, no batches to show
+    }
+    try {
+      // Fetch all batches for the product if searchTerm is empty, otherwise filter by searchTerm
+      const params = searchTerm.length > 0 ? { search: searchTerm } : {};
+      const response = await productAPI.getBatches(productId, params);
+      return Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [];
+    } catch (err) {
+      console.error("Error searching batches:", err);
+      return [];
+    }
+  }, [items]); // Depend on items to get the current product ID
+
+  const handleBatchSelect = (index, batch) => {
+    const newItems = [...items];
+    if (batch) {
+      newItems[index] = {
+        ...newItems[index],
+        batch: batch,
+        batch_no: batch.batch_no || "",
+        expire_date: batch.expire_date || "",
+        unit_price: parseFloat(batch.selling_price) || newItems[index].unit_price, // Use batch price if available
+      };
+    } else {
+      // Clear batch and related fields, but keep product info
+      newItems[index] = {
+        ...newItems[index],
+        batch: undefined,
+        batch_no: "",
+        expire_date: "",
+        // Optionally reset unit_price to product's default if batch is cleared
+        unit_price: newItems[index].product ? parseFloat(newItems[index].product.current_selling_price) || 0 : 0,
+      };
+    }
+    setItems(newItems);
   };
 
   const handleItemChange = (index, e) => {
     const { name, value } = e.target;
     const newItems = [...items];
     newItems[index][name] = value;
-
-    if (name === "product") {
-      const selectedProduct = products.find(
-        (p) => String(p.id) === String(value)
-      );
-      if (selectedProduct) {
-        newItems[index]["unit_price"] = selectedProduct.current_selling_price; // Use current_selling_price
-        newItems[index]["hsn_code"] = selectedProduct.hsn_code;
-      }
-    }
     setItems(newItems);
   };
 
@@ -119,7 +261,8 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
     setItems([
       ...items,
       {
-        product: "",
+        product: undefined,
+        batch: undefined,
         packing: "",
         hsn_code: "",
         quantity: 1,
@@ -162,23 +305,54 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
-    const payload = {
-      ...formData,
-      customer: parseInt(formData.customer),
-      total_amount: netAmount.toFixed(2),
-      items: items.map((item) => ({ ...item })),
-      discount: parseFloat(discount),
-      gst_percentage: parseFloat(gst),
-    };
+
+    let customerId = null;
+
     try {
-      if (initialData) {
-        await inventoryAPI.updateSalesBill(initialData.id, payload);
+      if (selectedCustomer) {
+        customerId = selectedCustomer.id;
       } else {
-        await inventoryAPI.createSalesBill(payload);
+        // If no existing customer is selected, create a new one
+        if (!customerNameInput || !customerMobileInput) {
+          throw new Error("Customer Name and Mobile are required for new customers.");
+        }
+        const newCustomerPayload = {
+          name: customerNameInput,
+          mobile: customerMobileInput,
+          address: customerAddressInput,
+        };
+        const newCustomerResponse = await offlineCustomerAPI.findOrCreateCustomer(newCustomerPayload);
+        customerId = newCustomerResponse.data.id;
+      }
+
+      const payload = {
+        ...formData,
+        customer: customerId,
+        total_amount: netAmount.toFixed(2),
+        items: items.map((item) => ({
+          product: item.product?.id, // Send product ID
+          batch: item.batch?.id, // Send batch ID
+          packing: item.packing,
+          hsn_code: item.hsn_code,
+          quantity: item.quantity,
+          unit: item.unit,
+          price_per_unit: item.unit_price, // Send unit_price as price_per_unit
+          batch_no: item.batch_no,
+          expire_date: item.expire_date,
+        })),
+        discount: parseFloat(discount),
+        gst_percentage: parseFloat(gst),
+      };
+
+      if (initialData) {
+        await salesBillAPI.updateSalesBill(initialData.id, payload);
+      } else {
+        await salesBillAPI.createSalesBill(payload);
       }
       onFormClose();
     } catch (err) {
-      setError("Failed to save the sales bill. Please check your inputs.");
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message || "Failed to save the sales bill. Please check your inputs and ensure a customer is selected or new customer details are complete.");
       console.error("Submission error:", err.response?.data || err);
     } finally {
       setSubmitting(false);
@@ -213,24 +387,45 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
 
         {/* Customer Details */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="col-span-1 flex items-end"> {/* Use flexbox for side-by-side layout */}
+            <ModalSearchSelect
+              label="Customer Mobile No"
+              placeholder="Search or enter customer mobile"
+              selectedValue={selectedCustomer}
+              onSelect={handleSelectCustomer}
+              onSearch={searchCustomers}
+              displayField="mobile"
+              valueField="id"
+              required
+              className="flex-grow"
+              columns={[
+                { header: 'Mobile', field: 'mobile' },
+                { header: 'Name', field: 'name' },
+                { header: 'Address', field: 'address' },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={() => searchCustomers(customerMobileInput)}
+              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 ml-2 h-10"
+            >
+              Search
+            </button>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              Customer Name
+              Customer Name <span className="text-red-500">*</span>
             </label>
-            <select
-              name="customer"
-              value={formData.customer}
-              onChange={handleFormChange}
+            <input
+              type="text"
+              name="customerNameInput"
+              value={customerNameInput}
+              onChange={handleCustomerNameChange}
+              placeholder="Enter customer name"
               required
-              className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
-            >
-              <option value="">Select Customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              readOnly={!!selectedCustomer} // Make readOnly if a customer is selected
+              className={`mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm ${selectedCustomer ? 'bg-gray-100' : ''}`}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">
@@ -238,22 +433,12 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
             </label>
             <input
               type="text"
-              value={customerDetails.address}
-              readOnly
+              name="customerAddressInput"
+              value={customerAddressInput}
+              onChange={handleCustomerAddressChange}
               placeholder="Customer address"
-              className="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-gray-100"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Mobile No
-            </label>
-            <input
-              type="text"
-              value={customerDetails.mobile}
-              readOnly
-              placeholder="Customer mobile"
-              className="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-gray-100"
+              readOnly={!!selectedCustomer} // Make readOnly if a customer is selected
+              className={`mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm ${selectedCustomer ? 'bg-gray-100' : ''}`}
             />
           </div>
         </div>
@@ -301,62 +486,80 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                 <tr key={index} className="border-b">
                   <td className="px-2 py-2">{index + 1}</td>
                   <td className="px-2 py-2">
-                    <select
-                      name="product"
-                      value={item.product}
-                      onChange={(e) => handleItemChange(index, e)}
+                    <ModalSearchSelect
+                      label="Product Name"
+                      placeholder="Select Product"
+                      selectedValue={item.product}
+                      onSelect={(product) => handleProductSelect(index, product)}
+                      options={products}
+                      displayField="name"
+                      valueField="id"
                       required
-                      className="w-full p-1 border border-gray-300 rounded-md"
-                    >
-                      <option value="">Select Product</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                      className="w-full"
+                      columns={[
+                        { header: 'Product Name', field: 'name' },
+                        { header: 'Packing', field: 'packing' },
+                        { header: 'HSN Code', field: 'hsn_code' },
+                        { header: 'Price', field: 'current_selling_price' },
+                      ]}
+                    />
                   </td>
                   <td className="px-2 py-2">
                     <input
                       type="text"
                       name="packing"
-                      value={item.packing}
+                      value={item.packing || ""}
                       onChange={(e) => handleItemChange(index, e)}
-                      className="w-full p-1 border border-gray-300 rounded-md"
+                      readOnly
+                      className="w-full p-1 border border-gray-300 rounded-md bg-gray-100"
                     />
                   </td>
                   <td className="px-2 py-2">
                     <input
                       type="text"
                       name="hsn_code"
-                      value={item.hsn_code}
+                      value={item.hsn_code || ""}
                       onChange={(e) => handleItemChange(index, e)}
-                      className="w-full p-1 border border-gray-300 rounded-md"
+                      readOnly
+                      className="w-full p-1 border border-gray-300 rounded-md bg-gray-100"
                     />
                   </td>
                   <td className="px-2 py-2">
-                    <input
-                      type="text"
-                      name="batch_no"
-                      value={item.batch_no}
-                      onChange={(e) => handleItemChange(index, e)}
-                      className="w-full p-1 border border-gray-300 rounded-md"
+                    <ModalSearchSelect
+                      key={`${item.product?.id}-${item.batch?.id || 'no-batch'}`}
+                      label="Batch No"
+                      placeholder="Select Batch"
+                      selectedValue={item.batch}
+                      onSelect={(batch) => handleBatchSelect(index, batch)}
+                      onSearch={(searchTerm) => searchBatches(index, searchTerm)}
+                      displayField="batch_no"
+                      valueField="id"
+                      required
+                      className="w-full"
+                      readOnly={!item.product} // Batch search only enabled if product is selected
+                      columns={[
+                        { header: 'Batch No', field: 'batch_no' },
+                        { header: 'Expire Date', field: 'expire_date' },
+                        { header: 'Selling Price', field: 'selling_price' },
+                        { header: 'Stock', field: 'stock' },
+                      ]}
                     />
                   </td>
                   <td className="px-2 py-2">
                     <input
                       type="date"
                       name="expire_date"
-                      value={item.expire_date}
+                      value={item.expire_date || ""}
                       onChange={(e) => handleItemChange(index, e)}
-                      className="w-full p-1 border border-gray-300 rounded-md"
+                      readOnly
+                      className="w-full p-1 border border-gray-300 rounded-md bg-gray-100"
                     />
                   </td>
                   <td className="px-2 py-2">
                     <input
                       type="number"
                       name="quantity"
-                      value={item.quantity}
+                      value={item.quantity || 0}
                       onChange={(e) => handleItemChange(index, e)}
                       min="1"
                       required
@@ -367,9 +570,10 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                     <input
                       type="text"
                       name="unit"
-                      value={item.unit}
+                      value={item.unit || ""}
                       onChange={(e) => handleItemChange(index, e)}
-                      className="w-20 p-1 border border-gray-300 rounded-md"
+                      readOnly
+                      className="w-20 p-1 border border-gray-300 rounded-md bg-gray-100"
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -385,7 +589,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                     />
                   </td>
                   <td className="px-2 py-2 font-medium text-gray-800">
-                    ${(item.quantity * item.unit_price).toFixed(2)}
+                    ₹{(item.quantity * item.unit_price).toFixed(2)}
                   </td>
                   <td className="px-2 py-2 text-center">
                     <button
@@ -428,7 +632,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
             <div className="flex justify-between py-2 border-b">
               <span className="text-gray-600">Gross Amount:</span>
               <span className="font-medium text-gray-800">
-                ${grossAmount.toFixed(2)}
+                ₹{grossAmount.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between items-center py-2 border-b">
@@ -446,7 +650,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
             <div className="flex justify-between py-2 border-b">
               <span className="text-gray-600">Taxable Amount:</span>
               <span className="font-medium text-gray-800">
-                ${taxableAmount.toFixed(2)}
+                ₹{taxableAmount.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between items-center py-2 border-b">
@@ -464,7 +668,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
             <div className="flex justify-between py-2">
               <span className="text-gray-600">GST Amount:</span>
               <span className="font-medium text-gray-800">
-                ${gstAmount.toFixed(2)}
+                ₹{gstAmount.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between py-3 bg-gray-100 rounded-md px-2 mt-2">
@@ -472,7 +676,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                 Net Amount:
               </span>
               <span className="text-lg font-bold text-gray-900">
-                ${netAmount.toFixed(2)}
+                ₹{netAmount.toFixed(2)}
               </span>
             </div>
           </div>
@@ -519,6 +723,7 @@ const SalesBillPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showForm, setShowForm] = useState(false);
+    const [showReturnForm, setShowReturnForm] = useState(false); // New state for return form
     const [currentBill, setCurrentBill] = useState(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
@@ -532,7 +737,8 @@ const SalesBillPage = () => {
             setBills(Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : []);
             setTotalPages(Math.ceil(response.data.count / pageSize));
         } catch (err) {
-            setError("Failed to fetch sales bills.");
+            const errorInfo = apiUtils.handleError(err);
+            setError(errorInfo.message || "Failed to fetch sales bills.");
             console.error("Error fetching sales bills:", err);
         } finally {
             setLoading(false);
@@ -540,19 +746,46 @@ const SalesBillPage = () => {
     }, [currentPage, searchTerm]);
 
     useEffect(() => {
-        if (!showForm) {
+        // Fetch bills when form is closed or return form is closed
+        if (!showForm && !showReturnForm) {
             fetchSalesBills();
         }
-    }, [showForm, fetchSalesBills]);
+    }, [showForm, showReturnForm, fetchSalesBills]);
 
     const handleAddNewClick = () => {
         setCurrentBill(null);
         setShowForm(true);
+        setShowReturnForm(false); // Ensure return form is closed
     };
 
     const handleEditClick = (bill) => {
-        setCurrentBill(bill);
+        setCurrentBill({
+            ...bill,
+            customer_mobile: bill.customer_mobile || "",
+            customer_name: bill.customer_name || "",
+            customer_address: bill.customer_address || "",
+            bill_date: bill.bill_date || new Date().toISOString().split("T")[0],
+            notes: bill.notes || "",
+            items: bill.items?.map(item => ({
+                ...item,
+                product: item.product || undefined, // Ensure product is ID or undefined
+                packing: item.packing || "",
+                hsn_code: item.hsn_code || "",
+                quantity: parseFloat(item.quantity) || 1,
+                unit: item.unit || "pcs",
+                unit_price: parseFloat(item.unit_price) || 0,
+                batch_no: item.batch_no || "",
+                expire_date: item.expire_date || "",
+            })) || [],
+        });
         setShowForm(true);
+        setShowReturnForm(false); // Ensure return form is closed
+    };
+
+    const handleInitiateReturnClick = (billId) => {
+        setCurrentBill({ id: billId }); // Only need the ID for the return page
+        setShowReturnForm(true);
+        setShowForm(false); // Ensure sales bill form is closed
     };
 
     const handleDeleteClick = async (id) => {
@@ -564,7 +797,8 @@ const SalesBillPage = () => {
                 await salesBillAPI.deleteSalesBill(id);
                 fetchSalesBills();
             } catch (err) {
-                setError("Failed to delete sales bill.");
+                const errorInfo = apiUtils.handleError(err);
+                setError(errorInfo.message || "Failed to delete sales bill.");
                 console.error("Error deleting bill:", err);
             }
         }
@@ -575,18 +809,46 @@ const SalesBillPage = () => {
         setCurrentBill(null);
     };
 
+    const handleReturnFormComplete = () => {
+        setShowReturnForm(false);
+        setCurrentBill(null); // Clear current bill after return
+        fetchSalesBills(); // Refresh the list of sales bills
+    };
+
+    const handleCancelBillClick = async (billId) => {
+        const reason = prompt("Please enter a reason for cancelling this sales bill:");
+        if (reason === null) { // User clicked cancel on the prompt
+            return;
+        }
+        if (!reason.trim()) {
+            alert("Cancellation reason cannot be empty.");
+            return;
+        }
+
+        const isConfirmed = window.confirm(
+            `Are you sure you want to cancel Bill #${billId}? This action will reverse all stock movements for this bill.`
+        );
+        if (isConfirmed) {
+            try {
+                setLoading(true);
+                await salesBillAPI.cancelSalesBill(billId, reason);
+                alert(`Sales Bill #${billId} has been successfully cancelled.`);
+                fetchSalesBills(); // Refresh the list
+            } catch (err) {
+                const errorInfo = apiUtils.handleError(err);
+                setError(errorInfo.message || "Failed to cancel sales bill.");
+                console.error("Error cancelling bill:", err);
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
     const handlePageChange = (page) => {
         if (page > 0 && page <= totalPages) {
             setCurrentPage(page);
         }
     };
-
-    // No need for client-side filtering if backend handles search
-    // const filteredBills = bills.filter(
-    //     (bill) =>
-    //         bill.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    //         String(bill.id).includes(searchTerm)
-    // );
 
     return (
         <div className="p-6 bg-gray-50 min-h-screen">
@@ -594,6 +856,11 @@ const SalesBillPage = () => {
                 <SalesBillForm
                     onFormClose={handleFormClose}
                     initialData={currentBill}
+                />
+            ) : showReturnForm ? (
+                <BillReturnPage
+                    onReturnComplete={handleReturnFormComplete}
+                    initialSaleId={currentBill?.id}
                 />
             ) : (
                 <div className="bg-white p-8 rounded-2xl shadow-lg">
@@ -670,16 +937,20 @@ const SalesBillPage = () => {
                                                     {new Date(bill.bill_date).toLocaleDateString()}
                                                 </td>
                                                 <td className="py-3 px-4 text-gray-800 font-medium">
-                                                    ${parseFloat(bill.total_amount).toFixed(2)}
+                                                    ₹{parseFloat(bill.total_amount).toFixed(2)}
                                                 </td>
                                                 <td className="py-3 px-4">
                                                     <span
                                                         className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                                                            bill.status === "PAID"
-                                                                ? "bg-green-100 text-green-800"
-                                                                : bill.status === "PENDING"
-                                                                    ? "bg-yellow-100 text-yellow-800"
-                                                                    : "bg-red-100 text-red-800"
+                                                            bill.status === "CANCELLED"
+                                                                ? "bg-red-100 text-red-800"
+                                                                : bill.status === "RETURNED"
+                                                                    ? "bg-purple-100 text-purple-800"
+                                                                    : bill.status === "PARTIALLY_RETURNED"
+                                                                        ? "bg-orange-100 text-orange-800"
+                                                                        : bill.status === "PAID"
+                                                                            ? "bg-green-100 text-green-800"
+                                                                            : "bg-yellow-100 text-yellow-800" // PENDING
                                                         }`}
                                                     >
                                                         {bill.status}
@@ -693,8 +964,23 @@ const SalesBillPage = () => {
                                                         Edit
                                                     </button>
                                                     <button
+                                                        onClick={() => handleInitiateReturnClick(bill.id)}
+                                                        className="text-orange-600 hover:text-orange-800 mr-4 font-medium flex items-center"
+                                                        disabled={bill.status === "CANCELLED" || bill.status === "RETURNED"} // Disable if already cancelled or fully returned
+                                                    >
+                                                        <RotateCcw size={16} className="mr-1" /> Return Items
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCancelBillClick(bill.id)}
+                                                        className="text-red-600 hover:text-red-800 mr-4 font-medium flex items-center"
+                                                        disabled={bill.status === "CANCELLED" || bill.status === "RETURNED"} // Disable if already cancelled or fully returned
+                                                    >
+                                                        <XCircle size={16} className="mr-1" /> Cancel Bill
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleDeleteClick(bill.id)}
-                                                        className="text-red-600 hover:text-red-800 font-medium"
+                                                        className="text-gray-600 hover:text-gray-800 font-medium"
+                                                        disabled={bill.status !== "PENDING"} // Only allow delete if pending
                                                     >
                                                         Delete
                                                     </button>

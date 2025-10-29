@@ -40,9 +40,10 @@ TPC_API_KEY = os.environ.get('TPC_API_KEY', '0236') # Placeholder
 TPC_API_SECRET = os.environ.get('TPC_API_SECRET', 'Admin@123') # Placeholder
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# For production, consider using an environment variable: DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['*'] # In production, specify actual hostnames, e.g., ['yourdomain.com']
 
 
 # Application definition
@@ -69,6 +70,7 @@ INSTALLED_APPS = [
     'courier',  # Professional courier integration
     'company_details', # App to store company details
     'offline_sales', # App for offline sales management
+    'simple_history', # For tracking model changes
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App
@@ -352,17 +354,17 @@ LOGGING = {
         },
         'courier': { # Logger for your courier app
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG to see detailed API requests/responses
+            'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
         'requests': { # Logger for the requests library
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG to see detailed HTTP requests
+            'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
         'urllib3': { # Logger for urllib3, used by requests
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG to see detailed HTTP requests
+            'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
     },

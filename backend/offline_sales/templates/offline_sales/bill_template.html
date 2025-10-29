@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sales Bill #{{ sale.id }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { margin: 0; }
+        .details, .items, .summary { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .details th, .details td, .items th, .items td, .summary th, .summary td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .items th, .summary th { background-color: #f2f2f2; }
+        .text-right { text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Sales Bill</h1>
+        <p>Date: {{ sale.sale_date|date:"Y-m-d H:i" }}</p>
+    </div>
+
+    <h2>Bill Details</h2>
+    <table class="details">
+        <tr>
+            <th>Bill ID:</th>
+            <td>#{{ sale.id }}</td>
+            <th>Customer Name:</th>
+            <td>{{ sale.customer_name|default:"Guest" }}</td>
+        </tr>
+        <tr>
+            <th>Customer Phone:</th>
+            <td>{{ sale.customer_phone|default:"N/A" }}</td>
+            <th>Customer Address:</th>
+            <td>{{ sale.customer_address|default:"N/A" }}</td>
+        </tr>
+        <tr>
+            <th>Created By:</th>
+            <td>{{ sale.created_by.username|default:"N/A" }}</td>
+            <th>Payment Method:</th>
+            <td>{{ sale.payment_method|default:"N/A" }}</td>
+        </tr>
+    </table>
+
+    <h2>Items Sold</h2>
+    <table class="items">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Batch</th>
+                <th>Quantity</th>
+                <th>Price/Unit</th>
+                <th class="text-right">Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in sale.items.all %}
+            <tr>
+                <td>{{ item.product.name }}</td>
+                <td>{{ item.batch.batch_number|default:"N/A" }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.price_per_unit }}</td>
+                <td class="text-right">{{ item.subtotal }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Summary</h2>
+    <table class="summary">
+        <tr>
+            <th>Total Amount:</th>
+            <td class="text-right">{{ sale.total_amount }}</td>
+        </tr>
+        <tr>
+            <th>Paid Amount:</th>
+            <td class="text-right">{{ sale.paid_amount }}</td>
+        </tr>
+        <tr>
+            <th>Change Amount:</th>
+            <td class="text-right">{{ sale.change_amount }}</td>
+        </tr>
+    </table>
+
+    <p>Thank you for your business!</p>
+</body>
+</html>

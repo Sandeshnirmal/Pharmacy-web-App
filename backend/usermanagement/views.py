@@ -18,7 +18,7 @@ from django.utils import timezone
 
 # --- ViewSets for CRUD operations (require authentication for most actions) ---
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by('-date_joined')
+    queryset = User.objects.all().select_related('user_role').order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated] # Requires JWT authentication for all actions
     authentication_classes = [JWTAuthentication] # Explicitly use JWT for this ViewSet
@@ -35,7 +35,7 @@ class UserViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search', None)
 
         if role:
-            queryset = queryset.filter(role=role)
+            queryset = queryset.filter(user_role__name=role) # Updated to use user_role__name
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
         if search:
@@ -62,8 +62,8 @@ class UserViewSet(viewsets.ModelViewSet):
     def stats(self, request):
         total_users = User.objects.count()
         active_users = User.objects.filter(is_active=True).count()
-        customers = User.objects.filter(role='customer').count()
-        staff = User.objects.filter(role__in=['admin', 'pharmacist', 'staff']).count()
+        customers = User.objects.filter(user_role__name='customer').count() # Updated to use user_role__name
+        staff = User.objects.filter(user_role__name__in=['admin', 'pharmacist', 'staff', 'verifier']).count() # Updated to use user_role__name and include verifier
 
         return Response({
             'total_users': total_users,
@@ -73,7 +73,7 @@ class UserViewSet(viewsets.ModelViewSet):
         })
 
 class AddressViewSet(viewsets.ModelViewSet):
-    queryset = Address.objects.all()
+    queryset = Address.objects.all().select_related('user')
     serializer_class = AddressSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
@@ -169,7 +169,7 @@ class LoginView(APIView):
         try:
             # First check if user exists
             try:
-                user_exists = User.objects.get(email=email)
+                user_exists = User.objects.select_related('user_role').get(email=email) # Optimized with select_related
                 print(f"User found: {user_exists.email}, active: {user_exists.is_active}")
             except User.DoesNotExist:
                 return Response({
@@ -212,10 +212,10 @@ class LoginView(APIView):
                         'email': user.email,
                         'first_name': user.first_name,
                         'last_name': user.last_name,
-                        'role': user.role,
+                        'role': user.user_role.name if user.user_role else None, # Updated to use user_role.name
                         'is_staff': user.is_staff,
                         'phone_number': user.phone_number or '',
-                        'profile_picture_url': user.profile_picture_url or '' # Use profile_picture_url directly
+                        'profile_picture_url': user.profile.avatar if hasattr(user, 'profile') else '' # Updated to use user.profile.avatar
                     },
                     'message': 'Login successful'
                 }, status=status.HTTP_200_OK)
@@ -342,7 +342,7 @@ class UserActivityView(APIView):
 
         activities = UserActivity.objects.filter(
             user=request.user
-        ).order_by('-created_at')[:50]  # Last 50 activities
+        ).select_related('user').order_by('-created_at')[:50]  # Last 50 activities
 
         serializer = UserActivitySerializer(activities, many=True)
         return Response(serializer.data)

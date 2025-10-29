@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import ModalSearchSelect from '../components/ModalSearchSelect'; // Import the new modal component
 import {
   inventoryAPI,
   productAPI,
@@ -18,24 +19,27 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
 
   const [items, setItems] = useState([]); // Items for the purchase order
   const [suppliers, setSuppliers] = useState([]);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [formMessage, setFormMessage] = useState({ type: "", text: "" }); // For success/error messages
 
+  // No longer needed:
+  // const [showProductSearchPopup, setShowProductSearchPopup] = useState(false);
+  // const [currentProductItemIndex, setCurrentProductItemIndex] = useState(null);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [suppliersResponse, productsResponse] = await Promise.all([
+        const [suppliersResponse] = await Promise.all([
           inventoryAPI.getSuppliers(),
-          productAPI.getProducts(),
+          // productAPI.getProducts(), // Products will be fetched on demand by ModalSearchSelect
         ]);
         setSuppliers(suppliersResponse.data.results || suppliersResponse.data);
-        setProducts(productsResponse.data.results || productsResponse.data);
+        // setProducts(productsResponse.data.results || productsResponse.data);
       } catch (err) {
-        setError("Failed to fetch initial data (suppliers, products).");
+        setError("Failed to fetch initial data (suppliers).");
         console.error("Error fetching initial data:", err);
       } finally {
         setLoading(false);
@@ -58,7 +62,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         product: item.product,
         quantity: item.quantity,
         unit_price: parseFloat(item.unit_price),
-        product_details: products.find((p) => p.id === item.product) || null, // Find product details
+        product_details: item.product_details || null, // Assume product_details comes with initialData or will be fetched
         mrp: item.mrp || "",
         packing: item.packing || "",
         batch_number: item.batch_number || "",
@@ -80,7 +84,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       });
       setItems([]);
     }
-  }, [initialData, products]); // Depend on initialData and products to ensure product details are available
+  }, [initialData]); // Depend only on initialData
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -92,16 +96,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     const newItems = [...items];
     newItems[index][name] = value;
 
-    // If product is selected, try to find its details
-    if (name === "product" && value) {
-      const selectedProduct = products.find((p) => p.id === parseInt(value));
-      if (selectedProduct) {
-        newItems[index].product_details = selectedProduct; // Store full product details
-        newItems[index].unit_price = selectedProduct.current_cost_price || 0; // Set rate from product's current cost price
-        newItems[index].packing = selectedProduct.pack_size || ""; // Set packing from product's pack_size
-      }
-    }
-
     // Recalculate amount if quantity or rate changes
     if (name === "quantity" || name === "unit_price") {
       const qty = parseFloat(newItems[index].quantity || 0);
@@ -109,6 +103,46 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       newItems[index].amount = (qty * rate).toFixed(2);
     }
 
+    setItems(newItems);
+  };
+
+  const searchProducts = useCallback(async (searchTerm) => {
+    if (searchTerm.length > 0) {
+      try {
+        const response = await productAPI.getProducts({ search: searchTerm });
+        return Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [];
+      } catch (err) {
+        console.error("Error searching products:", err);
+        return [];
+      }
+    }
+    return [];
+  }, []);
+
+  const handleProductSelect = (index, product) => {
+    const newItems = [...items];
+    if (product) {
+      newItems[index].product = product.id;
+      newItems[index].product_details = product;
+      newItems[index].unit_price = product.current_cost_price || 0;
+      newItems[index].packing = product.pack_size || "";
+      newItems[index].mrp = product.mrp || 0;
+      // Recalculate amount
+      const qty = parseFloat(newItems[index].quantity || 0);
+      const rate = parseFloat(newItems[index].unit_price || 0);
+      newItems[index].amount = (qty * rate).toFixed(2);
+    } else {
+      // Clear product and related fields
+      newItems[index] = {
+        ...newItems[index],
+        product: "",
+        product_details: null,
+        unit_price: 0,
+        packing: "",
+        mrp: 0,
+        amount: "0.00",
+      };
+    }
     setItems(newItems);
   };
 
@@ -121,12 +155,12 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         unit_price: 0,
         product_details: null, // To store product object for display
         mrp: 0,
-        packing: 0,
-        batch_number: "", // Renamed to match backend model
-        expiry_date: "", // Renamed to match backend model
-        free: 0, // Not directly mapped to backend, can be used for notes
+        packing: "",
+        batch_number: "",
+        expiry_date: "",
+        free: 0,
         tax: 5,
-        disc: 0, // Not directly mapped to backend, can be used for notes
+        disc: 0,
         amount: "0.00",
       },
     ]);
@@ -391,13 +425,14 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Amount
                   </th>
-                  </tr>
+                  <th className="py-2 px-3"></th> {/* For remove button */}
+                </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {items.length === 0 && (
                   <tr>
                     <td
-                      colSpan="10"
+                      colSpan="12"
                       className="py-4 px-3 text-center text-gray-500"
                     >
                       No items added. Click "Add Item" to start.
@@ -407,28 +442,29 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                 {items.map((item, index) => (
                   <tr key={index}>
                     <td className="py-2 px-3 whitespace-nowrap">
-                      <select
-                        name="product"
-                        value={item.product}
-                        onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                      <ModalSearchSelect
+                        label="Product Name"
+                        placeholder="Select Product"
+                        selectedValue={item.product_details}
+                        onSelect={(product) => handleProductSelect(index, product)}
+                        onSearch={searchProducts}
+                        displayField="name"
+                        valueField="id"
                         required
-                      >
-                        <option value="">Select Product</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name}
-                          </option>
-                        ))}
-                      </select>
+                        className="w-full"
+                        columns={[
+                          { header: 'Product Name', field: 'name' },
+                          { header: 'Packing', field: 'pack_size' },
+                          { header: 'MRP', field: 'mrp' },
+                          { header: 'Cost Price', field: 'current_cost_price' },
+                        ]}
+                      />
                     </td>
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="text"
                         name="packing"
-                        value={
-                          item.packing || item.product_details?.packing || ""
-                        }
+                        value={item.packing || ""}
                         onChange={(e) => handleItemChange(index, e)}
                         className="w-full p-1 border border-gray-200 rounded-md"
                         placeholder="Packing"
@@ -529,6 +565,15 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                         readOnly
                       />
                     </td>
+                    <td className="py-2 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(index)}
+                        className="text-red-500 hover:text-red-700 font-bold"
+                      >
+                        &times;
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -537,7 +582,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
           <button
             type="button"
             onClick={handleAddItem}
-            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
+            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 mt-4"
           >
             Add Item
           </button>

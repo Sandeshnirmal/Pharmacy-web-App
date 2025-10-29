@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone # Import timezone
 from product.models import Product, Batch
 from usermanagement.models import User
 
@@ -103,9 +104,10 @@ class PurchaseReturn(models.Model):
     ]
 
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='returns')
-    return_date = models.DateField(auto_now_add=True)
+    return_date = models.DateField(default=timezone.now) # Allow frontend to set return date
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     reason = models.TextField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True) # Added notes field
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='purchase_returns_created')
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='purchase_returns_updated')

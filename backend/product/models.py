@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
+from simple_history.models import HistoricalRecords # Import HistoricalRecords
 
 User = get_user_model()
 
@@ -84,8 +85,6 @@ class Product(models.Model):
 
     strength = models.CharField(max_length=50, blank=True)
     form = models.CharField(max_length=50, blank=True)
-    is_prescription_required = models.BooleanField(default=False)
-
     # price and mrp are now managed at the batch level, so they are removed from Product
     # stock_quantity is now managed at the batch level, so it's removed from Product
     min_stock_level = models.PositiveIntegerField(default=10)
@@ -95,7 +94,6 @@ class Product(models.Model):
     packaging_unit = models.CharField(max_length=50, blank=True)
 
     description = models.TextField(blank=True)
-    composition = models.TextField(blank=True, help_text="Legacy composition field")
     uses = models.TextField(blank=True)
     side_effects = models.TextField(blank=True)
     how_to_use = models.TextField(blank=True)
@@ -165,6 +163,7 @@ class ProductComposition(models.Model):
 class Batch(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='batches')
     batch_number = models.CharField(max_length=100)
+    history = HistoricalRecords() # Add HistoricalRecords to track changes
     manufacturing_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField()
     quantity = models.PositiveIntegerField(default=0)

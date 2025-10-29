@@ -63,14 +63,6 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('O', 'Other')]
-    ROLE_CHOICES = [
-        ('admin', 'Admin'),
-        ('doctor', 'Doctor'),
-        ('pharmacist', 'Pharmacist'),
-        ('verifier', 'Verifier'),
-        ('staff', 'Staff'),
-        ('customer', 'Customer'),
-    ]
 
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -78,11 +70,9 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     phone_number = models.CharField(max_length=15, unique=True, blank=True, null=True)
 
     # Enhanced user fields
-    date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
 
-    # Role management - keeping both for backward compatibility
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
+    # Role management
     user_role = models.ForeignKey(UserRole, on_delete=models.PROTECT, related_name='users', null=True, blank=True)
 
     # Professional credentials (for doctors/pharmacists)
@@ -98,7 +88,7 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     )
 
     # Profile information
-    profile_picture_url = models.URLField(blank=True, null=True)
+    # Removed profile_picture_url, relying on UserProfile.avatar
 
     # System fields
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -111,7 +101,7 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     objects = CustomUserManager() # <--- REQUIRED to use your custom manager
 
     USERNAME_FIELD = 'email' # <--- ABSOLUTELY REQUIRED, and must be unique
-    REQUIRED_FIELDS = ['first_name', 'last_name', 'phone_number'] # <--- ABSOLUTELY REQUIRED, as a list/tuple
+    REQUIRED_FIELDS = ['first_name', 'last_name'] # Removed phone_number as it is nullable
 
     class Meta:
         verbose_name = 'user'
@@ -127,7 +117,12 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     def get_short_name(self):
         return self.first_name
     
-
+    def save(self, *args, **kwargs):
+        if self.user_role:
+            permissions = self.user_role.permissions
+            self.is_staff = permissions.get('is_staff', False)
+            self.is_superuser = permissions.get('is_superuser', False)
+        super().save(*args, **kwargs)
 
 
 class UserProfile(models.Model):

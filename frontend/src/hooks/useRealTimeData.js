@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axiosInstance from '../api/axiosInstance';
 
-const useRealTimeData = (endpoint, interval = 30000, options = {}) => {
+const useRealTimeData = (fetchFunction, interval = 30000, options = {}) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const intervalRef = useRef(null);
 
   const { 
     enabled = true, 
@@ -19,7 +20,8 @@ const useRealTimeData = (endpoint, interval = 30000, options = {}) => {
 
     try {
       setError(null);
-      const response = await axiosInstance.get(endpoint);
+      setLoading(true); // Set loading to true before fetching
+      const response = await fetchFunction(); // Use the provided fetchFunction
       
       let processedData = response.data;
       if (transformData) {
@@ -42,16 +44,33 @@ const useRealTimeData = (endpoint, interval = 30000, options = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [endpoint, enabled, transformData, onError, onSuccess]);
+  }, [fetchFunction, enabled, transformData, onError, onSuccess]);
 
-  useEffect(() => {
-    fetchData();
-
+  const startPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
     if (enabled && interval > 0) {
-      const intervalId = setInterval(fetchData, interval);
-      return () => clearInterval(intervalId);
+      intervalRef.current = setInterval(fetchData, interval);
     }
   }, [fetchData, enabled, interval]);
+
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData(); // Initial fetch
+
+    if (enabled && interval > 0) {
+      startPolling();
+    }
+
+    return () => stopPolling();
+  }, [fetchData, enabled, interval, startPolling, stopPolling]);
 
   const refetch = useCallback(() => {
     setLoading(true);
@@ -63,8 +82,10 @@ const useRealTimeData = (endpoint, interval = 30000, options = {}) => {
     loading,
     error,
     lastUpdated,
-    refetch
+    refetch,
+    startPolling,
+    stopPolling
   };
 };
 
-export default useRealTimeData; 
+export default useRealTimeData;

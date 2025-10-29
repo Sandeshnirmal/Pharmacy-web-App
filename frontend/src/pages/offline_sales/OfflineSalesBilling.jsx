@@ -1,28 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { productAPI, salesBillAPI } from '../../api/apiService'; // Adjust path as needed
+import ProductSearchPopup from '../../components/ProductSearchPopup'; // Import the new component
+import { productAPI, salesBillAPI, offlineCustomerAPI, apiUtils } from '../../api/apiService'; // Adjust path as needed
 
 const OfflineSalesBilling = () => {
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('Cash');
     const [paidAmount, setPaidAmount] = useState(0);
-    const [items, setItems] = useState([{ productId: '', batchId: '', quantity: 1, pricePerUnit: 0 }]);
+    const [items, setItems] = useState([{ productId: '', productName: '', batchId: '', quantity: 1, pricePerUnit: 0 }]); // Added productName
     const [products, setProducts] = useState([]);
-    const [batches, setBatches] = useState({}); // {productId: [batches]}
+    const [batches, setBatches] = {}; // {productId: [batches]}
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [selectedCustomer, setSelectedCustomer] = useState(null); // To store customer object if found/created
+    const [customerAddress, setCustomerAddress] = useState(''); // Added for customer address
+
+    const [showProductSearchPopup, setShowProductSearchPopup] = useState(false); // State for popup visibility
+    const [currentProductItemIndex, setCurrentProductItemIndex] = useState(null); // To track which item is being edited
 
     useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const response = await productAPI.getProducts();
-                setProducts(Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : []);
-            } catch (err) {
-                setError('Failed to fetch products.');
-                console.error('Error fetching products:', err);
-            }
-        };
+    const fetchProducts = async () => {
+        try {
+            const response = await productAPI.getProducts();
+            setProducts(Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : []);
+        } catch (err) {
+            const errorInfo = apiUtils.handleError(err);
+            setError(errorInfo.message || 'Failed to fetch products.');
+            console.error('Error fetching products:', err);
+        }
+    };
         fetchProducts();
     }, []);
 
@@ -31,7 +38,8 @@ const OfflineSalesBilling = () => {
             const response = await productAPI.getBatches(productId);
             setBatches(prev => ({ ...prev, [productId]: Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [] }));
         } catch (err) {
-            setError('Failed to fetch batches.');
+            const errorInfo = apiUtils.handleError(err);
+            setError(errorInfo.message || 'Failed to fetch batches.');
             console.error('Error fetching batches:', err);
         }
     };
@@ -55,8 +63,27 @@ const OfflineSalesBilling = () => {
         setItems(newItems);
     };
 
+    const handleSelectProductFromPopup = (product) => {
+        const newItems = [...items];
+        if (currentProductItemIndex !== null) {
+            newItems[currentProductItemIndex]['productId'] = product.id;
+            newItems[currentProductItemIndex]['productName'] = product.name; // Set product name
+            newItems[currentProductItemIndex]['pricePerUnit'] = product.current_selling_price;
+            newItems[currentProductItemIndex]['batchId'] = ''; // Reset batch
+            fetchBatches(product.id); // Fetch batches for the newly selected product
+            setItems(newItems);
+        }
+        setShowProductSearchPopup(false);
+        setCurrentProductItemIndex(null);
+    };
+
+    const openProductSearch = (index) => {
+        setCurrentProductItemIndex(index);
+        setShowProductSearchPopup(true);
+    };
+
     const addItem = () => {
-        setItems([...items, { productId: '', batchId: '', quantity: 1, pricePerUnit: 0 }]);
+        setItems([...items, { productId: '', productName: '', batchId: '', quantity: 1, pricePerUnit: 0 }]);
     };
 
     const removeItem = (index) => {
@@ -74,16 +101,33 @@ const OfflineSalesBilling = () => {
         setError('');
         setSuccess('');
 
+        let customerId = null;
+        if (customerPhone) { // Only try to find/create customer if phone is provided
+            try {
+                const customerPayload = {
+                    mobile: customerPhone,
+                    name: customerName || 'Guest Customer', // Provide a default name if not given
+                };
+                const customerResponse = await offlineCustomerAPI.findOrCreateCustomer(customerPayload);
+                customerId = customerResponse.data.id;
+                setSelectedCustomer(customerResponse.data);
+            } catch (customerErr) {
+                const errorInfo = apiUtils.handleError(customerErr);
+                setError(errorInfo.message || 'Failed to find or create customer.');
+                setLoading(false);
+                return; // Stop submission if customer handling fails
+            }
+        }
+
         const saleData = {
-            customer_name: customerName,
-            customer_phone: customerPhone,
+            customer: customerId, // Send customer ID
             payment_method: paymentMethod,
             paid_amount: paidAmount,
             items: items.map(item => ({
                 product: item.productId,
                 batch: item.batchId,
                 quantity: item.quantity,
-                price_per_unit: item.pricePerUnit,
+                price_per_unit: item.pricePerUnit, // Changed to price_per_unit to match backend
             })),
         };
 
@@ -93,12 +137,41 @@ const OfflineSalesBilling = () => {
             // Reset form
             setCustomerName('');
             setCustomerPhone('');
+            setCustomerAddress(''); // Reset customer address
             setPaymentMethod('Cash');
             setPaidAmount(0);
-            setItems([{ productId: '', batchId: '', quantity: 1, pricePerUnit: 0 }]);
+            setItems([{ productId: '', productName: '', batchId: '', quantity: 1, pricePerUnit: 0 }]); // Reset with productName
+            setSelectedCustomer(null);
         } catch (err) {
-            setError('Failed to create sale. ' + (err.response?.data?.detail || err.message));
+            const errorInfo = apiUtils.handleError(err);
+            setError(errorInfo.message || 'Failed to create sale.');
             console.error('Error creating sale:', err.response?.data || err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSearchCustomer = async () => {
+        if (!customerPhone) {
+            setError('Please enter a phone number to search.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        setSuccess('');
+        try {
+            const response = await offlineCustomerAPI.searchCustomerByPhone(customerPhone);
+            setSelectedCustomer(response.data);
+            setCustomerName(response.data.name || '');
+            setCustomerAddress(response.data.address || '');
+            setSuccess('Customer found!');
+        } catch (err) {
+            setSelectedCustomer(null);
+            setCustomerName('');
+            setCustomerAddress('');
+            const errorInfo = apiUtils.handleError(err);
+            setError(errorInfo.message || 'Customer not found. You can enter details for a new customer.');
+            console.error('Error searching customer:', err.response?.data || err);
         } finally {
             setLoading(false);
         }
@@ -135,9 +208,36 @@ const OfflineSalesBilling = () => {
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                         id="customerPhone"
                         type="text"
-                        placeholder="Customer Phone (Optional)"
+                        placeholder="Enter customer phone"
                         value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        onChange={(e) => {
+                            setCustomerPhone(e.target.value);
+                            setSelectedCustomer(null); // Clear selected customer if phone changes
+                            setCustomerName(''); // Clear name if phone changes
+                            setCustomerAddress(''); // Clear address if phone changes
+                        }}
+                    />
+                    <button
+                        type="button"
+                        onClick={handleSearchCustomer}
+                        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-2 ml-2"
+                        disabled={loading}
+                    >
+                        Search
+                    </button>
+                </div>
+                <div className="mb-4">
+                    <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="customerAddress">
+                        Customer Address
+                    </label>
+                    <input
+                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                        id="customerAddress"
+                        type="text"
+                        placeholder="Customer Address (Optional)"
+                        value={customerAddress}
+                        onChange={(e) => setCustomerAddress(e.target.value)}
+                        readOnly={!!selectedCustomer} // Make readOnly if a customer is selected
                     />
                 </div>
 
@@ -146,17 +246,22 @@ const OfflineSalesBilling = () => {
                     <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4 p-4 border rounded">
                         <div>
                             <label className="block text-gray-700 text-sm font-bold mb-2">Product</label>
-                            <select
-                                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                                value={item.productId}
-                                onChange={(e) => handleItemChange(index, 'productId', e.target.value)}
-                                required
-                            >
-                                <option value="">Select Product</option>
-                                {Array.isArray(products) && products.map(product => (
-                                    <option key={product.id} value={product.id}>{product.name}</option>
-                                ))}
-                            </select>
+                            <div className="flex">
+                                <input
+                                    type="text"
+                                    className="shadow appearance-none border rounded-l w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    placeholder="Select Product"
+                                    value={item.productName || ''}
+                                    readOnly
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => openProductSearch(index)}
+                                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-r focus:outline-none focus:shadow-outline"
+                                >
+                                    Search
+                                </button>
+                            </div>
                         </div>
                         <div>
                             <label className="block text-gray-700 text-sm font-bold mb-2">Batch</label>
@@ -265,6 +370,14 @@ const OfflineSalesBilling = () => {
                     </button>
                 </div>
             </form>
+
+            {showProductSearchPopup && (
+                <ProductSearchPopup
+                    products={products}
+                    onSelectProduct={handleSelectProductFromPopup}
+                    onClose={() => setShowProductSearchPopup(false)}
+                />
+            )}
         </div>
     );
 };

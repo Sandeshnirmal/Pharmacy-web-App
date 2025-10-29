@@ -80,8 +80,8 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'date_of_birth', 'gender', 'role', 'role_display', 'user_role', 'user_role_details',
-            'license_number', 'verification_status', 'profile_picture_url', 'profile_image',
+            'gender', 'role_display', 'user_role', 'user_role_details',
+            'license_number', 'verification_status',
             'is_active', 'is_staff', 'is_superuser', 'date_joined', 'last_login',
             'profile_details', 'can_verify_prescriptions', 'can_manage_inventory', 'can_manage_users'
         ]
@@ -108,15 +108,15 @@ class UserSerializer(serializers.ModelSerializer):
     
     def get_can_verify_prescriptions(self, obj):
         """Check if user can verify prescriptions"""
-        return obj.role in ['admin', 'pharmacist', 'verifier']
+        return obj.user_role and obj.user_role.name in ['admin', 'pharmacist', 'verifier']
     
     def get_can_manage_inventory(self, obj):
         """Check if user can manage inventory"""
-        return obj.role in ['admin', 'pharmacist', 'staff']
+        return obj.user_role and obj.user_role.name in ['admin', 'pharmacist', 'staff']
     
     def get_can_manage_users(self, obj):
         """Check if user can manage other users"""
-        return obj.role in ['admin']
+        return obj.user_role and obj.user_role.name in ['admin']
 
 class UserCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating new users"""
@@ -127,7 +127,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'email', 'phone_number', 'password', 'password_confirm',
-            'date_of_birth', 'gender', 'role', 'user_role', 'license_number'
+            'gender', 'user_role', 'license_number'
         ]
     
     def validate(self, attrs):
@@ -150,9 +150,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
     
     def validate_license_number(self, value):
         """Validate license number for professional roles"""
-        role = self.initial_data.get('role')
-        if role in ['doctor', 'pharmacist'] and not value:
-            raise serializers.ValidationError("License number is required for professional roles")
+        user_role_id = self.initial_data.get('user_role')
+        if user_role_id:
+            try:
+                user_role = UserRole.objects.get(id=user_role_id)
+                if user_role.name in ['doctor', 'pharmacist'] and not value:
+                    raise serializers.ValidationError("License number is required for professional roles")
+            except UserRole.DoesNotExist:
+                pass # Role might not exist yet, handled by user_role field validation
         return value
     
     def create(self, validated_data):
@@ -168,19 +173,19 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'first_name', 'last_name', 'phone_number', 'date_of_birth', 'gender',
-            'role', 'user_role', 'license_number', 'verification_status',
+            'first_name', 'last_name', 'phone_number', 'gender',
+            'user_role', 'license_number', 'verification_status',
             'profile_picture_url', 'is_active'
         ]
     
     def validate_role_change(self, attrs):
         """Validate role changes"""
         user = self.instance
-        new_role = attrs.get('role', user.role)
+        new_user_role = attrs.get('user_role', user.user_role)
         
         # Only admins can change roles
         request_user = self.context['request'].user
-        if request_user.role != 'admin' and new_role != user.role:
+        if request_user.user_role and request_user.user_role.name != 'admin' and new_user_role != user.user_role:
             raise serializers.ValidationError("Only admins can change user roles")
         
         return attrs

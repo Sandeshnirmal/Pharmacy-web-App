@@ -288,12 +288,14 @@ export const discountAPI = {
 
 export const salesBillAPI = {
   getSalesBills: (page = 1, pageSize = 10, params = {}) =>
-    axiosInstance.get('/api/offline-sales/', { params: { ...params, page, page_size: pageSize } }),
-  getSalesBill: (id) => axiosInstance.get(`/api/offline-sales/${id}/`),
-  createSalesBill: (billData) => axiosInstance.post('/api/offline-sales/', billData),
-  updateSalesBill: (id, billData) => axiosInstance.patch(`/api/offline-sales/${id}/`, billData),
-  deleteSalesBill: (id) => axiosInstance.delete(`/api/offline-sales/${id}/`),
-  generateInvoice: (id) => axiosInstance.get(`/api/offline-sales/${id}/generate-invoice/`),
+    axiosInstance.get('/api/offline-sales/offline-sales/', { params: { ...params, page, page_size: pageSize } }),
+  getSalesBill: (id) => axiosInstance.get(`/api/offline-sales/offline-sales/${id}/`),
+  createSalesBill: (billData) => axiosInstance.post('/api/offline-sales/offline-sales/', billData),
+  updateSalesBill: (id, billData) => axiosInstance.patch(`/api/offline-sales/offline-sales/${id}/`, billData),
+  deleteSalesBill: (id) => axiosInstance.delete(`/api/offline-sales/offline-sales/${id}/`),
+  generateInvoice: (id) => axiosInstance.get(`/api/offline-sales/offline-sales/${id}/generate-invoice/`),
+  createBillReturn: (returnData) => axiosInstance.post('/api/offline-sales/bill-returns/', returnData),
+  cancelSalesBill: (id, cancellationReason) => axiosInstance.post(`/api/offline-sales/offline-sales/${id}/cancel-bill/`, { cancellation_reason: cancellationReason }),
 };
 
 // ============================================================================

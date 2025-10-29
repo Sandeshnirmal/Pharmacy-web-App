@@ -9,7 +9,8 @@ const MedicinesListPage = lazy(() => import('../pages/MedicinesListPage'));
 const GenericsTable = lazy(() => import('../pages/GenericsTable'));
 const InventoryManagement = lazy(() => import('../pages/InventoryManagement'));
 const PurchaseBillInventoryUpload = lazy(() => import('../pages/PurchaseBillInventoryUpload.jsx'));
-const PurchaseBillReturn = lazy(() => import('../pages/PurchaseBillReturn'));
+const PurchaseReturnForm = lazy(() => import('../pages/PurchaseReturnForm'));
+const PurchaseReturnListPage = lazy(() => import('../pages/PurchaseReturnListPage'));
 const SalesBillPage = lazy(() => import('../pages/salesbillpage.jsx'))
 const SalesReturnPage = lazy(() => import("../pages/Salesbillreturn.jsx"))
 
@@ -85,10 +86,24 @@ export const routes = [
     lazy: true,
   },
   {
-    path: "/purchase-bill/return",
-    element: PurchaseBillReturn,
-    title: "Purchase Bill Return",
+    path: "/purchase-returns/new",
+    element: PurchaseReturnForm,
+    title: "Create Purchase Return",
     icon: "RotateCcw", // Placeholder icon
+    lazy: true,
+  },
+  {
+    path: "/purchase-returns/:id",
+    element: PurchaseReturnForm,
+    title: "Edit Purchase Return",
+    hidden: true, // Don't show in navigation
+    lazy: true,
+  },
+  {
+    path: "/purchase-returns",
+    element: PurchaseReturnListPage,
+    title: "Purchase Returns List",
+    icon: "List", // Placeholder icon
     lazy: true,
   },
   {

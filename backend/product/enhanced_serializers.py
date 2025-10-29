@@ -138,6 +138,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     generic_name_display = serializers.CharField(source='generic_name.name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    is_prescription_required = serializers.SerializerMethodField()
     
     # Composition relationships - use the prefetched attribute
     compositions_detail = ProductCompositionSerializer(
@@ -163,12 +164,12 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_display',
-            'manufacturer', 'medicine_type', 'prescription_type',
-            'strength', 'form', 'is_prescription_required',  # Legacy fields
+            'manufacturer', 'medicine_type', 'prescription_type', 'is_prescription_required',
+            'strength', 'form',
             'total_stock_quantity', 'min_stock_level', 'stock_status', 'is_low_stock',
             'current_selling_price',
             'dosage_form', 'pack_size', 'packaging_unit',
-            'description', 'composition', 'uses', 'side_effects',
+            'description', 'uses', 'side_effects', # Removed 'composition' as it's not a direct model field
             'how_to_use', 'precautions', 'storage',
             'compositions_detail', 'composition_summary',
             'image_url', 'hsn_code', 'category', 'category_name',
@@ -244,6 +245,10 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             return batch_data
         return None
     
+    def get_is_prescription_required(self, obj):
+        """Determine if a prescription is required based on prescription_type"""
+        return obj.prescription_type in ['prescription', 'controlled']
+
     def create(self, validated_data):
         """Create product with current user as creator"""
         validated_data['created_by'] = self.context['request'].user
@@ -276,6 +281,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     generic_name_display = serializers.CharField(source='generic_name.name', read_only=True)
     composition_summary = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    is_prescription_required = serializers.SerializerMethodField()
     total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True) # Use annotated field
     current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True) # Use annotated field
     
@@ -283,7 +289,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name_display',
-            'manufacturer', 'medicine_type', 'prescription_type',
+            'manufacturer', 'medicine_type', 'prescription_type', 'is_prescription_required',
             'total_stock_quantity', 'stock_status',
             'current_selling_price',
             'dosage_form', 'composition_summary', 'image_url', 'is_active'
@@ -305,6 +311,10 @@ class ProductSearchSerializer(serializers.ModelSerializer):
             return 'low_stock'
         else:
             return 'in_stock'
+
+    def get_is_prescription_required(self, obj):
+        """Determine if a prescription is required based on prescription_type"""
+        return obj.prescription_type in ['prescription', 'controlled']
 
 class CompositionSearchSerializer(serializers.ModelSerializer):
     """Serializer for composition search"""

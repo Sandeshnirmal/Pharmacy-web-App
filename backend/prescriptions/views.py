@@ -13,14 +13,15 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     Enhanced ViewSet for admin dashboard to manage prescriptions.
     Supports full CRUD operations and statistics.
     """
-    queryset = Prescription.objects.all().order_by('-upload_date')
+    queryset = Prescription.objects.all().select_related('user').prefetch_related('prescription_medicines').order_by('-upload_date')
     pagination_class = PrescriptionPageNumberPagination # Add pagination class
     serializer_class = PrescriptionSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        status_filter = self.request.query_params.get('verification_status', None)
+        # Note: 'verification_status' was removed from Prescription model, use 'status' instead
+        status_filter = self.request.query_params.get('status', None)
         user_id = self.request.query_params.get('user_id', None)
 
         if status_filter:
@@ -34,23 +35,35 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         """Get prescription statistics"""
         total_prescriptions = Prescription.objects.count()
 
-        # Count by verification status
-        stats_by_status = Prescription.objects.values('verification_status').annotate(
+        # Count by status (updated from verification_status)
+        stats_by_status = Prescription.objects.values('status').annotate(
             count=Count('id')
         )
 
         # Convert to dictionary
         status_counts = {}
         for item in stats_by_status:
-            status_counts[item['verification_status']] = item['count']
+            status_counts[item['status']] = item['count']
 
-        # Calculate percentages
-        verified_count = status_counts.get('Verified', 0)
-        pending_count = status_counts.get('Pending_Review', 0)
-        rejected_count = status_counts.get('Rejected', 0)
-        uploaded_count = status_counts.get('Uploaded', 0)
-        ai_processing_count = status_counts.get('AI_Processing', 0)
-        ai_processed_count = status_counts.get('AI_Processed', 0)
+        # Calculate percentages (updated to use new status choices)
+        verified_count = status_counts.get('verified', 0)
+        pending_verification_count = status_counts.get('pending_verification', 0)
+        rejected_count = status_counts.get('rejected', 0)
+        uploaded_count = status_counts.get('uploaded', 0)
+        ai_processing_count = status_counts.get('ai_processing', 0)
+        ai_mapped_count = status_counts.get('ai_mapped', 0)
+
+        return Response({
+            'total_prescriptions': total_prescriptions,
+            'verified': verified_count,
+            'pending_verification': pending_verification_count,
+            'rejected': rejected_count,
+            'uploaded': uploaded_count,
+            'ai_processing': ai_processing_count,
+            'ai_mapped': ai_mapped_count,
+            'verification_rate': round((verified_count / max(total_prescriptions, 1)) * 100, 2),
+            'status_breakdown': status_counts
+        })
 
         return Response({
             'total_prescriptions': total_prescriptions,
@@ -71,7 +84,9 @@ class PrescriptionDetailViewSet(viewsets.ModelViewSet):
     Simple read-only ViewSet for admin dashboard to view prescription details.
     All prescription processing is handled by mobile_api.py
     """
-    queryset = PrescriptionMedicine.objects.all()
+    queryset = PrescriptionMedicine.objects.all().select_related(
+        'prescription__user', 'suggested_medicine', 'verified_medicine', 'verified_by'
+    ).prefetch_related('suggested_products')
     serializer_class = PrescriptionMedicineSerializer
     permission_classes = [AllowAny]
 
@@ -228,7 +243,7 @@ class PrescriptionScannerViewSet(viewsets.ViewSet):
 
             scans = PrescriptionScanResult.objects.filter(
                 user=request.user
-            ).order_by('-created_at')[:20]  # Last 20 scans
+            ).select_related('user').order_by('-created_at')[:20]  # Last 20 scans
 
             scan_data = []
             for scan in scans:
@@ -237,7 +252,7 @@ class PrescriptionScannerViewSet(viewsets.ViewSet):
                     'scan_type': scan.scan_type,
                     'total_suggestions': scan.total_suggestions,
                     'created_at': scan.created_at,
-                    'extracted_medicines': scan.extracted_medicines
+                    'extracted_medicines': scan.extracted_medicines # Note: scanned_text was removed from model
                 })
 
             return Response({

@@ -41,8 +41,8 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'date_of_birth', 'gender', 'role', 'date_joined', 'registration_date',
-            'profile_picture_url', 'is_active', 'is_staff', 'is_superuser', # Use profile_picture_url
+            'gender', 'user_role', 'date_joined', 'registration_date',
+             'is_active', 'is_staff', 'is_superuser', # Use profile_picture_url
             'last_login', 'addresses'
         ]
         # Removed exclude = ('profile_image',) as the field no longer exists
@@ -54,7 +54,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'first_name', 'last_name', 'email', 'phone_number',
-            'date_of_birth', 'gender', 'role', 'password'
+            'gender', 'user_role', 'password'
         ]
 
     def create(self, validated_data):
@@ -100,8 +100,8 @@ class EnhancedUserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'date_of_birth', 'gender', 'role', 'date_joined', 'registration_date',
-            'profile_picture_url', 'is_active', 'last_login', 'addresses', # Use profile_picture_url
+            'gender', 'user_role', 'date_joined', 'registration_date',
+             'is_active', 'last_login', 'addresses', # Use profile_picture_url
             'profile', 'preferences', 'total_orders', 'total_reviews', 'wishlist_count'
         ]
         # Removed exclude = ('profile_image',) as the field no longer exists
@@ -127,8 +127,8 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'first_name', 'last_name', 'phone_number', 'date_of_birth',
-            'gender', 'profile_picture_url' # Re-added profile_picture_url for updates
+            'first_name', 'last_name', 'phone_number',
+            'gender', # Re-added profile_picture_url for updates
         ]
 
     def update(self, instance, validated_data):
