@@ -3,7 +3,7 @@ from .models import OfflineSale, OfflineSaleItem, BillReturn, BillReturnItem, Of
 from product.serializers import ProductSerializer, BatchSerializer # Assuming these exist
 from decimal import Decimal # Import Decimal for precise calculations
 from django.utils import timezone # Import timezone
-from product.models import Discount, Product # Import Product and Discount
+from product.models import Discount, Product,Batch # Import Product and Discount
 
 class OfflineCustomerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,13 +14,20 @@ class OfflineCustomerSerializer(serializers.ModelSerializer):
 class OfflineSaleItemSerializer(serializers.ModelSerializer):
     product_details = ProductSerializer(source='product', read_only=True)
     batch_details = BatchSerializer(source='batch', read_only=True)
+    
+    # Explicitly define batch as a PrimaryKeyRelatedField to accept ID
+    batch = serializers.PrimaryKeyRelatedField(
+        queryset=Batch.objects.all(), 
+        allow_null=True, 
+        required=False
+    )
 
     class Meta:
         model = OfflineSaleItem
         fields = '__all__'
-        read_only_fields = ('subtotal', 'sale', 'discount_percentage', 'discount_amount') # Mark as read-only as they will be calculated
+        read_only_fields = ('subtotal', 'sale', 'discount_percentage', 'discount_amount')
         extra_kwargs = {
-            'price_per_unit': {'required': True} # Ensure price_per_unit is always provided
+            'price_per_unit': {'required': True}
         }
 
 class OfflineSaleSerializer(serializers.ModelSerializer):
@@ -121,9 +128,9 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             total_amount += item_data['subtotal']
             
             # Stock reduction logic
-            if batch.current_quantity < quantity:
-                raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity}")
-            batch.current_quantity -= quantity
+            if batch.quantity < quantity:
+                raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.quantity}, Requested: {quantity}")
+            batch.quantity -= quantity
             batch.save()
 
             # Create StockMovement record for OUT
@@ -141,7 +148,14 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
         # Update total_amount and change_amount for the OfflineSale instance
         offline_sale.total_amount = total_amount
         offline_sale.change_amount = validated_data.get('paid_amount', Decimal('0.00')) - total_amount
-        offline_sale.save() # Save is needed to update total_amount and change_amount
+        
+        # Set status to PAID if paid_amount covers total_amount
+        if offline_sale.paid_amount >= offline_sale.total_amount:
+            offline_sale.status = 'PAID'
+        else:
+            offline_sale.status = 'PENDING' # Ensure it's pending if not fully paid
+
+        offline_sale.save() # Save is needed to update total_amount, change_amount, and status
 
         return offline_sale
 
@@ -186,7 +200,11 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
         elif new_status == 'PARTIALLY_RETURNED' and instance.status not in ['RETURNED', 'PARTIALLY_RETURNED']:
             instance.status = 'PARTIALLY_RETURNED'
         else:
-            instance.status = new_status # Allow other status updates
+            # Only allow status to be set to PAID if not cancelled/returned and paid_amount covers total_amount
+            if validated_data.get('paid_amount', instance.paid_amount) >= instance.total_amount:
+                instance.status = 'PAID'
+            else:
+                instance.status = 'PENDING' # Revert to pending if not fully paid or if it was paid and now isn't
 
         instance.paid_amount = validated_data.get('paid_amount', instance.paid_amount)
         instance.payment_method = validated_data.get('payment_method', instance.payment_method)
@@ -200,7 +218,7 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             for old_item in instance.items.all():
                 batch = old_item.batch
                 if batch:
-                    batch.current_quantity += old_item.quantity # Return old quantity to stock
+                    batch.quantity += old_item.quantity # Return old quantity to stock
                     batch.save()
                     StockMovement.objects.create(
                         product=old_item.product,
@@ -221,9 +239,9 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 subtotal = quantity * price_per_unit
                 
                 batch = item_data['batch']
-                if batch.current_quantity < quantity:
-                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_no}. Available: {batch.current_quantity}, Requested: {quantity}")
-                batch.current_quantity -= quantity
+                if batch.quantity < quantity:
+                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_no}. Available: {batch.quantity}, Requested: {quantity}")
+                batch.quantity -= quantity
                 batch.save()
 
                 StockMovement.objects.create(
@@ -239,6 +257,13 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 total_amount += subtotal
             instance.total_amount = total_amount
             instance.change_amount = instance.paid_amount - total_amount
+            
+            # Re-evaluate status after item updates and total_amount recalculation
+            if instance.paid_amount >= instance.total_amount:
+                instance.status = 'PAID'
+            else:
+                instance.status = 'PENDING'
+
             instance.save()
 
         return instance
@@ -280,7 +305,7 @@ class BillReturnSerializer(serializers.ModelSerializer):
 
             # Stock increment logic for returned items
             batch = offline_sale_item.batch
-            batch.current_quantity += returned_quantity
+            batch.quantity += returned_quantity
             batch.save()
 
             # Create StockMovement record for IN

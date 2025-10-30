@@ -223,26 +223,8 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             request = self.context.get('request')
             channel = request.query_params.get('channel', 'online') # Default to online if not specified
 
-            batch_data = {
-                'batch_id': current_batch.id,
-                'expiry_date': current_batch.expiry_date.isoformat(),
-                'quantity': current_batch.quantity
-            }
-
-            if channel == 'online':
-                batch_data['mrp'] = float(current_batch.online_mrp_price)
-                batch_data['selling_price'] = float(current_batch.online_selling_price)
-                batch_data['discount_percentage'] = float(current_batch.online_discount_percentage)
-            elif channel == 'offline':
-                batch_data['mrp'] = float(current_batch.offline_mrp_price)
-                batch_data['selling_price'] = float(current_batch.offline_selling_price)
-                batch_data['discount_percentage'] = float(current_batch.offline_discount_percentage)
-            else: # Generic or default
-                batch_data['mrp'] = float(current_batch.mrp_price)
-                batch_data['selling_price'] = float(current_batch.selling_price)
-                batch_data['discount_percentage'] = float(current_batch.discount_percentage)
-            
-            return batch_data
+            # Serialize the current_batch using BatchSerializer
+            return BatchSerializer(current_batch, context=self.context).data
         return None
     
     def get_is_prescription_required(self, obj):

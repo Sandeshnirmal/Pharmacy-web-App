@@ -173,30 +173,14 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         // Process products to find the best batch's offline_selling_price for display
         const productsWithDisplayPrice = products.map(product => {
           let displayPrice = 0;
-          if (product.batches && product.batches.length > 0) {
-            // Apply the same sorting logic as in handleProductSelect to find the "best" batch for display
-            const sortedBatches = [...product.batches].sort((a, b) => {
-              const dateA = new Date(a.expiry_date);
-              const dateB = new Date(b.expiry_date);
+          let selectedBatch = undefined;
 
-              // 1. Prioritize later expiry dates
-              if (dateA > dateB) return -1;
-              if (dateA < dateB) return 1;
-
-              // If expiry dates are the same, 2. prioritize non-zero offline_selling_price (highest first)
-              const priceA = parseFloat(a.offline_selling_price) || 0;
-              const priceB = parseFloat(b.offline_selling_price) || 0;
-
-              if (priceA > 0 && priceB === 0) return -1;
-              if (priceA === 0 && priceB > 0) return 1;
-              if (priceA !== priceB) return priceB - priceA;
-
-              // If expiry dates and prices are the same, 3. prioritize higher stock
-              return (parseFloat(b.quantity) || 0) - (parseFloat(a.quantity) || 0);
-            });
-            displayPrice = parseFloat(sortedBatches[0].offline_selling_price) || 0;
+          // Use the current_batch provided by the backend
+          if (product.current_batch) {
+            selectedBatch = product.current_batch;
+            displayPrice = parseFloat(selectedBatch.offline_selling_price) || 0;
           }
-          return { ...product, display_price: displayPrice };
+          return { ...product, display_price: displayPrice, current_batch: selectedBatch };
         });
 
         return productsWithDisplayPrice;
@@ -236,41 +220,8 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
   const handleProductSelect = async (index, product) => {
     const newItems = [...items];
     if (product) {
-      let selectedBatch = undefined;
-      let unitPrice = 0; // Initialize unitPrice to 0
-
-      // Fetch all batches for the selected product to apply custom selection logic
-      try {
-        const batchesResponse = await productAPI.getBatches(product.id);
-        const availableBatches = Array.isArray(batchesResponse.data.results) ? batchesResponse.data.results : [];
-
-        if (availableBatches.length > 0) {
-          // Sort batches: prioritize by expiry_date (latest first), then by non-zero offline_selling_price (highest first), then by stock (highest first)
-          const sortedBatches = [...availableBatches].sort((a, b) => {
-            const dateA = new Date(a.expiry_date);
-            const dateB = new Date(b.expiry_date);
-
-            // 1. Prioritize later expiry dates
-            if (dateA > dateB) return -1;
-            if (dateA < dateB) return 1;
-
-            // If expiry dates are the same, 2. prioritize non-zero offline_selling_price (highest first)
-            const priceA = parseFloat(a.offline_selling_price) || 0;
-            const priceB = parseFloat(b.offline_selling_price) || 0;
-
-            if (priceA > 0 && priceB === 0) return -1; // A has price, B doesn't, A comes first
-            if (priceA === 0 && priceB > 0) return 1;  // B has price, A doesn't, B comes first
-            if (priceA !== priceB) return priceB - priceA; // If both have prices, higher price first
-
-            // If expiry dates and prices are the same, 3. prioritize higher stock
-            return (parseFloat(b.quantity) || 0) - (parseFloat(a.quantity) || 0); // Use quantity for stock
-          });
-          selectedBatch = sortedBatches[0];
-          unitPrice = parseFloat(selectedBatch.offline_selling_price) || 0; // Use offline_selling_price from the selected batch
-        }
-      } catch (batchErr) {
-        console.error(`Error fetching batches for product ${product.id}:`, batchErr);
-      }
+      let selectedBatch = product.current_batch; // Use the current_batch from the product object
+      let unitPrice = selectedBatch ? parseFloat(selectedBatch.offline_selling_price) || 0 : 0;
 
       newItems[index] = {
         ...newItems[index],
@@ -682,10 +633,10 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                       className="w-full"
                       readOnly={!item.product} // Batch search only enabled if product is selected
                       columns={[
-                        { header: 'Batch No', field: 'batch_no' },
-                        { header: 'Expire Date', field: 'expire_date' },
+                        { header: 'Batch No', field: 'batch_number' },
+                        { header: 'Expire Date', field: 'expiry_date' },
                         { header: 'Selling Price', field: 'offline_selling_price' },
-                        { header: 'Stock', field: 'stock' },
+                        { header: 'Stock', field: 'current_quantity' },
                       ]}
                     />
                   </td>
