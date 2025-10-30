@@ -46,9 +46,11 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = OfflineSale
         fields = '__all__'
-        read_only_fields = ('total_amount', 'change_amount', 'created_by', 'updated_by', 'last_status_update_date') # Updated read_only_fields
+        read_only_fields = ('total_amount', 'change_amount', 'created_by', 'updated_by', 'last_status_update_date')
 
     def create(self, validated_data):
+        # Ensure the tag is set to 'OFFLINE' for new offline sales
+        validated_data['tag'] = 'OFFLINE'
         items_data = validated_data.pop('items')
         customer_instance = validated_data.pop('customer', None)
 

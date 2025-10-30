@@ -30,9 +30,15 @@ class OfflineSale(models.Model):
         ('RETURNED', 'Returned'), # For full returns
         ('PARTIALLY_RETURNED', 'Partially Returned'), # For partial item returns
     ]
+    TAG_CHOICES = [
+        ('OFFLINE', 'Offline Sale'),
+        ('ONLINE', 'Online Sale'),
+        # Add other tags as needed
+    ]
 
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='offline_sales_updated')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    tag = models.CharField(max_length=20, choices=TAG_CHOICES, default='OFFLINE') # New tag field
     last_status_update_date = models.DateTimeField(auto_now=True) # Tracks last update to status
     cancellation_reason = models.TextField(blank=True, null=True) # Reason for cancellation
     notes = models.TextField(blank=True, null=True)

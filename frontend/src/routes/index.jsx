@@ -26,7 +26,7 @@ const DiscountMaster = lazy(() => import('../pages/DiscountMaster'));
 // Offline Sales Management - Lazy loaded
 const OfflineSalesBilling = lazy(() => import('../pages/offline_sales/OfflineSalesBilling'));
 const BillReturn = lazy(() => import('../pages/offline_sales/BillReturn'));
-const InvoiceViewer = lazy(() => import('../pages/offline_sales/InvoiceViewer'));
+const Invoice = lazy(() => import('../pages/Invoice.jsx')); // Import the Invoice component
 
 // Order Management - Lazy loaded
 const OrderDetails = lazy(() => import('../pages/OrderDetails'));
@@ -125,6 +125,13 @@ export const routes = [
     path: "/sale-return-billing",
     element: SalesReturnPage,
     tittle: "sales return table",
+    lazy: true,
+  },
+  {
+    path: "/invoice/:billId", // New route for sales invoice
+    element: Invoice,
+    title: "Sales Invoice",
+    hidden: true, // Don't show in navigation
     lazy: true,
   },
   {

@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { useParams } from "react-router-dom"; // Import useParams
 import logoImg from "../assets/full_logo.png";
+import { salesBillAPI, apiUtils } from '../api/apiService'; // Import salesBillAPI and apiUtils
 
 // --- SVG Icons (for a clean, dependency-free UI) ---
 const PharmacyLogo = () => (
@@ -11,89 +13,31 @@ const PharmacyLogo = () => (
     />
 );
 
-// --- Mock API Data for a Paid Purchase Invoice ---
-const mockApiData = {
-  vendor: {
-    name: "Global Pharma Distributors",
-    address: "456 Industrial Ave, Mumbai, Maharashtra, 400001",
-    email: "sales@globalpharma.com",
-    phone: "+91 22 5555 1234",
-  },
-  invoice: {
-    invoice_number: "GPD-2025-00123",
-    invoice_date: "2025-10-08T06:53:52.551Z",
-    payment_date: "2025-10-08T07:15:00.000Z",
-    buyer: {
-      name: "Infixmart",
-      address: {
-        line1: "No. 123, Arcot Road",
-        line2: "Vellore, Tamil Nadu, 632004",
-      },
-      email: "purchases@infixmart.com",
-      phone: "+91 416 123 4567",
-    },
-  },
-  items: [
-    {
-      name: "Paracetamol 500mg",
-      description: "Box of 200 units",
-      quantity: 20,
-      price: 500.0,
-      total_price: 10000.0,
-    },
-    {
-      name: "Antiseptic Liquid",
-      description: "Case of 50 units (500ml)",
-      quantity: 5,
-      price: 4500.0,
-      total_price: 22500.0,
-    },
-  ],
-  financial: {
-    subtotal: 32500.0,
-    tax_amount: 1625.0,
-    discount_amount: 1000.0,
-    total_price: 33125.0,
-    amount_paid: 33125.0,
-    balance_due: 0.0,
-  },
-  payment_details: {
-    payment_method: "Online Transfer",
-    transaction_id: "TRF-SBI-987654321",
-    account_name: "Global Pharma Distributors",
-    account_number: "987654321098",
-    bank: "HDFC Bank, Mumbai Corporate Branch",
-  },
-  terms_and_conditions:
-    "This is a record of your payment. Thank you for your business. Goods once sold will not be taken back.",
-};
-
 const Invoice = () => {
-  // --- State Management ---
+  const { billId } = useParams(); // Get billId from URL parameters
   const [isLoading, setIsLoading] = useState(true);
-  const [invoiceData, setInvoiceData] = useState(null);
+  const [billData, setBillData] = useState(null); // Renamed to billData
 
   // --- Data Fetching Effect ---
   useEffect(() => {
-    // Simulate fetching data from an API
-    const fetchInvoiceData = () => {
-      setIsLoading(true);
-      // In a real app, you would make a network request here
-      // e.g., fetch('/api/purchase-order/details/some-id')
-      new Promise((resolve) => setTimeout(() => resolve(mockApiData), 1000))
-        .then((data) => {
-          setInvoiceData(data);
-          setIsLoading(false);
-        })
-        .catch((error) => {
-          console.error("Failed to fetch invoice data:", error);
-          setIsLoading(false);
-          // Handle error state in UI
-        });
+    const fetchBillDetails = async () => {
+      try {
+        setIsLoading(true);
+        const response = await salesBillAPI.getSalesBill(billId); // Fetch sales bill data
+        setBillData(response.data);
+      } catch (err) {
+        const errorInfo = apiUtils.handleError(err);
+        console.error("Failed to fetch sales bill data:", err);
+        // Handle error state in UI
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    fetchInvoiceData();
-  }, []); // Empty dependency array means this runs once on mount
+    if (billId) {
+      fetchBillDetails();
+    }
+  }, [billId]); // Depend on billId to re-fetch if it changes
 
   const handlePrint = () => {
     window.print();
@@ -141,23 +85,49 @@ const Invoice = () => {
     );
   }
 
-  if (!invoiceData) {
+  if (!billData) {
     return (
       <div className="bg-gray-100 min-h-screen flex items-center justify-center">
         <p className="text-xl font-semibold text-red-500">
-          Error: Could not load invoice data.
+          Error: Could not load sales bill data.
         </p>
       </div>
     );
   }
 
+  // Calculate financial details for sales bill
+  const grossAmount = billData.items.reduce((total, item) => total + (parseFloat(item.quantity) * parseFloat(item.price_per_unit)), 0);
+  const discountAmount = parseFloat(billData.discount) || 0;
+  const taxableAmount = grossAmount - discountAmount;
+  const gstPercentage = parseFloat(billData.gst_percentage) || 0;
+  const gstAmount = (taxableAmount * gstPercentage) / 100;
+  const netAmount = taxableAmount + gstAmount;
+  const paidAmount = parseFloat(billData.paid_amount) || 0;
+  const changeAmount = parseFloat(billData.change_amount) || 0;
+  const balanceDue = netAmount - paidAmount; // For sales, balance due is net - paid
+
+  // Determine status for the stamp
+  let statusText = "PENDING";
+  let statusColor = "yellow-500";
+  if (billData.status === "PAID") {
+    statusText = "PAID";
+    statusColor = "green-500";
+  } else if (billData.status === "CANCELLED") {
+    statusText = "CANCELLED";
+    statusColor = "red-500";
+  } else if (billData.status === "RETURNED" || billData.status === "PARTIALLY_RETURNED") {
+    statusText = "RETURNED"; // Or PARTIALLY RETURNED
+    statusColor = "purple-500";
+  }
+
+
   return (
     <div className="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
       <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-lg relative">
-        {/* --- Paid Stamp --- */}
+        {/* --- Status Stamp --- */}
         <div className="absolute top-8 right-8 transform rotate-12">
-          <div className="border-4 border-green-500 text-green-500 rounded-lg px-4 py-2 text-4xl font-black uppercase tracking-wider">
-            Paid
+          <div className={`border-4 border-${statusColor} text-${statusColor} rounded-lg px-4 py-2 text-4xl font-black uppercase tracking-wider`}>
+            {statusText}
           </div>
         </div>
 
@@ -169,19 +139,19 @@ const Invoice = () => {
               <PharmacyLogo />
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">Infixmart</h1>
-                <p className="text-gray-500 text-sm">Purchase Department</p>
+                <p className="text-gray-500 text-sm">Sales Department</p>
               </div>
             </div>
             <div className="text-left sm:text-right">
               <h2 className="text-3xl font-extrabold text-gray-700 uppercase tracking-wider">
-                Paid Invoice
+                Sales Bill
               </h2>
               <div className="mt-2 text-gray-700">
                 <span className="text-sm font-semibold text-gray-600">
-                  Invoice #{" "}
+                  Bill #{" "}
                 </span>
                 <span className="font-mono">
-                  {invoiceData.invoice.invoice_number}
+                  {billData.id}
                 </span>
               </div>
             </div>
@@ -190,33 +160,30 @@ const Invoice = () => {
           {/* --- Customer and Dates --- */}
           <section className="grid md:grid-cols-2 gap-8 mt-8">
             <div>
-              <h3 className="font-semibold text-gray-700 mb-2">From Vendor:</h3>
+              <h3 className="font-semibold text-gray-700 mb-2">To Customer:</h3>
               <p className="font-bold text-gray-800">
-                {invoiceData.vendor.name}
+                {billData.customer_name}
               </p>
               <p className="text-gray-600 text-sm">
-                {invoiceData.vendor.address}
+                {billData.customer_address}
               </p>
               <p className="text-gray-600 text-sm">
-                {invoiceData.vendor.email}
-              </p>
-              <p className="text-gray-600 text-sm">
-                {invoiceData.vendor.phone}
+                {billData.customer_mobile}
               </p>
             </div>
             <div className="text-left md:text-right">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <span className="font-semibold text-gray-700">
-                  Invoice Date:
+                  Bill Date:
                 </span>
                 <span className="text-gray-800">
-                  {displayFormatDate(invoiceData.invoice.invoice_date)}
+                  {displayFormatDate(billData.bill_date)}
                 </span>
                 <span className="font-semibold text-gray-700">
-                  Payment Date:
+                  Payment Method:
                 </span>
                 <span className="text-gray-800">
-                  {displayFormatDate(invoiceData.invoice.payment_date)}
+                  {billData.payment_method}
                 </span>
               </div>
             </div>
@@ -228,29 +195,31 @@ const Invoice = () => {
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-100 text-sm font-semibold text-gray-600">
-                    <th className="p-3">Description</th>
+                    <th className="p-3">Product Name</th>
+                    <th className="p-3 text-center w-24">Batch No</th>
                     <th className="p-3 text-center w-24">Qty</th>
-                    <th className="p-3 text-right w-32">Unit Price</th>
+                    <th className="p-3 text-right w-32">Price/Unit</th>
                     <th className="p-3 text-right w-32">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {invoiceData.items.map((item, index) => (
+                  {billData.items.map((item, index) => (
                     <tr key={index} className="border-b border-gray-100">
                       <td className="p-3">
                         <p className="font-semibold text-gray-800">
-                          {item.name}
+                          {item.product_name}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {item.description}
+                          Packing: {item.packing}, HSN: {item.hsn_code}
                         </p>
                       </td>
-                      <td className="p-3 text-center">{item.quantity}</td>
+                      <td className="p-3 text-center">{item.batch_no}</td>
+                      <td className="p-3 text-center">{item.quantity} {item.unit}</td>
                       <td className="p-3 text-right">
-                        ₹{item.price.toFixed(2)}
+                        ₹{parseFloat(item.price_per_unit).toFixed(2)}
                       </td>
                       <td className="p-3 text-right font-medium text-gray-800">
-                        ₹{item.total_price.toFixed(2)}
+                        ₹{(parseFloat(item.quantity) * parseFloat(item.price_per_unit)).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -264,58 +233,45 @@ const Invoice = () => {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold text-gray-700 mb-2">
-                  Payment Summary:
-                </h3>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>
-                    <span className="font-medium text-gray-700">
-                      Payment Method:
-                    </span>{" "}
-                    {invoiceData.payment_details.payment_method}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-700">
-                      Transaction ID:
-                    </span>{" "}
-                    {invoiceData.payment_details.transaction_id}
-                  </p>
-                </div>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-700 mb-2">
-                  Vendor Terms:
+                  Notes:
                 </h3>
                 <p className="text-sm text-gray-600">
-                  {invoiceData.terms_and_conditions}
+                  {billData.notes || "No notes provided."}
                 </p>
               </div>
             </div>
             <div className="flex flex-col items-end">
               <div className="w-full max-w-sm">
                 <div className="flex justify-between py-2 border-b">
-                  <span className="font-semibold text-gray-600">Subtotal:</span>
+                  <span className="font-semibold text-gray-600">Gross Amount:</span>
                   <span className="font-medium text-gray-800">
-                    ₹{invoiceData.financial.subtotal.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="font-semibold text-gray-600">Tax:</span>
-                  <span className="font-medium text-gray-800">
-                    ₹{invoiceData.financial.tax_amount.toFixed(2)}
+                    ₹{grossAmount.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="font-semibold text-gray-600">Discount:</span>
                   <span className="font-medium text-red-500">
-                    - ₹{invoiceData.financial.discount_amount.toFixed(2)}
+                    - ₹{discountAmount.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="font-semibold text-gray-600">Taxable Amount:</span>
+                  <span className="font-medium text-gray-800">
+                    ₹{taxableAmount.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="font-semibold text-gray-600">GST ({gstPercentage}%):</span>
+                  <span className="font-medium text-gray-800">
+                    ₹{gstAmount.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-lg font-bold text-gray-800">
-                    Total Amount:
+                    Net Amount:
                   </span>
                   <span className="text-lg font-bold text-gray-800">
-                    ₹{invoiceData.financial.total_price.toFixed(2)}
+                    ₹{netAmount.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
@@ -323,17 +279,27 @@ const Invoice = () => {
                     Amount Paid:
                   </span>
                   <span className="font-medium text-green-600">
-                    - ₹{invoiceData.financial.amount_paid.toFixed(2)}
+                    ₹{paidAmount.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between py-4 bg-green-100 rounded-b-lg px-4 mt-2">
                   <span className="text-lg font-bold text-gray-800">
-                    Balance Due:
+                    Change Amount:
                   </span>
                   <span className="text-lg font-bold text-green-600">
-                    ₹{invoiceData.financial.balance_due.toFixed(2)}
+                    ₹{changeAmount.toFixed(2)}
                   </span>
                 </div>
+                {balanceDue > 0 && (
+                  <div className="flex justify-between py-4 bg-red-100 rounded-b-lg px-4 mt-2">
+                    <span className="text-lg font-bold text-gray-800">
+                      Balance Due:
+                    </span>
+                    <span className="text-lg font-bold text-red-600">
+                      ₹{balanceDue.toFixed(2)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -342,8 +308,8 @@ const Invoice = () => {
           <footer className="mt-12 border-t pt-8">
             <div className="flex justify-between items-end">
               <div className="text-left text-sm text-gray-500">
-                <p>Thank you for your timely payment.</p>
-                <p>This is a computer-generated receipt.</p>
+                <p>Thank you for your business.</p>
+                <p>This is a computer-generated bill.</p>
               </div>
               <div className="text-right w-48">
                 <div className="h-12 border-b border-gray-400"></div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 import { PlusCircle, Search, Printer, RotateCcw, XCircle } from "lucide-react"; // Added RotateCcw and XCircle icons
 import ModalSearchSelect from '../components/ModalSearchSelect'; // Import the new modal component
 import BillReturnPage from './offline_sales/BillReturnPage'; // Import the new BillReturnPage component
@@ -7,7 +8,8 @@ import { productAPI, salesBillAPI, offlineCustomerAPI, apiUtils } from '../api/a
 import { inventoryAPI } from '../api/apiService'; // Keep inventoryAPI for other uses if any, or remove if not needed.
 
 // --- SalesBillForm Component (Updated Layout) ---
-const SalesBillForm = ({ onFormClose, initialData }) => {
+const SalesBillForm = ({ onFormClose, initialData, onBillCreated }) => { // Add onBillCreated prop
+  const navigate = useNavigate(); // Initialize useNavigate
   const [formData, setFormData] = useState({
     bill_date: initialData?.bill_date || new Date().toISOString().split("T")[0],
     notes: initialData?.notes || "",
@@ -398,12 +400,18 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         gst_percentage: parseFloat(gst),
       };
 
+      let response;
       if (initialData) {
-        await salesBillAPI.updateSalesBill(initialData.id, payload);
+        response = await salesBillAPI.updateSalesBill(initialData.id, payload);
       } else {
-        await salesBillAPI.createSalesBill(payload);
+        response = await salesBillAPI.createSalesBill(payload);
       }
-      onFormClose();
+
+      if (response.data && response.data.id) {
+        onBillCreated(response.data.id); // Call the new prop with the created bill ID
+      } else {
+        onFormClose(); // Fallback if no ID is returned (shouldn't happen for create)
+      }
     } catch (err) {
       const errorInfo = apiUtils.handleError(err);
       setError(errorInfo.message || "Failed to save the sales bill. Please check your inputs and ensure a customer is selected or new customer details are complete.");
@@ -855,6 +863,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
 
 // --- Main Page Component ---
 const SalesBillPage = () => {
+    const navigate = useNavigate(); // Initialize useNavigate for the main component
     const [bills, setBills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -948,6 +957,12 @@ const SalesBillPage = () => {
         setCurrentBill(null);
     };
 
+    const handleBillCreated = (billId) => {
+        setShowForm(false); // Close the form
+        setCurrentBill(null); // Clear current bill
+        navigate(`/invoice/${billId}`); // Navigate to the invoice page
+    };
+
     const handleReturnFormComplete = () => {
         setShowReturnForm(false);
         setCurrentBill(null); // Clear current bill after return
@@ -1003,6 +1018,7 @@ const SalesBillPage = () => {
                 <SalesBillForm
                     onFormClose={handleFormClose}
                     initialData={currentBill}
+                    onBillCreated={handleBillCreated} // Pass the new handler
                 />
             ) : showReturnForm ? (
                 <BillReturnPage
@@ -1104,6 +1120,12 @@ const SalesBillPage = () => {
                                                     </span>
                                                 </td>
                                                 <td className="py-3 px-4">
+                                                    <button
+                                                        onClick={() => navigate(`/invoice/${bill.id}`)}
+                                                        className="text-blue-600 hover:text-blue-800 mr-4 font-medium"
+                                                    >
+                                                        View Invoice
+                                                    </button>
                                                     <button
                                                         onClick={() => handleEditClick(bill)}
                                                         className="text-indigo-600 hover:text-indigo-800 mr-4 font-medium"
