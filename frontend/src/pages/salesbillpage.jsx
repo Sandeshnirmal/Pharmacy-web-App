@@ -253,7 +253,11 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
   const handleItemChange = (index, e) => {
     const { name, value } = e.target;
     const newItems = [...items];
-    newItems[index][name] = value;
+    if (name === "quantity" || name === "unit_price") {
+      newItems[index][name] = parseFloat(value) || 0; // Ensure numbers are stored as numbers
+    } else {
+      newItems[index][name] = value;
+    }
     setItems(newItems);
   };
 

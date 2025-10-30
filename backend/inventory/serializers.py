@@ -262,34 +262,35 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         for item_data in items_data:
             # Ensure product is an ID, then retrieve the Product object
             product_data = item_data.pop('product')
+            if product_data is None:
+                raise serializers.ValidationError({"product": "Product ID cannot be null for purchase order items."})
             if isinstance(product_data, Product):
                 product = product_data
             else: # Assume it's an ID
                 product = Product.objects.get(id=product_data)
             
-            quantity = item_data['quantity']
-            unit_price = item_data['unit_price']
-            tax_percentage = item_data.get('tax_percentage', 0.00) # Get tax_percentage, default to 0
-            discount_percentage = item_data.get('discount_percentage', 0.00) # Get discount_percentage, default to 0
+            quantity = Decimal(str(item_data.pop('quantity')))
+            unit_price = Decimal(str(item_data.pop('unit_price')))
+            tax_percentage = Decimal(str(item_data.pop('tax_percentage', Decimal('0.00'))))
+            discount_percentage = Decimal(str(item_data.pop('discount_percentage', Decimal('0.00'))))
             batch_number = item_data.get('batch_number')
             expiry_date = item_data.get('expiry_date')
+            cost_price = Decimal(str(item_data.pop('cost_price', Decimal('0.00'))))
+            tax_percentage_item = tax_percentage # Use the already converted tax_percentage
 
             item_base_amount = quantity * unit_price
-            item_discount_amount = item_base_amount * (Decimal(discount_percentage) / Decimal(100))
+            item_discount_amount = item_base_amount * (discount_percentage / Decimal('100'))
             item_taxable_amount = item_base_amount - item_discount_amount
-            item_tax_amount = item_taxable_amount * (tax_percentage / 100)
+            item_tax_amount = item_taxable_amount * (tax_percentage_item / Decimal('100'))
             subtotal = item_taxable_amount + item_tax_amount
             
-            # Remove tax_percentage, discount_percentage and product from item_data to avoid duplicate keyword arguments
-            item_data.pop('tax_percentage', None)
-            item_data.pop('discount_percentage', None)
-            item_data.pop('product', None) # Remove product (which is now an object) from item_data
-
             PurchaseOrderItem.objects.create(
                 purchase_order=purchase_order, 
-                product=product, # Pass the Product object
+                product=product,
+                quantity=quantity,
+                unit_price=unit_price,
                 subtotal=subtotal, 
-                tax_percentage=tax_percentage,
+                tax_percentage=tax_percentage_item,
                 discount_percentage=discount_percentage,
                 **item_data
             )
@@ -299,13 +300,35 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             # The product's stock_quantity is a property calculated from batches,
             # so we only need to update the batch quantities.
             batch, created = Batch.objects.get_or_create(
-                product=product, # Use the retrieved Product object
+                product=product,
                 batch_number=batch_number,
                 expiry_date=expiry_date,
-                defaults={'quantity': 0, 'current_quantity': 0}
+                defaults={
+                    'quantity': 0, 
+                    'current_quantity': 0, 
+                    'cost_price': unit_price,
+                    'tax_percentage': tax_percentage_item,
+                    'online_mrp_price': unit_price,
+                    'online_selling_price': unit_price,
+                    'offline_mrp_price': unit_price,
+                    'offline_selling_price': unit_price,
+                }
             )
             batch.quantity += quantity
             batch.current_quantity += quantity
+            batch.cost_price = unit_price
+            batch.tax_percentage = tax_percentage_item
+            
+            # Set online/offline prices to unit_price if they are currently 0 or None
+            if batch.online_mrp_price is None or batch.online_mrp_price == 0:
+                batch.online_mrp_price = unit_price
+            if batch.online_selling_price is None or batch.online_selling_price == 0:
+                batch.online_selling_price = unit_price
+            if batch.offline_mrp_price is None or batch.offline_mrp_price == 0:
+                batch.offline_mrp_price = unit_price
+            if batch.offline_selling_price is None or batch.offline_selling_price == 0:
+                batch.offline_selling_price = unit_price
+
             batch.save()
 
             # Create stock movement record
@@ -341,70 +364,96 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         if items_data is not None:
             # If items are being updated, and old status was RECEIVED, reverse old stock movements
             if old_status == 'RECEIVED':
-                for old_item in instance.items.all(): # Iterate through items *before* deletion
+                for old_item in instance.items.all():
                     product = old_item.product
                     quantity = old_item.quantity
-                    batch = Batch.objects.get(product=product, batch_number=old_item.batch_number, expiry_date=old_item.expiry_date)
-                    batch.quantity -= quantity
-                    batch.current_quantity -= quantity
-                    batch.save()
-                    StockMovement.objects.create(
-                        product=product,
-                        batch=batch,
-                        movement_type='OUT', # Reverse movement
-                        quantity=quantity,
-                        reference_number=f"PO-UPDATE-REV-{instance.id}",
-                        notes=f"Reversed {quantity} units for Purchase Order #{instance.id} due to update from RECEIVED status.",
-                        created_by=self.context.get('request').user if self.context.get('request') else None
-                    )
+                    batch = Batch.objects.filter(product=product, batch_number=old_item.batch_number, expiry_date=old_item.expiry_date).first()
+                    if batch:
+                        batch.quantity -= quantity
+                        batch.current_quantity -= quantity
+                        batch.save()
+                        StockMovement.objects.create(
+                            product=product,
+                            batch=batch,
+                            movement_type='OUT', # Reverse movement
+                            quantity=quantity,
+                            reference_number=f"PO-UPDATE-REV-{instance.id}",
+                            notes=f"Reversed {quantity} units for Purchase Order #{instance.id} due to update from RECEIVED status.",
+                            created_by=self.context.get('request').user if self.context.get('request') else None
+                        )
+                    else:
+                        print(f"Warning: Batch not found for product {product.name}, batch_number {old_item.batch_number}, expiry_date {old_item.expiry_date}. Skipping stock reversal for this item.")
 
             instance.items.all().delete() # Delete old items
+
             total_amount = 0
             for item_data in items_data:
-                # Ensure product is an ID, then retrieve the Product object
                 product_data = item_data.pop('product')
+                if product_data is None:
+                    raise serializers.ValidationError({"product": "Product ID cannot be null for purchase order items."})
                 if isinstance(product_data, Product):
                     product = product_data
                 else: # Assume it's an ID
                     product = Product.objects.get(id=product_data)
-
-                quantity = item_data['quantity']
-                unit_price = item_data['unit_price']
-                tax_percentage = item_data.get('tax_percentage', 0.00)
-                discount_percentage = item_data.get('discount_percentage', 0.00) # Get discount_percentage
+                
+                quantity = Decimal(str(item_data.pop('quantity')))
+                unit_price = Decimal(str(item_data.pop('unit_price')))
+                tax_percentage = Decimal(str(item_data.pop('tax_percentage', Decimal('0.00'))))
+                discount_percentage = Decimal(str(item_data.pop('discount_percentage', Decimal('0.00'))))
                 batch_number = item_data.get('batch_number')
                 expiry_date = item_data.get('expiry_date')
+                cost_price = Decimal(str(item_data.pop('cost_price', Decimal('0.00'))))
+                tax_percentage_item = tax_percentage # Use the already converted tax_percentage
 
                 item_base_amount = quantity * unit_price
-                item_discount_amount = item_base_amount * (Decimal(discount_percentage) / Decimal(100)) # Calculate discount amount
+                item_discount_amount = item_base_amount * (discount_percentage / Decimal('100'))
                 item_taxable_amount = item_base_amount - item_discount_amount
-                item_tax_amount = item_taxable_amount * (tax_percentage / 100)
-                subtotal = item_taxable_amount + item_tax_amount # Subtotal after discount and tax
-
-                item_data.pop('tax_percentage', None)
-                item_data.pop('discount_percentage', None) # Pop discount_percentage
-                item_data.pop('product', None)
-
-                purchase_order_item = PurchaseOrderItem.objects.create(
-                    purchase_order=instance, 
-                    product=product, 
-                    subtotal=subtotal, 
-                    tax_percentage=tax_percentage,
-                    discount_percentage=discount_percentage, # Pass discount_percentage
+                item_tax_amount = item_taxable_amount * (tax_percentage_item / Decimal('100'))
+                subtotal = item_taxable_amount + item_tax_amount
+                
+                PurchaseOrderItem.objects.create(
+                    purchase_order=instance,
+                    product=product,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    subtotal=subtotal,
+                    tax_percentage=tax_percentage_item,
+                    discount_percentage=discount_percentage,
                     **item_data
                 )
                 total_amount += subtotal
 
-                # If the new status is RECEIVED, add stock for the new items
+                # If the new status is RECEIVED, update stock and create stock movement
                 if new_status == 'RECEIVED':
                     batch, created = Batch.objects.get_or_create(
                         product=product,
                         batch_number=batch_number,
                         expiry_date=expiry_date,
-                        defaults={'quantity': 0, 'current_quantity': 0}
+                        defaults={
+                            'quantity': 0,
+                            'current_quantity': 0,
+                            'cost_price': unit_price,
+                            'tax_percentage': tax_percentage_item,
+                            'online_mrp_price': unit_price,
+                            'online_selling_price': unit_price,
+                            'offline_mrp_price': unit_price,
+                            'offline_selling_price': unit_price,
+                        }
                     )
                     batch.quantity += quantity
                     batch.current_quantity += quantity
+                    batch.cost_price = unit_price
+                    batch.tax_percentage = tax_percentage_item
+
+                    if batch.online_mrp_price is None or batch.online_mrp_price == 0:
+                        batch.online_mrp_price = unit_price
+                    if batch.online_selling_price is None or batch.online_selling_price == 0:
+                        batch.online_selling_price = unit_price
+                    if batch.offline_mrp_price is None or batch.offline_mrp_price == 0:
+                        batch.offline_mrp_price = unit_price
+                    if batch.offline_selling_price is None or batch.offline_selling_price == 0:
+                        batch.offline_selling_price = unit_price
+
                     batch.save()
 
                     StockMovement.objects.create(
@@ -413,47 +462,10 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                         movement_type='IN',
                         quantity=quantity,
                         reference_number=f"PO-{instance.id}",
-                        notes=f"Received {quantity} units for Purchase Order #{instance.id} into batch {batch.batch_number} upon update to RECEIVED status.",
+                        notes=f"Received {quantity} units for Purchase Order #{instance.id} into batch {batch.batch_number} upon update.",
                         created_by=self.context.get('request').user if self.context.get('request') else None
                     )
             instance.total_amount = total_amount
-            instance.save() # Save total_amount
-        
-        # Handle status change without item data update
-        elif new_status == 'RECEIVED' and old_status != 'RECEIVED':
-            for item in instance.items.all():
-                product = item.product
-                quantity = item.quantity
-                batch = Batch.objects.get(product=product, batch_number=item.batch_number, expiry_date=item.expiry_date)
-                batch.quantity += quantity
-                batch.current_quantity += quantity
-                batch.save()
-                StockMovement.objects.create(
-                    product=product,
-                    batch=batch,
-                    movement_type='IN',
-                    quantity=quantity,
-                    reference_number=f"PO-{instance.id}",
-                    notes=f"Received {quantity} units for Purchase Order #{instance.id} into batch {batch.batch_number} upon status change to RECEIVED.",
-                    created_by=self.context.get('request').user if self.context.get('request') else None
-                )
-        elif new_status != 'RECEIVED' and old_status == 'RECEIVED':
-            # If status changes from RECEIVED to something else, reverse stock
-            for item in instance.items.all():
-                product = item.product
-                quantity = item.quantity
-                batch = Batch.objects.get(product=product, batch_number=item.batch_number, expiry_date=item.expiry_date)
-                batch.quantity -= quantity
-                batch.current_quantity -= quantity
-                batch.save()
-                StockMovement.objects.create(
-                    product=product,
-                    batch=batch,
-                    movement_type='OUT', # Reverse movement
-                    quantity=quantity,
-                    reference_number=f"PO-STATUS-REV-{instance.id}",
-                    notes=f"Reversed {quantity} units for Purchase Order #{instance.id} due to status change from RECEIVED.",
-                    created_by=self.context.get('request').user if self.context.get('request') else None
-                )
+            instance.save()
 
         return instance

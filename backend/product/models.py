@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
 from simple_history.models import HistoricalRecords # Import HistoricalRecords
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -169,6 +170,7 @@ class Batch(models.Model):
     quantity = models.PositiveIntegerField(default=0)
     current_quantity = models.PositiveIntegerField()
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
     
     # Generic pricing fields (can be used as defaults or for single-channel scenarios)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
@@ -193,17 +195,17 @@ class Batch(models.Model):
     def save(self, *args, **kwargs):
         # Calculate generic selling price
         if self.mrp_price is not None and self.discount_percentage is not None:
-            discount_amount = self.mrp_price * (self.discount_percentage / 100)
+            discount_amount = self.mrp_price * (self.discount_percentage / Decimal('100'))
             self.selling_price = self.mrp_price - discount_amount
         
         # Calculate online selling price
         if self.online_mrp_price is not None and self.online_discount_percentage is not None:
-            online_discount_amount = self.online_mrp_price * (self.online_discount_percentage / 100)
+            online_discount_amount = self.online_mrp_price * (self.online_discount_percentage / Decimal('100'))
             self.online_selling_price = self.online_mrp_price - online_discount_amount
         
         # Calculate offline selling price
         if self.offline_mrp_price is not None and self.offline_discount_percentage is not None:
-            offline_discount_amount = self.offline_mrp_price * (self.offline_discount_percentage / 100)
+            offline_discount_amount = self.offline_mrp_price * (self.offline_discount_percentage / Decimal('100'))
             self.offline_selling_price = self.offline_mrp_price - offline_discount_amount
             
         super().save(*args, **kwargs)

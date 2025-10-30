@@ -164,7 +164,7 @@ class SimpleBatchSerializer(serializers.ModelSerializer):
 
 
 # ----------------------------
-# Batch Serializer
+# Batch Serializer (Full details)
 # ----------------------------
 class BatchSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -219,6 +219,20 @@ class BatchSerializer(serializers.ModelSerializer):
 
 
 # ----------------------------
+# Current Batch Detail Serializer (for explicit pricing fields)
+# ----------------------------
+class CurrentBatchDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Batch
+        fields = [
+            'id', 'batch_number', 'expiry_date', 'quantity', 'current_quantity',
+            'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
+            'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
+            'mrp_price', 'discount_percentage', 'selling_price', # Include generic for completeness
+        ]
+
+
+# ----------------------------
 # Product Serializer
 # ----------------------------
 class ProductSerializer(serializers.ModelSerializer):
@@ -237,6 +251,7 @@ class ProductSerializer(serializers.ModelSerializer):
     current_selling_price = serializers.SerializerMethodField()
     current_cost_price = serializers.SerializerMethodField()
     is_prescription_required = serializers.SerializerMethodField()
+    current_batch = serializers.SerializerMethodField() # Add current_batch field
 
     class Meta:
         model = Product
@@ -249,7 +264,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'current_selling_price', 'current_cost_price',
-            'stock_quantity', 'stock_status', 'total_batches'
+            'stock_quantity', 'stock_status', 'total_batches',
+            'current_batch' # Include current_batch in fields
         ]
 
     def get_current_selling_price(self, obj):
@@ -281,6 +297,32 @@ class ProductSerializer(serializers.ModelSerializer):
         """Determine if a prescription is required based on prescription_type"""
         return obj.prescription_type in ['prescription', 'controlled']
 
+    def get_current_batch(self, obj):
+        """
+        Selects the current batch based on expiry date and quantity,
+        prioritizing primary batch, and serializes it.
+        """
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        if not active_batches:
+            return None
+
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
+        selected_batch = primary_batch if primary_batch else active_batches[0]
+
+        # The "primary" batch for display/pricing will now be the earliest expiring active batch.
+        active_batches.sort(key=lambda b: b.expiry_date)
+        selected_batch = active_batches[0]
+
+        print(f"DEBUG: get_current_batch - Selected Batch: {selected_batch}")
+        print(f"DEBUG: Selected Batch ID: {selected_batch.id if selected_batch else 'None'}")
+        print(f"DEBUG: Selected Batch Online Selling Price: {selected_batch.online_selling_price if selected_batch else 'None'}")
+
+        return CurrentBatchDetailSerializer(selected_batch, context=self.context).data
+
 
 # ----------------------------
 # Enhanced Product Serializer
@@ -297,6 +339,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     current_cost_price = serializers.SerializerMethodField()
     stock_quantity = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    current_batch = serializers.SerializerMethodField() # Add current_batch field
 
     class Meta:
         model = Product
@@ -311,7 +354,8 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'batches', 'images', 'reviews', 'tags', 'average_rating',
             'total_reviews', 'discount_percentage', 'is_in_wishlist',
             'related_products', 'current_selling_price', 'current_cost_price',
-            'stock_quantity', 'stock_status'
+            'stock_quantity', 'stock_status',
+            'current_batch' # Include current_batch in fields
         ]
 
     def get_discount_percentage(self, obj):
@@ -359,6 +403,28 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             return 'low_stock'
         else:
             return 'in_stock'
+
+    def get_current_batch(self, obj):
+        """
+        Selects the current batch based on expiry date and quantity,
+        prioritizing primary batch, and serializes it.
+        """
+        all_batches = list(obj.batches.all())
+        active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
+
+        if not active_batches:
+            return None
+
+        active_batches.sort(key=lambda b: b.expiry_date)
+
+        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
+        selected_batch = primary_batch if primary_batch else active_batches[0]
+
+        # The "primary" batch for display/pricing will now be the earliest expiring active batch.
+        active_batches.sort(key=lambda b: b.expiry_date)
+        selected_batch = active_batches[0]
+
+        return CurrentBatchDetailSerializer(selected_batch, context=self.context).data
 
 class InventorySerializer(serializers.ModelSerializer):
     class Meta:

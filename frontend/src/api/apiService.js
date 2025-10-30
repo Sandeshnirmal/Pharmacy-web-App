@@ -118,6 +118,7 @@ export const productAPI = {
   getLegacyProducts: (params = {}) => axiosInstance.get('/api/products/legacy/products/', { params }),
   getCategories: () => axiosInstance.get('/api/products/legacy/categories/'),
   getGenericNames: () => axiosInstance.get('/api/products/legacy/generic-names/'),
+  createGenericName: (data) => axiosInstance.post('/api/products/legacy/generic-names/', data),
 };
 
 // ============================================================================

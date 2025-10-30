@@ -57,11 +57,11 @@ def calculate_current_selling_price(product_obj, channel='online'):
         return 0 # Return 0 if no active batches
 
     # Sort by expiry date to prioritize batches that expire sooner (common practice)
+    # The "primary" batch for display/pricing will now be the earliest expiring active batch.
     active_batches.sort(key=lambda b: b.expiry_date)
 
-    # Prioritize primary batch, otherwise take the first active batch
-    primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-    selected_batch = primary_batch if primary_batch else active_batches[0]
+    # Select the earliest expiring active batch
+    selected_batch = active_batches[0]
 
     base_mrp = 0
     batch_discount_percentage = 0

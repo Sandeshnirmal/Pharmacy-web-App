@@ -212,7 +212,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     }
 
     const itemsPayload = items.map((item) => ({
-      product: parseInt(item.product),
+      product: item.product ? parseInt(item.product) : null, // Send product ID or null
       quantity: parseInt(item.quantity),
       unit_price: parseFloat(item.unit_price),
       tax_percentage: parseFloat(item.tax || 0), // Include tax_percentage

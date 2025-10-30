@@ -111,6 +111,10 @@ const InventoryManagement = () => {
 
   useEffect(() => {
     fetchAllInitialData(currentPage, pageSize);
+    fetchCategory();
+    fetchCompositions();
+    fetchGenericNames();
+    fetchMedicines();
   }, [currentPage, pageSize]);
 
   // Clear success message after a few seconds
@@ -177,7 +181,74 @@ const InventoryManagement = () => {
     categories.find((c) => c.id === id)?.name || "N/A";
   const getGenericName = (id) =>
     genericNames.find((g) => g.id === id)?.name || "N/A";
+const fetchCompositions = async () => {
+    try {
+      const response = await productAPI.getCompositions();
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setCompositions(data);
+      } else if (data && Array.isArray(data.results)) {
+        setCompositions(data.results);
+      } else {
+        console.warn("Unexpected API response format for compositions.");
+        setCompositions([]);
+      }
+    } catch (error) {
+      console.error("Error fetching compositions:", error);
+    }
+  };
 
+  const fetchCategory = async () => {
+    try {
+      const response = await productAPI.getCategories();
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setCategories(data);
+      } else if (data && Array.isArray(data.results)) {
+        setCategories(data.results);
+      } else {
+        console.warn("Unexpected API response format for categories.");
+        setCategories([]);
+      }
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  };
+
+const fetchMedicines = async () => {
+    try {
+      const response = await productAPI.getProducts(currentPage, pageSize);
+      const data = response.data;
+      let productsToSet = [];
+      if (Array.isArray(data)) {
+        productsToSet = data;
+      } else if (data && Array.isArray(data.results)) {
+        productsToSet = data.results;
+      }
+      setProducts(productsToSet);
+      setTotalItems(data.count || productsToSet.length);
+      setTotalPages(Math.ceil((data.count || productsToSet.length) / pageSize));
+    } catch (error) {
+      console.error("Error fetching medicines:", error);
+    }
+  };
+
+  const fetchGenericNames = async () => {
+    try {
+      const response = await productAPI.getGenericNames();
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setGenericNames(data);
+      } else if (data && Array.isArray(data.results)) {
+        setGenericNames(data.results);
+      } else {
+        console.warn("Unexpected API response format for generic names.");
+        setGenericNames([]);
+      }
+    } catch (error) {
+      console.error("Error fetching generic names:", error);
+    }
+  };
   const handleAddComposition = async (e) => {
     e.preventDefault();
     try {
@@ -431,7 +502,7 @@ const InventoryManagement = () => {
       await productAPI.createGenericName(newGenericName);
       setShowGenericNameModal(false);
       setNewGenericName({ name: "", description: "" });
-      fetchGericname(); // Refetch generic names
+      fetchGenericNames(); // Refetch generic names
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
