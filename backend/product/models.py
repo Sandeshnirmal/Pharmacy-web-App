@@ -136,6 +136,17 @@ class Product(models.Model):
         """Calculates the total stock quantity from all active batches."""
         return self.batches.aggregate(total_quantity=models.Sum('current_quantity'))['total_quantity'] or 0
 
+    def get_default_batch(self):
+        """
+        Returns the default batch for the product based on stock > 0 and earliest expiry date.
+        """
+        from django.utils import timezone
+        today = timezone.now().date()
+        return self.batches.filter(
+            current_quantity__gt=0,
+            expiry_date__gte=today # Ensure the batch has not expired yet
+        ).order_by('expiry_date').first()
+
     def __str__(self):
         return f"{self.name} ({self.manufacturer})"
 

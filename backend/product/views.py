@@ -4,7 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.generics import ListCreateAPIView # Import ListCreateAPIView
 from rest_framework.views import APIView # Import APIView for file upload
-from django.db.models import Q, Sum, Count, F, Avg
+from django.db.models import Q, Sum, Count, F, Avg, Prefetch
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
@@ -14,7 +15,7 @@ from django.utils.decorators import method_decorator
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductViewHistory, Discount # Import Discount model
+    ProductViewHistory, Discount, ProductComposition # Import ProductComposition model
 )
 from .serializers import (
     CategorySerializer, ProductSerializer, BatchSerializer,
@@ -271,7 +272,69 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
                 ),
                 0.0 # Default to 0.0 if no available batch
             ),
-            avg_rating=Coalesce(Avg('reviews__rating'), 0.0) # Annotate average rating
+            avg_rating=Coalesce(Avg('reviews__rating'), 0.0), # Annotate average rating
+            # Annotate offline pricing from the default batch
+            offline_mrp_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('offline_mrp_price')[:1]
+                ),
+                0.0
+            ),
+            offline_discount_percentage=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('offline_discount_percentage')[:1]
+                ),
+                0.0
+            ),
+            offline_selling_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('offline_selling_price')[:1]
+                ),
+                0.0
+            ),
+            # Annotate online pricing from the default batch
+            online_mrp_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('online_mrp_price')[:1]
+                ),
+                0.0
+            ),
+            online_discount_percentage=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('online_discount_percentage')[:1]
+                ),
+                0.0
+            ),
+            online_selling_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('online_selling_price')[:1]
+                ),
+                0.0
+            )
         )
 
         # Filter parameters

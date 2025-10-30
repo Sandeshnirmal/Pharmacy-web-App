@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
+from django.db import transaction # Import transaction
 from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
 from .serializers import (
     StockMovementSerializer, StockAlertSerializer, SupplierSerializer,
@@ -270,28 +271,105 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(purchase_order)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post']) # Removed serializer_class, will use PurchaseReturnSerializer directly
+    @action(detail=True, methods=['post'])
+    @transaction.atomic # Add atomic transaction decorator
     def return_items(self, request, pk=None):
         purchase_order = self.get_object()
         if purchase_order.status == 'CANCELLED':
             return Response({'detail': 'Cannot return items for a cancelled order.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Prepare data for PurchaseReturnSerializer
-        return_data = {
-            'purchase_order': purchase_order.id,
-            'reason': request.data.get('reason', 'Items returned to supplier.'),
-            'notes': request.data.get('notes', ''),
-            'return_date': request.data.get('return_date', timezone.now().date().isoformat()), # Use provided date or default
-            'items': request.data.get('items', []),
-            'status': request.data.get('status', 'PENDING') # Allow setting status, default to PENDING
-        }
+        items_data = request.data.get('items', [])
+        if not items_data:
+            return Response({'detail': 'No items provided for return.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate and create PurchaseReturn using PurchaseReturnSerializer
-        serializer = PurchaseReturnSerializer(data=return_data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        purchase_return = serializer.save() # This will trigger the custom create method in serializer
+        # Create PurchaseReturn instance
+        purchase_return = PurchaseReturn.objects.create(
+            purchase_order=purchase_order,
+            reason=request.data.get('reason', 'Items returned to supplier.'),
+            notes=request.data.get('notes', ''),
+            return_date=request.data.get('return_date', timezone.now().date()),
+            status=request.data.get('status', 'PENDING'),
+            created_by=request.user
+        )
 
-        return Response(PurchaseReturnSerializer(purchase_return).data, status=status.HTTP_201_CREATED)
+        total_amount = 0
+        for item_data in items_data:
+            purchase_order_item_id = item_data.get('purchase_order_item')
+            product_id = item_data.get('product')
+            quantity = item_data.get('quantity')
+            unit_price = item_data.get('unit_price')
+            # batch_number = item_data.get('batch_number') # Removed, will get from purchase_order_item
+            # expiry_date = item_data.get('expiry_date') # Removed, will get from purchase_order_item
+
+            if not all([purchase_order_item_id, product_id, quantity, unit_price]):
+                purchase_return.delete() # Rollback
+                return Response({'detail': 'Each return item must have purchase_order_item, product, quantity, and unit_price.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                purchase_order_item = PurchaseOrderItem.objects.get(id=purchase_order_item_id)
+                product = Product.objects.get(id=product_id)
+            except (PurchaseOrderItem.DoesNotExist, Product.DoesNotExist) as e:
+                purchase_return.delete() # Rollback
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            if quantity > purchase_order_item.quantity - purchase_order_item.returned_quantity:
+                purchase_return.delete() # Rollback
+                return Response({'detail': f'Return quantity for item {product.name} exceeds available quantity.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get batch_number and expiry_date from the original PurchaseOrderItem
+            batch_number = purchase_order_item.batch_number
+            expiry_date = purchase_order_item.expiry_date
+
+            PurchaseReturnItem.objects.create(
+                purchase_return=purchase_return,
+                purchase_order_item=purchase_order_item,
+                product=product,
+                quantity=quantity,
+                unit_price=unit_price,
+                batch_number=batch_number,
+                expiry_date=expiry_date
+            )
+            total_amount += quantity * unit_price
+
+            # Update returned_quantity in the original PurchaseOrderItem
+            purchase_order_item.returned_quantity += quantity
+            purchase_order_item.save()
+
+            # Update stock and create StockMovement
+            batch = Batch.objects.filter(
+                product=product,
+                batch_number=batch_number,
+                expiry_date=expiry_date
+            ).first()
+
+            if batch:
+                print(f"Before deduction: Batch {batch.batch_number}, Product {product.name}, Current Quantity: {batch.current_quantity}")
+                if batch.current_quantity >= quantity:
+                    batch.current_quantity -= quantity
+                    batch.save()
+                    print(f"After deduction: Batch {batch.batch_number}, Product {product.name}, New Quantity: {batch.current_quantity}")
+                    StockMovement.objects.create(
+                        product=product,
+                        batch=batch,
+                        movement_type='SUPPLIER_RETURN',
+                        quantity=quantity,
+                        reference_number=f"PR-{purchase_return.id}",
+                        notes=f"Returned {quantity} units of {product.name} from batch {batch.batch_number} (PO Item {purchase_order_item.id}) for Purchase Return #{purchase_return.id}.",
+                        created_by=request.user
+                    )
+                else:
+                    purchase_return.delete() # Rollback
+                    return Response({'detail': f"Insufficient stock in batch {batch_number} for product {product.name} to return {quantity} units."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                purchase_return.delete() # Rollback
+                return Response({'detail': f"Specific batch (number: {batch_number}) not found for product {product.name}. Stock deduction failed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        purchase_return.total_amount = total_amount
+        purchase_return.status = 'PROCESSED'
+        purchase_return.save()
+
+        serializer = PurchaseReturnSerializer(purchase_return)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class PurchaseReturnViewSet(viewsets.ModelViewSet):

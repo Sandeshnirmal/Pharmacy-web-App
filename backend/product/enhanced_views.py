@@ -22,7 +22,7 @@ from .models import (
 from .enhanced_serializers import (
     CompositionSerializer, EnhancedProductSerializer, ProductCompositionSerializer,
     ProductCompositionCreateSerializer, ProductSearchSerializer, CompositionSearchSerializer,
-    CategorySerializer, GenericNameSerializer, BatchSerializer, InventorySerializer
+    CategorySerializer, GenericNameSerializer, BatchSerializer, InventorySerializer,
 )
 from usermanagement.enhanced_views import IsPharmacistOrAdmin, IsAdminUser
 

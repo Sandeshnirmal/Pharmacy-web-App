@@ -84,17 +84,23 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         }
 
 class PurchaseReturnItemSerializer(serializers.ModelSerializer):
-    purchase_order_item = serializers.PrimaryKeyRelatedField(queryset=PurchaseOrderItem.objects.all(), required=False, allow_null=True) # Allow null for updates where item ID is passed
+    id = serializers.ReadOnlyField() # Explicitly make id read-only
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), write_only=True)
     product_name = serializers.CharField(source='product.name', read_only=True) # For display
+    batch_number = serializers.CharField(read_only=True) # Expose batch_number from model
+    expiry_date = serializers.DateField(read_only=True) # Expose expiry_date from model
+    purchase_order_item = serializers.PrimaryKeyRelatedField(
+        queryset=PurchaseOrderItem.objects.all(),
+        required=False,
+        allow_null=True
+    )
     
     class Meta:
         model = PurchaseReturnItem
-        fields = ('id', 'purchase_return', 'purchase_order_item', 'product', 'product_name', 'quantity', 'unit_price')
-        read_only_fields = ('purchase_return',) # unit_price should be writable
+        fields = ('id', 'purchase_return', 'purchase_order_item', 'product', 'product_name', 'quantity', 'unit_price', 'batch_number', 'expiry_date')
+        read_only_fields = ('purchase_return', 'batch_number', 'expiry_date') # batch_number and expiry_date are read-only
         extra_kwargs = {
             'purchase_return': {'required': False},
-            'id': {'read_only': False, 'required': False}, # Allow ID to be passed for updates
         }
 
 class PurchaseOrderReturnItemsSerializer(serializers.Serializer):
@@ -121,16 +127,26 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
 
         for item_data in items_data:
             product = item_data.pop('product')
-            purchase_order_item = item_data.pop('purchase_order_item', None)
+            purchase_order_item_id = item_data.pop('purchase_order_item', None)
             quantity = item_data['quantity']
             unit_price = item_data['unit_price']
 
+            # Retrieve the PurchaseOrderItem object
+            purchase_order_item = None
+            if purchase_order_item_id:
+                try:
+                    purchase_order_item = PurchaseOrderItem.objects.get(id=purchase_order_item_id)
+                except PurchaseOrderItem.DoesNotExist:
+                    raise serializers.ValidationError(f"Purchase order item with ID {purchase_order_item_id} not found.")
+
             PurchaseReturnItem.objects.create(
                 purchase_return=purchase_return,
-                purchase_order_item=purchase_order_item,
+                purchase_order_item_id=purchase_order_item.id if purchase_order_item else None, # Pass ID instead of object
                 product=product,
                 quantity=quantity,
                 unit_price=unit_price,
+                batch_number=purchase_order_item.batch_number if purchase_order_item else None, # Populate batch details
+                expiry_date=purchase_order_item.expiry_date if purchase_order_item else None, # Populate batch details
             )
             total_amount += quantity * unit_price
 
@@ -139,29 +155,11 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                 purchase_order_item.returned_quantity += quantity
                 purchase_order_item.save()
 
-            # Create StockMovement for supplier return
-            # Assuming there's a way to get the batch from the purchase_order_item
-            # For simplicity, let's assume we can find an active batch for the product
-            # In a real scenario, you might need to specify which batch is being returned from
-            batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
-            if batch:
-                batch.current_quantity -= quantity
-                batch.save()
-                StockMovement.objects.create(
-                    product=product,
-                    batch=batch,
-                    movement_type='SUPPLIER_RETURN',
-                    quantity=quantity,
-                    reference_number=f"PR-{purchase_return.id}",
-                    notes=f"Returned {quantity} units of {product.name} from batch {batch.batch_number} for Purchase Return #{purchase_return.id}.",
-                    created_by=self.context.get('request').user
-                )
-            else:
-                # Handle case where no active batch is found (e.g., log a warning)
-                print(f"Warning: No active batch found for product {product.name} during return processing.")
-
+            # Stock deduction and movement creation are now handled in the view.
+            # This logic is removed from the serializer's create method to avoid double deduction.
 
         purchase_return.total_amount = total_amount
+        purchase_return.status = 'PROCESSED' # Set status to PROCESSED after successful creation
         purchase_return.save()
         return purchase_return
 
@@ -184,43 +182,106 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
             # Items to delete (exist in DB but not in incoming data)
             for item_id in set(existing_item_ids) - set(incoming_item_ids):
                 item_to_delete = PurchaseReturnItem.objects.get(id=item_id)
+                
                 # Reverse returned_quantity in original PurchaseOrderItem
-                item_to_delete.purchase_order_item.returned_quantity -= item_to_delete.quantity
-                item_to_delete.purchase_order_item.save()
+                if item_to_delete.purchase_order_item:
+                    item_to_delete.purchase_order_item.returned_quantity -= item_to_delete.quantity
+                    item_to_delete.purchase_order_item.save()
+                
+                # Reverse stock movement for deleted item
+                product = item_to_delete.product
+                quantity_to_reverse = item_to_delete.quantity
+                batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+                if batch:
+                    batch.current_quantity += quantity_to_reverse # Add back to stock
+                    batch.save()
+                    StockMovement.objects.create(
+                        product=product,
+                        batch=batch,
+                        movement_type='SUPPLIER_RETURN_REVERSAL', # New movement type for reversal
+                        quantity=quantity_to_reverse,
+                        reference_number=f"PR-REV-{instance.id}-{item_id}",
+                        notes=f"Reversed {quantity_to_reverse} units of {product.name} from batch {batch.batch_number} due to deletion from Purchase Return #{instance.id}.",
+                        created_by=self.context.get('request').user
+                    )
+                else:
+                    print(f"Warning: No active batch found for product {product.name} during return item deletion processing.")
+                
                 item_to_delete.delete()
 
             total_amount = 0
             for item_data in items_data:
                 item_id = item_data.get('id')
                 product = item_data.pop('product')
-                purchase_order_item = item_data.pop('purchase_order_item', None) # Can be null for existing items
+                purchase_order_item = item_data.pop('purchase_order_item', None)
 
                 if item_id: # Update existing item
                     return_item = PurchaseReturnItem.objects.get(id=item_id, purchase_return=instance)
                     old_quantity = return_item.quantity
                     new_quantity = item_data.get('quantity', old_quantity)
+                    unit_price = item_data.get('unit_price', return_item.unit_price)
 
                     return_item.quantity = new_quantity
-                    return_item.unit_price = item_data.get('unit_price', return_item.unit_price)
+                    return_item.unit_price = unit_price
                     return_item.save()
 
                     # Update returned_quantity in original PurchaseOrderItem
                     if return_item.purchase_order_item:
                         return_item.purchase_order_item.returned_quantity += (new_quantity - old_quantity)
                         return_item.purchase_order_item.save()
+                    
+                    # Adjust stock movement for updated item
+                    quantity_difference = new_quantity - old_quantity
+                    if quantity_difference != 0:
+                        batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+                        if batch:
+                            batch.current_quantity -= quantity_difference # Decrease if new_quantity > old_quantity, increase if new_quantity < old_quantity
+                            batch.save()
+                            movement_type = 'SUPPLIER_RETURN' if quantity_difference > 0 else 'SUPPLIER_RETURN_REVERSAL'
+                            notes = f"Adjusted {abs(quantity_difference)} units of {product.name} from batch {batch.batch_number} due to update in Purchase Return #{instance.id}."
+                            StockMovement.objects.create(
+                                product=product,
+                                batch=batch,
+                                movement_type=movement_type,
+                                quantity=abs(quantity_difference),
+                                reference_number=f"PR-ADJ-{instance.id}-{item_id}",
+                                notes=notes,
+                                created_by=self.context.get('request').user
+                            )
+                        else:
+                            print(f"Warning: No active batch found for product {product.name} during return item update processing.")
 
                 else: # Create new item
+                    quantity = item_data['quantity']
+                    unit_price = item_data['unit_price']
                     return_item = PurchaseReturnItem.objects.create(
                         purchase_return=instance,
                         purchase_order_item=purchase_order_item,
                         product=product,
-                        quantity=item_data['quantity'],
-                        unit_price=item_data['unit_price'],
+                        quantity=quantity,
+                        unit_price=unit_price,
                     )
                     # Update returned_quantity in original PurchaseOrderItem
                     if purchase_order_item:
-                        purchase_order_item.returned_quantity += item_data['quantity']
+                        purchase_order_item.returned_quantity += quantity
                         purchase_order_item.save()
+                    
+                    # Create StockMovement for new item
+                    batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+                    if batch:
+                        batch.current_quantity -= quantity # Decrease stock for new return item
+                        batch.save()
+                        StockMovement.objects.create(
+                            product=product,
+                            batch=batch,
+                            movement_type='SUPPLIER_RETURN',
+                            quantity=quantity,
+                            reference_number=f"PR-{instance.id}-{return_item.id}",
+                            notes=f"Returned {quantity} units of {product.name} from batch {batch.batch_number} for new item in Purchase Return #{instance.id}.",
+                            created_by=self.context.get('request').user
+                        )
+                    else:
+                        print(f"Warning: No active batch found for product {product.name} during new return item processing.")
                 
                 total_amount += return_item.quantity * return_item.unit_price
             instance.total_amount = total_amount

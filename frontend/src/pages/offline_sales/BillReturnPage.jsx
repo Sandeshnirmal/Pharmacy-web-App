@@ -49,12 +49,13 @@ const BillReturnPage = ({ onReturnComplete, initialSaleId }) => {
 
     const handleSelectSale = (sale) => {
         setSelectedSale(sale);
+        console.log("Selected Sale Data:", sale); // Add this line for debugging
         // Initialize return items based on the selected sale's items
         setReturnItems(
             sale.items.map((item) => ({
                 offline_sale_item: item.id,
                 product_name: item.product_details?.name || "N/A",
-                batch_number: item.batch_details?.batch_no || "N/A",
+                batch_number: item.batch_details?.batch_number || "N/A", // Ensure we are looking for 'batch_number'
                 original_quantity: item.quantity,
                 returned_quantity: 0, // Default to 0 returned
                 price_per_unit: parseFloat(item.price_per_unit),

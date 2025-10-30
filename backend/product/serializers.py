@@ -173,6 +173,10 @@ class BatchSerializer(serializers.ModelSerializer):
     is_expired = serializers.SerializerMethodField()
     mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    online_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    online_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    offline_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
 
     class Meta:
         model = Batch
@@ -222,13 +226,31 @@ class BatchSerializer(serializers.ModelSerializer):
 # Current Batch Detail Serializer (for explicit pricing fields)
 # ----------------------------
 class CurrentBatchDetailSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+    batch_number = serializers.CharField(read_only=True)
+    expiry_date = serializers.DateField(read_only=True)
+    quantity = serializers.IntegerField(read_only=True)
+    current_quantity = serializers.IntegerField(read_only=True)
+
+    online_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    online_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    offline_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    offline_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
     class Meta:
         model = Batch
         fields = [
             'id', 'batch_number', 'expiry_date', 'quantity', 'current_quantity',
             'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
-            'mrp_price', 'discount_percentage', 'selling_price', # Include generic for completeness
+            'mrp_price', 'discount_percentage', 'selling_price',
         ]
 
 
@@ -251,7 +273,13 @@ class ProductSerializer(serializers.ModelSerializer):
     current_selling_price = serializers.SerializerMethodField()
     current_cost_price = serializers.SerializerMethodField()
     is_prescription_required = serializers.SerializerMethodField()
-    current_batch = serializers.SerializerMethodField() # Add current_batch field
+    current_batch = serializers.SerializerMethodField()
+    offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    offline_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    offline_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    online_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    online_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = Product
@@ -265,7 +293,9 @@ class ProductSerializer(serializers.ModelSerializer):
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'current_selling_price', 'current_cost_price',
             'stock_quantity', 'stock_status', 'total_batches',
-            'current_batch' # Include current_batch in fields
+            'current_batch', # Include current_batch in fields
+            'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
+            'online_mrp_price', 'online_discount_percentage', 'online_selling_price'
         ]
 
     def get_current_selling_price(self, obj):
@@ -305,23 +335,16 @@ class ProductSerializer(serializers.ModelSerializer):
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        if not active_batches:
-            return None
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        selected_batch = primary_batch if primary_batch else active_batches[0]
-
-        # The "primary" batch for display/pricing will now be the earliest expiring active batch.
-        active_batches.sort(key=lambda b: b.expiry_date)
-        selected_batch = active_batches[0]
-
-        print(f"DEBUG: get_current_batch - Selected Batch: {selected_batch}")
-        print(f"DEBUG: Selected Batch ID: {selected_batch.id if selected_batch else 'None'}")
-        print(f"DEBUG: Selected Batch Online Selling Price: {selected_batch.online_selling_price if selected_batch else 'None'}")
-
-        return CurrentBatchDetailSerializer(selected_batch, context=self.context).data
+        selected_batch = obj.get_default_batch()
+        if selected_batch:
+            # Debug print to inspect the batch object before serialization
+            print(f"DEBUG: ProductSerializer.get_current_batch - Selected Batch ID: {selected_batch.id}")
+            print(f"DEBUG: ProductSerializer.get_current_batch - Offline MRP: {selected_batch.offline_mrp_price}")
+            print(f"DEBUG: ProductSerializer.get_current_batch - Offline Selling: {selected_batch.offline_selling_price}")
+            print(f"DEBUG: ProductSerializer.get_current_batch - Online MRP: {selected_batch.online_mrp_price}")
+            print(f"DEBUG: ProductSerializer.get_current_batch - Online Selling: {selected_batch.online_selling_price}")
+            return CurrentBatchDetailSerializer(selected_batch, context=self.context).data
+        return None
 
 
 # ----------------------------
@@ -339,7 +362,13 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     current_cost_price = serializers.SerializerMethodField()
     stock_quantity = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
-    current_batch = serializers.SerializerMethodField() # Add current_batch field
+    current_batch = serializers.SerializerMethodField()
+    offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    offline_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    offline_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    online_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    online_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = Product
@@ -355,7 +384,9 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'total_reviews', 'discount_percentage', 'is_in_wishlist',
             'related_products', 'current_selling_price', 'current_cost_price',
             'stock_quantity', 'stock_status',
-            'current_batch' # Include current_batch in fields
+            'current_batch', # Include current_batch in fields
+            'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
+            'online_mrp_price', 'online_discount_percentage', 'online_selling_price'
         ]
 
     def get_discount_percentage(self, obj):
@@ -412,19 +443,16 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         all_batches = list(obj.batches.all())
         active_batches = [batch for batch in all_batches if batch.expiry_date > date.today() and batch.current_quantity > 0]
 
-        if not active_batches:
-            return None
-
-        active_batches.sort(key=lambda b: b.expiry_date)
-
-        primary_batch = next((batch for batch in active_batches if batch.is_primary), None)
-        selected_batch = primary_batch if primary_batch else active_batches[0]
-
-        # The "primary" batch for display/pricing will now be the earliest expiring active batch.
-        active_batches.sort(key=lambda b: b.expiry_date)
-        selected_batch = active_batches[0]
-
-        return CurrentBatchDetailSerializer(selected_batch, context=self.context).data
+        selected_batch = obj.get_default_batch()
+        if selected_batch:
+            # Debug print to inspect the batch object before serialization
+            print(f"DEBUG: EnhancedProductSerializer.get_current_batch - Selected Batch ID: {selected_batch.id}")
+            print(f"DEBUG: EnhancedProductSerializer.get_current_batch - Offline MRP: {selected_batch.offline_mrp_price}")
+            print(f"DEBUG: EnhancedProductSerializer.get_current_batch - Offline Selling: {selected_batch.offline_selling_price}")
+            print(f"DEBUG: EnhancedProductSerializer.get_current_batch - Online MRP: {selected_batch.online_mrp_price}")
+            print(f"DEBUG: EnhancedProductSerializer.get_current_batch - Online Selling: {selected_batch.online_selling_price}")
+            return CurrentBatchDetailSerializer(selected_batch, context=self.context).data
+        return None
 
 class InventorySerializer(serializers.ModelSerializer):
     class Meta:

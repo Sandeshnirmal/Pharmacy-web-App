@@ -183,7 +183,11 @@
                         <tr key={item[valueField]} className="hover:bg-gray-50">
                           {columns.map((col, idx) => (
                             <td key={idx} className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                              {item[col.field]}
+                              {
+                                (col.field === 'offline_selling_price' || col.field === 'selling_price')
+                                  ? `₹${(parseFloat(item[col.field]) || 0).toFixed(2)}`
+                                  : item[col.field]
+                              }
                             </td>
                           ))}
                           <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">

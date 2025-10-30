@@ -14,9 +14,11 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
   });
 
   const [selectedCustomer, setSelectedCustomer] = useState(null); // Stores the full customer object
-  const [customerMobileInput, setCustomerMobileInput] = useState(initialData?.customer_mobile || ""); // For new customer input or display
+  const [customerPhoneNumberInput, setCustomerPhoneNumberInput] = useState(initialData?.customer_mobile || ""); // For new customer input or display, renamed from customerMobileInput
   const [customerNameInput, setCustomerNameInput] = useState(initialData?.customer_name || "");
   const [customerAddressInput, setCustomerAddressInput] = useState(initialData?.customer_address || "");
+  const [showCustomerSearchModal, setShowCustomerSearchModal] = useState(false); // State for customer search modal
+  const [customerSearchTerm, setCustomerSearchTerm] = useState(""); // State for customer search term
 
   const [items, setItems] = useState([
     {
@@ -31,72 +33,84 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
       expire_date: "",
     },
   ]);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   const [discount, setDiscount] = useState(0);
   const [gst, setGst] = useState(18); // Default GST percentage
+  const [payMethod, setPayMethod] = useState(initialData?.payment_method || "Cash"); // New state for pay method, initialized from backend's 'payment_method'
+  const [paidAmount, setPaidAmount] = useState(parseFloat(initialData?.paid_amount) || 0); // New state for paid amount
 
-  // Fetch products on component mount
+  // Effect to handle initial data loading and set loading to false
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        const productsResponse = await productAPI.getProducts();
-      setProducts(Array.isArray(productsResponse.data.results) ? productsResponse.data.results : Array.isArray(productsResponse.data) ? productsResponse.data : []);
-    } catch (err) {
-      const errorInfo = apiUtils.handleError(err);
-      setError(errorInfo.message || "Failed to fetch products.");
-    } finally {
-      setLoading(false);
-    }
-    };
-    fetchProducts();
-  }, []);
-
-  // Populate form if initialData is provided (for editing)
-  useEffect(() => {
-    if (initialData) {
-      setFormData((prev) => ({
-        ...prev,
-        bill_date: initialData.bill_date || new Date().toISOString().split("T")[0],
-        notes: initialData.notes || "",
-      }));
+    const initializeForm = async () => {
+      setLoading(true);
+      if (initialData) {
+        setFormData((prev) => ({
+          ...prev,
+          bill_date: initialData.bill_date || new Date().toISOString().split("T")[0],
+          notes: initialData.notes || "",
+        }));
 
       if (initialData.customer) {
         const customerData = {
           id: initialData.customer,
           name: initialData.customer_name || "",
           address: initialData.customer_address || "",
-          mobile: initialData.customer_mobile || "",
+          phone_number: initialData.customer_mobile || "", // Use phone_number
         };
         setSelectedCustomer(customerData);
-        setCustomerMobileInput(customerData.mobile);
+        setCustomerPhoneNumberInput(customerData.phone_number); // Use phone_number
         setCustomerNameInput(customerData.name);
         setCustomerAddressInput(customerData.address);
       } else {
         setSelectedCustomer(null);
-        setCustomerMobileInput("");
+        setCustomerPhoneNumberInput("");
         setCustomerNameInput("");
         setCustomerAddressInput("");
       }
+      setPaidAmount(parseFloat(initialData?.paid_amount) || 0); // Initialize paidAmount
 
-      setItems(
-        initialData.items?.map(item => ({
-          ...item,
-          product: products.find(p => p.id === item.product) || null, // Find full product object
-          batch: null, // Batches will be fetched dynamically
-          packing: item.packing || "",
-          hsn_code: item.hsn_code || "",
-          quantity: parseFloat(item.quantity) || 1,
-          unit: item.unit || "pcs",
-          unit_price: parseFloat(item.unit_price) || 0,
-          batch_no: item.batch_no || "",
-          expire_date: item.expire_date || "",
-        })) || [
-          {
+        // For existing bills, we need to fetch full product/batch details for items
+        // This might involve multiple API calls, so handle carefully
+        const fetchedItems = await Promise.all(
+          initialData.items?.map(async (item) => {
+            let productObj = { id: item.product, name: item.product_name }; // Default with minimal info
+            let batchObj = null;
+
+            try {
+              // Fetch full product details if needed (e.g., for current_selling_price)
+              const productResponse = await productAPI.getProduct(item.product); // Corrected method name
+              productObj = productResponse.data;
+            } catch (prodErr) {
+              console.error(`Error fetching product ${item.product}:`, prodErr);
+            }
+
+            if (item.batch) {
+              try {
+                const batchesResponse = await productAPI.getBatches(item.product, { batch_no: item.batch_no });
+                batchObj = Array.isArray(batchesResponse.data.results) ? batchesResponse.data.results[0] : null;
+              } catch (batchErr) {
+                console.error(`Error fetching batch ${item.batch} for product ${item.product}:`, batchErr);
+              }
+            }
+
+            return {
+              ...item,
+              product: productObj,
+              batch: batchObj,
+              packing: item.packing || productObj?.packing || "",
+              hsn_code: item.hsn_code || productObj?.hsn_code || "",
+              quantity: parseFloat(item.quantity) || 1,
+              unit: item.unit || "pcs",
+              unit_price: parseFloat(item.price_per_unit || item.unit_price) || 0, // Use price_per_unit from API if available
+              batch_no: item.batch_no || batchObj?.batch_no || "",
+              expire_date: item.expire_date || batchObj?.expire_date || "",
+            };
+          }) || []
+        );
+        setItems(fetchedItems.length > 0 ? fetchedItems : [{
           product: undefined,
           batch: undefined,
           packing: "",
@@ -106,11 +120,28 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
           unit_price: 0,
           batch_no: "",
           expire_date: "",
-        },
-        ]
-      );
-    }
-  }, [initialData, products]); // Add products to dependency array
+        }]);
+      } else {
+        // For new bills, ensure items array is initialized with one empty item
+        setItems([
+          {
+            product: undefined,
+            batch: undefined,
+            packing: "",
+            hsn_code: "",
+            quantity: 1,
+            unit: "pcs",
+            unit_price: 0,
+            batch_no: "",
+            expire_date: "",
+          },
+        ]);
+      }
+      setLoading(false);
+    };
+
+    initializeForm();
+  }, [initialData]); // Depend on initialData to re-run when editing a different bill
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -121,6 +152,9 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
     if (searchTerm.length > 0) {
       try {
         const response = await offlineCustomerAPI.getCustomers({ search: searchTerm });
+        // Map 'phone_number' from backend to 'mobile' for ModalSearchSelect displayField if needed,
+        // or adjust ModalSearchSelect to use 'phone_number' directly.
+        // For now, assuming ModalSearchSelect can handle 'phone_number' as displayField.
         return Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [];
       } catch (err) {
         console.error("Error searching customers:", err);
@@ -130,14 +164,58 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
     return [];
   }, []);
 
+  const searchProducts = useCallback(async (searchTerm) => {
+    if (searchTerm.length > 0) {
+      try {
+        const response = await productAPI.getProducts(1, 20, { search: searchTerm });
+        const products = Array.isArray(response.data.results) ? response.data.results : Array.isArray(response.data) ? response.data : [];
+
+        // Process products to find the best batch's offline_selling_price for display
+        const productsWithDisplayPrice = products.map(product => {
+          let displayPrice = 0;
+          if (product.batches && product.batches.length > 0) {
+            // Apply the same sorting logic as in handleProductSelect to find the "best" batch for display
+            const sortedBatches = [...product.batches].sort((a, b) => {
+              const dateA = new Date(a.expiry_date);
+              const dateB = new Date(b.expiry_date);
+
+              // 1. Prioritize later expiry dates
+              if (dateA > dateB) return -1;
+              if (dateA < dateB) return 1;
+
+              // If expiry dates are the same, 2. prioritize non-zero offline_selling_price (highest first)
+              const priceA = parseFloat(a.offline_selling_price) || 0;
+              const priceB = parseFloat(b.offline_selling_price) || 0;
+
+              if (priceA > 0 && priceB === 0) return -1;
+              if (priceA === 0 && priceB > 0) return 1;
+              if (priceA !== priceB) return priceB - priceA;
+
+              // If expiry dates and prices are the same, 3. prioritize higher stock
+              return (parseFloat(b.quantity) || 0) - (parseFloat(a.quantity) || 0);
+            });
+            displayPrice = parseFloat(sortedBatches[0].offline_selling_price) || 0;
+          }
+          return { ...product, display_price: displayPrice };
+        });
+
+        return productsWithDisplayPrice;
+      } catch (err) {
+        console.error("Error searching products:", err);
+        return [];
+      }
+    }
+    return [];
+  }, []);
+
   const handleSelectCustomer = (customer) => {
     setSelectedCustomer(customer);
     if (customer) {
-      setCustomerMobileInput(customer.mobile);
+      setCustomerPhoneNumberInput(customer.phone_number); // Use phone_number
       setCustomerNameInput(customer.name);
       setCustomerAddressInput(customer.address);
     } else {
-      setCustomerMobileInput("");
+      setCustomerPhoneNumberInput("");
       setCustomerNameInput("");
       setCustomerAddressInput("");
     }
@@ -158,42 +236,53 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
   const handleProductSelect = async (index, product) => {
     const newItems = [...items];
     if (product) {
+      let selectedBatch = undefined;
+      let unitPrice = 0; // Initialize unitPrice to 0
+
+      // Fetch all batches for the selected product to apply custom selection logic
+      try {
+        const batchesResponse = await productAPI.getBatches(product.id);
+        const availableBatches = Array.isArray(batchesResponse.data.results) ? batchesResponse.data.results : [];
+
+        if (availableBatches.length > 0) {
+          // Sort batches: prioritize by expiry_date (latest first), then by non-zero offline_selling_price (highest first), then by stock (highest first)
+          const sortedBatches = [...availableBatches].sort((a, b) => {
+            const dateA = new Date(a.expiry_date);
+            const dateB = new Date(b.expiry_date);
+
+            // 1. Prioritize later expiry dates
+            if (dateA > dateB) return -1;
+            if (dateA < dateB) return 1;
+
+            // If expiry dates are the same, 2. prioritize non-zero offline_selling_price (highest first)
+            const priceA = parseFloat(a.offline_selling_price) || 0;
+            const priceB = parseFloat(b.offline_selling_price) || 0;
+
+            if (priceA > 0 && priceB === 0) return -1; // A has price, B doesn't, A comes first
+            if (priceA === 0 && priceB > 0) return 1;  // B has price, A doesn't, B comes first
+            if (priceA !== priceB) return priceB - priceA; // If both have prices, higher price first
+
+            // If expiry dates and prices are the same, 3. prioritize higher stock
+            return (parseFloat(b.quantity) || 0) - (parseFloat(a.quantity) || 0); // Use quantity for stock
+          });
+          selectedBatch = sortedBatches[0];
+          unitPrice = parseFloat(selectedBatch.offline_selling_price) || 0; // Use offline_selling_price from the selected batch
+        }
+      } catch (batchErr) {
+        console.error(`Error fetching batches for product ${product.id}:`, batchErr);
+      }
+
       newItems[index] = {
         ...newItems[index],
         product: product,
         packing: product.packing || "",
         hsn_code: product.hsn_code || "",
-        unit_price: parseFloat(product.current_selling_price) || 0,
-        batch: undefined, // Reset batch when product changes, use undefined
-        batch_no: "",
-        expire_date: "",
+        quantity: 1, // Reset quantity to 1 when a new product is selected
+        unit_price: unitPrice, // Use unitPrice derived from selected batch's offline_selling_price
+        batch: selectedBatch,
+        batch_no: selectedBatch?.batch_no || "",
+        expire_date: selectedBatch?.expiry_date || "",
       };
-
-      // Automatically select the first batch if available
-      try {
-        const batchesResponse = await productAPI.getBatches(product.id, {});
-        const availableBatches = Array.isArray(batchesResponse.data.results) ? batchesResponse.data.results : Array.isArray(batchesResponse.data) ? batchesResponse.data : [];
-        if (availableBatches.length > 0) {
-          // Sort batches by expiry date (earliest first)
-          const sortedBatches = [...availableBatches].sort((a, b) => {
-            const dateA = new Date(a.expire_date);
-            const dateB = new Date(b.expire_date);
-            return dateA.getTime() - dateB.getTime();
-          });
-          const defaultBatch = sortedBatches[0]; // Select the batch with the earliest expiry date
-          newItems[index] = {
-            ...newItems[index],
-            batch: defaultBatch,
-            batch_no: defaultBatch.batch_no || "",
-            expire_date: defaultBatch.expire_date || "",
-            unit_price: parseFloat(defaultBatch.selling_price) || newItems[index].unit_price,
-          };
-        }
-      } catch (batchErr) {
-        console.error("Error fetching batches for auto-selection:", batchErr);
-        // Continue without auto-selecting batch if there's an error
-      }
-
     } else {
       // Clear product and related fields
       newItems[index] = {
@@ -201,6 +290,8 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         product: undefined,
         packing: "",
         hsn_code: "",
+        quantity: 1,
+        unit: "pcs",
         unit_price: 0,
         batch: undefined,
         batch_no: "",
@@ -233,8 +324,8 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         ...newItems[index],
         batch: batch,
         batch_no: batch.batch_no || "",
-        expire_date: batch.expire_date || "",
-        unit_price: parseFloat(batch.selling_price) || newItems[index].unit_price, // Use batch price if available
+        expire_date: batch.expiry_date || "", // Use expiry_date from batch
+        unit_price: parseFloat(batch.offline_selling_price) || 0, // Use offline_selling_price from the selected batch
       };
     } else {
       // Clear batch and related fields, but keep product info
@@ -243,8 +334,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         batch: undefined,
         batch_no: "",
         expire_date: "",
-        // Optionally reset unit_price to product's default if batch is cleared
-        unit_price: newItems[index].product ? parseFloat(newItems[index].product.current_selling_price) || 0 : 0,
+        unit_price: 0, // Reset to 0 if no batch is selected
       };
     }
     setItems(newItems);
@@ -305,6 +395,11 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
     [taxableAmount, gstAmount]
   );
 
+  const changeAmount = useMemo(
+    () => paidAmount - netAmount,
+    [paidAmount, netAmount]
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -317,14 +412,15 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         customerId = selectedCustomer.id;
       } else {
         // If no existing customer is selected, create a new one
-        if (!customerNameInput || !customerMobileInput) {
-          throw new Error("Customer Name and Mobile are required for new customers.");
+        if (!customerNameInput || !customerPhoneNumberInput) { // Use customerPhoneNumberInput
+          throw new Error("Customer Name and Phone Number are required for new customers."); // Update error message
         }
         const newCustomerPayload = {
           name: customerNameInput,
-          mobile: customerMobileInput,
+          phone_number: customerPhoneNumberInput, // Send as phone_number
           address: customerAddressInput,
         };
+        console.log("New Customer Payload:", newCustomerPayload); // Add this line for debugging
         const newCustomerResponse = await offlineCustomerAPI.findOrCreateCustomer(newCustomerPayload);
         customerId = newCustomerResponse.data.id;
       }
@@ -333,6 +429,9 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
         ...formData,
         customer: customerId,
         total_amount: netAmount.toFixed(2),
+        paid_amount: paidAmount.toFixed(2), // Include paid amount
+        change_amount: changeAmount.toFixed(2), // Include change amount
+        payment_method: payMethod, // Include pay method in the payload, renamed to match backend
         items: items.map((item) => ({
           product: item.product?.id, // Send product ID
           batch: item.batch?.id, // Send batch ID
@@ -391,30 +490,34 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
 
         {/* Customer Details */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="col-span-1 flex items-end"> {/* Use flexbox for side-by-side layout */}
-            <ModalSearchSelect
-              label="Customer Mobile No"
-              placeholder="Search or enter customer mobile"
-              selectedValue={selectedCustomer}
-              onSelect={handleSelectCustomer}
-              onSearch={searchCustomers}
-              displayField="mobile"
-              valueField="id"
-              required
-              className="flex-grow"
-              columns={[
-                { header: 'Mobile', field: 'mobile' },
-                { header: 'Name', field: 'name' },
-                { header: 'Address', field: 'address' },
-              ]}
-            />
-            <button
-              type="button"
-              onClick={() => searchCustomers(customerMobileInput)}
-              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 ml-2 h-10"
-            >
-              Search
-            </button>
+          <div className="col-span-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Customer Phone Number <span className="text-red-500">*</span> {/* Updated label */}
+            </label>
+            <div className="flex mt-1">
+              <input
+                type="text"
+                name="customerPhoneNumberInput" // Updated name
+                value={customerPhoneNumberInput} // Updated value
+                onChange={(e) => {
+                  setCustomerPhoneNumberInput(e.target.value); // Updated setter
+                  setSelectedCustomer(null); // Clear selected customer if phone number is manually typed
+                }}
+                placeholder="Enter customer phone number" // Updated placeholder
+                required
+                className="flex-grow p-2 border border-gray-300 rounded-l-md shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerSearchTerm(customerPhoneNumberInput); // Initialize search with current input
+                  setShowCustomerSearchModal(true);
+                }}
+                className="bg-blue-500 text-white px-4 py-2 rounded-r-md hover:bg-blue-600"
+              >
+                <Search size={20} />
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">
@@ -446,6 +549,43 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
             />
           </div>
         </div>
+
+        {/* Customer Search Modal */}
+        {showCustomerSearchModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Search Existing Customer</h2>
+              <ModalSearchSelect
+                label="Search Customer"
+                placeholder="Search by phone number, name, or address" // Updated placeholder
+                selectedValue={null} // No pre-selected value in the search modal itself
+                onSelect={(customer) => {
+                  handleSelectCustomer(customer);
+                  setShowCustomerSearchModal(false);
+                }}
+                onSearch={searchCustomers}
+                displayField="phone_number" // Display phone_number in the search input
+                valueField="id"
+                autoFocus={true}
+                className="w-full mb-6"
+                columns={[
+                  { header: 'Phone Number', field: 'phone_number' }, // Updated header and field
+                  { header: 'Name', field: 'name' },
+                  { header: 'Address', field: 'address' },
+                ]}
+                initialSearchTerm={customerSearchTerm} // Pass initial search term
+              />
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowCustomerSearchModal(false)}
+                  className="bg-gray-300 text-gray-800 px-5 py-2 rounded-md hover:bg-gray-400 transition duration-300"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Items Table */}
         <div className="overflow-x-auto">
@@ -495,7 +635,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                       placeholder="Select Product"
                       selectedValue={item.product}
                       onSelect={(product) => handleProductSelect(index, product)}
-                      options={products}
+                      onSearch={searchProducts}
                       displayField="name"
                       valueField="id"
                       required
@@ -504,7 +644,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                         { header: 'Product Name', field: 'name' },
                         { header: 'Packing', field: 'packing' },
                         { header: 'HSN Code', field: 'hsn_code' },
-                        { header: 'Price', field: 'current_selling_price' },
+                        { header: 'Price', field: 'display_price' }, // Display the calculated display_price
                       ]}
                     />
                   </td>
@@ -544,7 +684,7 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                       columns={[
                         { header: 'Batch No', field: 'batch_no' },
                         { header: 'Expire Date', field: 'expire_date' },
-                        { header: 'Selling Price', field: 'selling_price' },
+                        { header: 'Selling Price', field: 'offline_selling_price' },
                         { header: 'Stock', field: 'stock' },
                       ]}
                     />
@@ -683,6 +823,47 @@ const SalesBillForm = ({ onFormClose, initialData }) => {
                 ₹{netAmount.toFixed(2)}
               </span>
             </div>
+            {/* Paid Amount Input */}
+            <div className="flex justify-between items-center py-2 mt-4">
+              <label htmlFor="paidAmount" className="text-lg font-bold text-gray-800">
+                Paid Amount:
+              </label>
+              <input
+                id="paidAmount"
+                type="number"
+                value={paidAmount}
+                onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                min="0"
+                step="0.01"
+                className="w-40 p-2 border border-gray-300 rounded-md shadow-sm text-right"
+              />
+            </div>
+            {/* Change Amount Display */}
+            <div className="flex justify-between py-2">
+              <span className="text-lg font-bold text-gray-800">
+                Change Amount:
+              </span>
+              <span className="text-lg font-bold text-gray-900">
+                ₹{changeAmount.toFixed(2)}
+              </span>
+            </div>
+            {/* Pay Method Dropdown */}
+            <div className="flex justify-between items-center py-2 mt-4">
+              <label htmlFor="payMethod" className="text-lg font-bold text-gray-800">
+                Pay Method:
+              </label>
+              <select
+                id="payMethod"
+                value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value)}
+                className="w-40 p-2 border border-gray-300 rounded-md shadow-sm text-right"
+              >
+                <option value="Cash">Cash</option>
+                <option value="Card">Card</option>
+                <option value="UPI">UPI</option>
+                <option value="Credit">Credit</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -728,6 +909,9 @@ const SalesBillPage = () => {
     const [error, setError] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showReturnForm, setShowReturnForm] = useState(false); // New state for return form
+    const [showCancelModal, setShowCancelModal] = useState(false); // State for cancellation modal
+    const [billToCancel, setBillToCancel] = useState(null); // Stores the bill ID to be cancelled
+    const [cancellationReason, setCancellationReason] = useState(""); // State for cancellation reason
     const [currentBill, setCurrentBill] = useState(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
@@ -765,7 +949,7 @@ const SalesBillPage = () => {
     const handleEditClick = (bill) => {
         setCurrentBill({
             ...bill,
-            customer_mobile: bill.customer_mobile || "",
+            customer_mobile: bill.customer_mobile || "", // Keep for initialData mapping if backend still sends this
             customer_name: bill.customer_name || "",
             customer_address: bill.customer_address || "",
             bill_date: bill.bill_date || new Date().toISOString().split("T")[0],
@@ -819,24 +1003,26 @@ const SalesBillPage = () => {
         fetchSalesBills(); // Refresh the list of sales bills
     };
 
-    const handleCancelBillClick = async (billId) => {
-        const reason = prompt("Please enter a reason for cancelling this sales bill:");
-        if (reason === null) { // User clicked cancel on the prompt
-            return;
-        }
-        if (!reason.trim()) {
+    const handleCancelBillClick = (billId) => {
+        setBillToCancel(billId);
+        setCancellationReason(""); // Clear any previous reason
+        setShowCancelModal(true);
+    };
+
+    const confirmCancelBill = async () => {
+        if (!cancellationReason.trim()) {
             alert("Cancellation reason cannot be empty.");
             return;
         }
 
-        const isConfirmed = window.confirm(
-            `Are you sure you want to cancel Bill #${billId}? This action will reverse all stock movements for this bill.`
-        );
-        if (isConfirmed) {
+        if (billToCancel) {
             try {
                 setLoading(true);
-                await salesBillAPI.cancelSalesBill(billId, reason);
-                alert(`Sales Bill #${billId} has been successfully cancelled.`);
+                await salesBillAPI.cancelSalesBill(billToCancel, cancellationReason);
+                alert(`Sales Bill #${billToCancel} has been successfully cancelled.`);
+                setShowCancelModal(false);
+                setBillToCancel(null);
+                setCancellationReason("");
                 fetchSalesBills(); // Refresh the list
             } catch (err) {
                 const errorInfo = apiUtils.handleError(err);
@@ -846,6 +1032,12 @@ const SalesBillPage = () => {
                 setLoading(false);
             }
         }
+    };
+
+    const closeCancelModal = () => {
+        setShowCancelModal(false);
+        setBillToCancel(null);
+        setCancellationReason("");
     };
 
     const handlePageChange = (page) => {
@@ -1035,6 +1227,42 @@ const SalesBillPage = () => {
                             )}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Cancellation Modal */}
+            {showCancelModal && (
+                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center">
+                    <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
+                        <h2 className="text-2xl font-bold mb-4 text-gray-800">Cancel Sales Bill #{billToCancel}</h2>
+                        <p className="text-gray-700 mb-6">
+                            Are you sure you want to cancel this sales bill? This action will reverse all stock movements for this bill.
+                            Please provide a reason for cancellation.
+                        </p>
+                        <textarea
+                            className="w-full p-3 border border-gray-300 rounded-md mb-6 focus:outline-none focus:ring-2 focus:ring-red-500"
+                            rows="4"
+                            placeholder="Enter reason for cancellation..."
+                            value={cancellationReason}
+                            onChange={(e) => setCancellationReason(e.target.value)}
+                            required
+                        ></textarea>
+                        <div className="flex justify-end space-x-4">
+                            <button
+                                onClick={closeCancelModal}
+                                className="bg-gray-300 text-gray-800 px-5 py-2 rounded-md hover:bg-gray-400 transition duration-300"
+                            >
+                                Close
+                            </button>
+                            <button
+                                onClick={confirmCancelBill}
+                                className="bg-red-600 text-white px-5 py-2 rounded-md hover:bg-red-700 transition duration-300"
+                                disabled={!cancellationReason.trim()}
+                            >
+                                Confirm Cancellation
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

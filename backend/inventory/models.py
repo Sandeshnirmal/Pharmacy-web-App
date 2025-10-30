@@ -123,6 +123,8 @@ class PurchaseReturnItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE) # Redundant but useful for direct access
     quantity = models.IntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2) # Price at which it was purchased
+    batch_number = models.CharField(max_length=100, blank=True, null=True) # Store batch number of returned item
+    expiry_date = models.DateField(blank=True, null=True) # Store expiry date of returned item
 
     def __str__(self):
         return f"{self.product.name} ({self.quantity}) returned in PR #{self.purchase_return.id}"

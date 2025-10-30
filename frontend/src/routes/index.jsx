@@ -9,10 +9,12 @@ const MedicinesListPage = lazy(() => import('../pages/MedicinesListPage'));
 const GenericsTable = lazy(() => import('../pages/GenericsTable'));
 const InventoryManagement = lazy(() => import('../pages/InventoryManagement'));
 const PurchaseBillInventoryUpload = lazy(() => import('../pages/PurchaseBillInventoryUpload.jsx'));
-const PurchaseReturnForm = lazy(() => import('../pages/PurchaseReturnForm'));
+const PurchaseBillReturnPage = lazy(() => import('../pages/PurchaseBillReturnPage'));
+const PurchaseBillEditPage = lazy(() => import('../pages/PurchaseBillEditPage')); // New: Purchase Bill Edit Page
 const PurchaseReturnListPage = lazy(() => import('../pages/PurchaseReturnListPage'));
 const SalesBillPage = lazy(() => import('../pages/salesbillpage.jsx'))
 const SalesReturnPage = lazy(() => import("../pages/Salesbillreturn.jsx"))
+const PurchaseBillPage = lazy(() => import('../pages/PurchaseBillPage.jsx')); // New: Purchase Bill Page
 
 // Prescription Management - Lazy loaded
 const PrescriptionUploadsTable = lazy(() => import('../pages/PrescriptionUploadsTable'));
@@ -86,16 +88,16 @@ export const routes = [
     lazy: true,
   },
   {
-    path: "/purchase-returns/new",
-    element: PurchaseReturnForm,
-    title: "Create Purchase Return",
-    icon: "RotateCcw", // Placeholder icon
+    path: "/purchase-bill/edit/:poId",
+    element: PurchaseBillEditPage,
+    title: "Edit Purchase Bill",
+    hidden: true, // Don't show in navigation
     lazy: true,
   },
   {
-    path: "/purchase-returns/:id",
-    element: PurchaseReturnForm,
-    title: "Edit Purchase Return",
+    path: "/purchase-bill-return/:poId",
+    element: PurchaseBillReturnPage,
+    title: "Process Purchase Bill Return",
     hidden: true, // Don't show in navigation
     lazy: true,
   },
@@ -104,6 +106,13 @@ export const routes = [
     element: PurchaseReturnListPage,
     title: "Purchase Returns List",
     icon: "List", // Placeholder icon
+    lazy: true,
+  },
+  {
+    path: "/purchase-billing",
+    element: PurchaseBillPage,
+    title: "Purchase Bills",
+    icon: "FileText", // Placeholder icon, can be changed
     lazy: true,
   },
   {
