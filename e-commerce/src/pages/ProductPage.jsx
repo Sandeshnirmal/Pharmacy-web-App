@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom"; // Import useParams, useNavigate, Link
+import { productAPI } from "../api/apiService.js"; // Import productAPI
 import {
   Star,
   ChevronRight,
@@ -8,6 +10,8 @@ import {
   CheckCircle,
   ChevronDown,
 } from "lucide-react";
+import { useCart } from "../context/CartContext.jsx"; // Import useCart
+import { useNotification } from "../context/NotificationContext.jsx"; // Import useNotification
 // import TopSellerCard from './ProductCard.jsx'; // No longer imported
 
 // --- Reusable Star Rating Component ---
@@ -28,35 +32,20 @@ const RenderStars = ({ rating }) => {
 
 // --- Product Page Components ---
 
-function Breadcrumbs({ product, onNavigateHome }) {
+function Breadcrumbs({ product }) { // Removed onNavigateHome
   return (
     <nav className="flex items-center text-sm text-gray-600">
-      <a
-        href="#"
-        onClick={(e) => {
-          e.preventDefault();
-          onNavigateHome();
-        }}
-        className="hover:text-green-500"
-      >
+      <Link to="/" className="hover:text-green-500"> {/* Use Link to navigate home */}
         Home
-      </a>
+      </Link>
       <ChevronRight className="h-4 w-4 mx-1" />
-      <a
-        href="#"
-        onClick={(e) => e.preventDefault()}
-        className="hover:text-green-500"
-      >
+      <span className="hover:text-green-500"> {/* Changed to span as it's not a direct link */}
         Shop
-      </a>
+      </span>
       <ChevronRight className="h-4 w-4 mx-1" />
-      <a
-        href="#"
-        onClick={(e) => e.preventDefault()}
-        className="hover:text-green-500"
-      >
+      <span className="hover:text-green-500"> {/* Changed to span as it's not a direct link */}
         {product.category}
-      </a>
+      </span>
       <ChevronRight className="h-4 w-4 mx-1" />
       <span className="font-medium text-gray-800">{product.name}</span>
     </nav>
@@ -105,6 +94,13 @@ function ProductGallery({ images }) {
 
 function ProductInfo({ product }) {
   const [quantity, setQuantity] = useState(1);
+  const { addToCart } = useCart();
+  const { addNotification } = useNotification();
+
+  const handleAddToCart = () => {
+    addToCart(product, quantity); // Pass the full product object and quantity
+    addNotification(`${product.name} added to cart!`, 'success');
+  };
 
   return (
     <div className="flex flex-col space-y-5">
@@ -112,7 +108,22 @@ function ProductInfo({ product }) {
         {product.category}
       </span>
       <h1 className="text-4xl font-bold text-gray-900">{product.name}</h1>
-      <p className="text-4xl font-extrabold text-gray-900">{product.price}</p>
+      {product.generic_name_display && (
+        <p className="text-lg text-gray-600">
+          Generic Name: <span className="font-semibold">{product.generic_name_display}</span>
+        </p>
+      )}
+      <div className="flex items-baseline space-x-3">
+        <p className="text-4xl font-extrabold text-gray-900">{product.price}</p>
+        {product.discount_percentage > 0 && (
+          <>
+            <span className="text-2xl text-gray-500 line-through">{product.mrp_price}</span>
+            <span className="text-sm font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-md">
+              {product.discount_percentage}% OFF
+            </span>
+          </>
+        )}
+      </div>
 
       {/* Quantity Selector */}
       <div className="flex items-center space-x-3">
@@ -136,7 +147,10 @@ function ProductInfo({ product }) {
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <button className="flex-1 bg-green-400 text-black font-semibold py-3 px-6 rounded-full transition-all duration-300 hover:bg-green-500 hover:shadow-md hover:-translate-y-0.5">
+        <button
+          className="flex-1 bg-green-400 text-black font-semibold py-3 px-6 rounded-full transition-all duration-300 hover:bg-green-500 hover:shadow-md hover:-translate-y-0.5"
+          onClick={handleAddToCart}
+        >
           Add to Cart
         </button>
         <button className="flex-1 bg-gray-800 text-white font-semibold py-3 px-6 rounded-full transition-all duration-300 hover:bg-black hover:shadow-md hover:-translate-y-0.5">
@@ -212,6 +226,9 @@ function ProductTabs({ product }) {
           <TabButton id="description" label="Description" />
           <TabButton id="usage" label="Usage & Dosage" />
           <TabButton id="ingredients" label="Ingredients" />
+          {product.composition_summary && product.composition_summary.length > 0 && (
+            <TabButton id="compositions" label="Compositions" />
+          )}
           <TabButton
             id="reviews"
             label={`Reviews (${product.reviews.length})`}
@@ -229,10 +246,24 @@ function ProductTabs({ product }) {
             <p>{product.usage}</p>
           </div>
         )}
-        {activeTab === "ingredients" && (
+        {activeTab === "ingredients" && product.ingredients && (
           <div className="prose max-w-none">
             <ul className="list-disc pl-5">
               {product.ingredients.split(", ").map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {activeTab === "ingredients" && !product.ingredients && (
+          <div className="prose max-w-none">
+            <p>No ingredients information available.</p>
+          </div>
+        )}
+        {activeTab === "compositions" && product.composition_summary && product.composition_summary.length > 0 && (
+          <div className="prose max-w-none">
+            <ul className="list-disc pl-5">
+              {product.composition_summary.map((item, index) => (
                 <li key={index}>{item}</li>
               ))}
             </ul>
@@ -287,7 +318,6 @@ function ProductTabs({ product }) {
 }
 
 function RelatedProducts({
-  onProductClick,
   topSellers,
   currentProductId,
   TopSellerCard,
@@ -309,7 +339,6 @@ function RelatedProducts({
             <TopSellerCard
               key={product.id}
               product={product}
-              onProductClick={onProductClick}
             />
           ))}
         </div>
@@ -318,44 +347,103 @@ function RelatedProducts({
   );
 }
 
-function ProductPage({
-  product,
-  onNavigateHome,
-  onProductClick,
-  topSellers,
-  TopSellerCard,
-}) {
-  // Receive TopSellerCard as a prop
-  // Scroll to top when product page loads or product changes
-  useEffect(() => {
-    // Only scroll if product is valid
-    if (product) {
-      window.scrollTo(0, 0);
-    }
-  }, [product]);
+function ProductPage({ TopSellerCard }) { // Only accept TopSellerCard
+  const { id } = useParams(); // Get product ID from URL
+  const navigate = useNavigate(); // Initialize navigate for potential redirects
+  const [product, setProduct] = useState(null);
+  const [topSellers, setTopSellers] = useState([]); // State for related products
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // --- FIX ---
-  // Add a guard clause. If product is null or undefined,
-  // return a loading state instead of trying to render.
-  if (!product) {
+  useEffect(() => {
+    const fetchProductAndRelated = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const productResponse = await productAPI.getProduct(id);
+        const fetchedProduct = {
+          id: productResponse.data.id,
+          category: productResponse.data.category_name,
+          name: productResponse.data.name,
+          description: productResponse.data.description,
+          price: parseFloat(productResponse.data.current_batch.online_selling_price), // Store price as number
+          mrp_price: `$${parseFloat(productResponse.data.current_batch.online_mrp_price).toFixed(2)}`,
+          discount_percentage: parseFloat(productResponse.data.current_batch.online_discount_percentage),
+          images: productResponse.data.images && productResponse.data.images.length > 0 ? productResponse.data.images.map(img => img.image_url) : ["https://via.placeholder.com/400x300?text=No+Image"],
+          fullDescription: productResponse.data.description,
+          usage: productResponse.data.usage_instructions,
+          ingredients: productResponse.data.ingredients,
+          generic_name_display: productResponse.data.generic_name_display,
+          composition_summary: productResponse.data.composition_summary,
+          reviews: [], // Assuming reviews are not directly in product API for now
+        };
+        setProduct(fetchedProduct);
+
+        // Fetch top sellers for related products
+        const productsResponse = await productAPI.getProducts(1, 8);
+        const products = productsResponse.data.map(p => ({
+          id: p.id,
+          category: p.category_name,
+          name: p.name,
+          description: p.description,
+          price: parseFloat(p.current_batch.online_selling_price), // Store price as number
+          mrp_price: `$${parseFloat(p.current_batch.online_mrp_price).toFixed(2)}`,
+          discount_percentage: parseFloat(p.current_batch.online_discount_percentage),
+          images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
+          fullDescription: p.description,
+          usage: p.usage_instructions,
+          ingredients: p.ingredients,
+          reviews: [],
+        }));
+        setTopSellers(products);
+
+        window.scrollTo(0, 0); // Scroll to top after fetching
+      } catch (err) {
+        console.error("Error fetching product data:", err);
+        setError("Failed to load product details.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchProductAndRelated();
+    }
+  }, [id]); // Re-fetch when ID changes
+
+  if (loading) {
     return (
       <div className="max-w-screen-2xl mx-auto px-4 py-8 text-center">
         <p>Loading product...</p>
       </div>
     );
   }
-  // --- END FIX ---
+
+  if (error) {
+    return (
+      <div className="max-w-screen-2xl mx-auto px-4 py-8 text-center text-red-500">
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="max-w-screen-2xl mx-auto px-4 py-8 text-center">
+        <p>Product not found.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-screen-2xl mx-auto px-4 py-8">
-      <Breadcrumbs product={product} onNavigateHome={onNavigateHome} />
+      <Breadcrumbs product={product} />
       <div className="grid md:grid-cols-2 gap-12 mt-6">
         <ProductGallery images={product.images} />
         <ProductInfo product={product} />
       </div>
       <ProductTabs product={product} />
       <RelatedProducts
-        onProductClick={onProductClick}
         topSellers={topSellers}
         currentProductId={product.id}
         TopSellerCard={TopSellerCard} // Pass the component down

@@ -140,17 +140,18 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         # Check verification status - use verification_status field primarily
         current_status = prescription.verification_status
         print(f"Current Prescription Status: {current_status}") # Debug print
-        
+
         if current_status not in ['pending_verification', 'Pending_Review', 'AI_Processed', 'Pending_AI_Processing']:
             return Response(
                 {'error': f'Prescription is not in pending verification status. Current status: {current_status}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        verification_action = request.data.get('action')  # 'verified', 'need_clarification', 'rejected'
+
+        # Provide a default action if not specified, assuming 'verified' for a generic 'verify_prescription' endpoint
+        verification_action = request.data.get('action', 'verified') # Default to 'verified'
         notes = request.data.get('notes', '')
         rejection_reason = request.data.get('rejection_reason', '')
-        
+
         if verification_action not in ['verified', 'need_clarification', 'rejected']:
             return Response(
                 {'error': 'Invalid verification action'},

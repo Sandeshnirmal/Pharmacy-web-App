@@ -26,6 +26,7 @@ urlpatterns = [
     path('api/inventory/', include('inventory.urls')),
     path('api/offline-sales/', include('offline_sales.urls')),
     path('api/discounts/', include(discount_router.urls)), # Expose discounts directly under /api/discounts/
+    path('api/', include('cart.urls')), # Include cart URLs
 
     # Legacy endpoints (for backward compatibility)
     path('user/', include('usermanagement.urls')),

@@ -6,7 +6,7 @@ export const prescriptionService = {
   // Get all prescriptions with filtering and pagination
   getPrescriptions: async (params = {}) => {
     try {
-      const response = await axiosInstance.get('/prescription/enhanced-prescriptions/', { params });
+      const response = await axiosInstance.get('/api/prescription/enhanced-prescriptions/', { params });
       return {
         success: true,
         data: response.data.results || response.data,
@@ -27,7 +27,7 @@ export const prescriptionService = {
   // Get single prescription with details
   getPrescription: async (id) => {
     try {
-      const response = await axiosInstance.get(`/prescription/enhanced-prescriptions/${id}/`);
+      const response = await axiosInstance.get(`/api/prescription/enhanced-prescriptions/${id}/`);
       return {
         success: true,
         data: response.data
@@ -95,7 +95,7 @@ export const prescriptionService = {
         rejection_reason: data.rejection_reason || '',
         ...data
       };
-      const response = await axiosInstance.post(`/prescription/enhanced-prescriptions/${id}/verify/`, payload);
+      const response = await axiosInstance.post(`/api/prescription/enhanced-prescriptions/${id}/verify/`, payload);
       return {
         success: true,
         data: response.data,
@@ -209,7 +209,7 @@ export const prescriptionService = {
         notes: orderData.notes || '',
         ...orderData
       };
-      const response = await axiosInstance.post(`/prescription/enhanced-prescriptions/${prescriptionId}/create_order/`, payload);
+      const response = await axiosInstance.post(`/api/prescription/enhanced-prescriptions/${prescriptionId}/create_order/`, payload);
       return {
         success: true,
         data: response.data,
@@ -245,7 +245,7 @@ export const prescriptionService = {
   // Get prescription analytics
   getAnalytics: async () => {
     try {
-      const response = await axiosInstance.get('/prescription/enhanced-prescriptions/analytics/');
+      const response = await axiosInstance.get('/api/prescription/enhanced-prescriptions/analytics/');
       return {
         success: true,
         data: response.data

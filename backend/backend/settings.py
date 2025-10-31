@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'company_details', # App to store company details
     'offline_sales', # App for offline sales management
     'simple_history', # For tracking model changes
+    'cart', # Cart app for managing user shopping carts
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App

@@ -300,7 +300,9 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
-        channel = request.query_params.get('channel', 'online')
+        channel = 'online'
+        if request:
+            channel = request.query_params.get('channel', 'online')
         return calculate_current_selling_price(obj, channel)
 
     def get_current_cost_price(self, obj):
@@ -415,7 +417,9 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
-        channel = request.query_params.get('channel', 'online')
+        channel = 'online'
+        if request:
+            channel = request.query_params.get('channel', 'online')
         return calculate_current_selling_price(obj, channel)
 
     def get_current_cost_price(self, obj):

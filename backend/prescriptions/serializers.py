@@ -32,6 +32,7 @@ class PrescriptionMedicineSerializer(serializers.ModelSerializer): # Renamed fro
     product_form = serializers.CharField(source='suggested_medicine.form', read_only=True)
     product_price = serializers.SerializerMethodField() # Changed to SerializerMethodField
     suggested_products = SuggestedProductSerializer(many=True, read_only=True)
+    mapped_product = ProductSerializer(read_only=True) # Include full Product object for mapped_product
 
     class Meta:
         model = PrescriptionMedicine # Changed model to PrescriptionMedicine
