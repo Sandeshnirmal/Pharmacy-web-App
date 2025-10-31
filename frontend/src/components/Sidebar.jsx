@@ -100,18 +100,18 @@ const SidebarNavbar = () => {
 
           {/* <SidebarItem label="Inventory Management" to="/inventory" /> */}
           <SidebarItem label="Purchase Bill" to="/purchase-bill">
-            <SidebarItem
+            {/* <SidebarItem
               label="Purchase Bills List"
               to="/purchase-billing"
-            />
+            /> */}
             <SidebarItem
               label="Purchase Bill Inventory Upload"
               to="/purchase-bill/inventory-upload"
             />
-            <SidebarItem
+            {/* <SidebarItem
               label="Purchase Bill Return"
               to="/purchase-returns/new"
-            />
+            /> */}
             <SidebarItem
               label="Purchase Returns List"
               to="/purchase-returns"

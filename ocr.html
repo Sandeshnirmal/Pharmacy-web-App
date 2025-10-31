@@ -46,7 +46,7 @@
                 const base64Image = event.target.result.split(',')[1]; // Get base64 part
                 
                 try {
-                    const response = await fetch('/api/prescriptions/ocr/analyze/', { // Changed to relative path
+                    const response = await fetch('http://localhost:8000/api/prescriptions/ocr/analyze/', { // Changed to relative path
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

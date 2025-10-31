@@ -42,6 +42,17 @@ class Prescription(models.Model):
     ]
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='uploaded')
 
+    # Legacy status field for backward compatibility
+    VERIFICATION_STATUS = [
+        ('Uploaded', 'Uploaded'),
+        ('AI_Processing', 'AI_Processing'),
+        ('AI_Processed', 'AI_Processed'),
+        ('Pending_Review', 'Pending_Review'),
+        ('Verified', 'Verified'),
+        ('Rejected', 'Rejected'),
+    ]
+    verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS, default='Uploaded')
+
     # File management
     image_url = models.URLField(blank=True)
     image_file = models.ImageField(upload_to='prescriptions/', null=True, blank=True)
@@ -82,6 +93,7 @@ class Prescription(models.Model):
         verbose_name_plural = 'Prescriptions'
         indexes = [
             models.Index(fields=['status']),
+            models.Index(fields=['verification_status']),
             models.Index(fields=['upload_date']),
             models.Index(fields=['prescription_number']),
         ]
@@ -105,7 +117,7 @@ class PrescriptionMedicine(models.Model):
     extracted_dosage = models.CharField(max_length=100, blank=True)
     extracted_frequency = models.CharField(max_length=100, blank=True)
     extracted_duration = models.CharField(max_length=100, blank=True)
-    extracted_quantity = models.PositiveIntegerField(null=True, blank=True) # Converted to PositiveIntegerField
+    extracted_quantity = models.CharField(max_length=50, blank=True)
     extracted_instructions = models.TextField(blank=True)
     extracted_form = models.CharField(max_length=100, blank=True) # New field to store extracted form
 
@@ -145,11 +157,12 @@ class PrescriptionMedicine(models.Model):
         null=True,
         related_name='verified_prescriptions'
     )
+    mapped_product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)  # Legacy field
     verified_medicine_name = models.CharField(max_length=255, blank=True, null=True)
     verified_dosage = models.CharField(max_length=100, blank=True, null=True)
     verified_frequency = models.CharField(max_length=100, blank=True, null=True)
     verified_duration = models.CharField(max_length=100, blank=True, null=True)
-    verified_quantity = models.PositiveIntegerField(null=True, blank=True) # Converted to PositiveIntegerField
+    verified_quantity = models.CharField(max_length=50, blank=True, null=True)
     verified_instructions = models.TextField(blank=True, null=True)
 
     # Quantity and pricing
@@ -188,6 +201,27 @@ class PrescriptionMedicine(models.Model):
 
     def __str__(self):
         return f"{self.prescription.prescription_number or self.prescription.id} - {self.extracted_medicine_name}"
+
+# ============================================================================
+# LEGACY COMPATIBILITY
+# ============================================================================
+
+# Legacy model alias for backward compatibility
+PrescriptionDetail = PrescriptionMedicine
+
+# Add legacy field mappings for backward compatibility
+def add_legacy_fields():
+    """Add legacy field mappings to PrescriptionMedicine"""
+    # Map legacy field names to new field names
+    PrescriptionMedicine.ai_extracted_medicine_name = property(lambda self: self.extracted_medicine_name)
+    PrescriptionMedicine.ai_extracted_dosage = property(lambda self: self.extracted_dosage)
+    PrescriptionMedicine.ai_extracted_quantity = property(lambda self: self.extracted_quantity)
+    PrescriptionMedicine.ai_extracted_instructions = property(lambda self: self.extracted_instructions)
+    PrescriptionMedicine.ai_extracted_frequency = property(lambda self: self.extracted_frequency)
+    PrescriptionMedicine.ai_extracted_duration = property(lambda self: self.extracted_duration)
+
+# Apply legacy field mappings
+add_legacy_fields()
 
 # ============================================================================
 # WORKFLOW TRACKING & AUDIT SYSTEM
@@ -240,7 +274,7 @@ class PrescriptionScanResult(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    # Removed scanned_text, relying on Prescription.ocr_text
+    scanned_text = models.TextField()
     extracted_medicines = models.JSONField(default=list)
     total_suggestions = models.IntegerField(default=0)
     scan_type = models.CharField(max_length=20, choices=SCAN_TYPES, default='composition_search')
@@ -259,7 +293,7 @@ class PrescriptionScanResult(models.Model):
 class MedicineSuggestion(models.Model):
     """Model for storing individual medicine suggestions from scans"""
     scan_result = models.ForeignKey(PrescriptionScanResult, on_delete=models.CASCADE, related_name='suggestions')
-    product_id = models.IntegerField(null=True, blank=True)  # Reference to Product model, made nullable
+    product_id = models.IntegerField()  # Reference to Product model
     product_name = models.CharField(max_length=255)
     match_type = models.CharField(max_length=50)  # exact_name, composition, partial_name, etc.
     confidence_score = models.FloatField(default=0.0)

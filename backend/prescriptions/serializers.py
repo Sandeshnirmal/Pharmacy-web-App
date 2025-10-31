@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from datetime import date # Import date for current_selling_price calculation
-from .models import Prescription, PrescriptionMedicine , Product,User
+from .models import Prescription, PrescriptionMedicine
 from product.serializers import ProductSerializer
 from datetime import date # Import date for current_selling_price calculation
 
@@ -11,11 +11,14 @@ class SuggestedProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductSerializer.Meta.model
-        fields = ['id', 'name', 'strength', 'form', 'current_selling_price', 'manufacturer', 'total_stock']
+        fields = ['id', 'name', 'strength', 'form', 'current_selling_price', 'manufacturer', 'is_prescription_required', 'total_stock']
 
     def get_current_selling_price(self, obj):
-        # Prioritize batches with soonest expiry date
-        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('expiry_date', 'selling_price')
+        primary_batch = obj.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+        if primary_batch:
+            return primary_batch.selling_price
+        
+        active_batches = obj.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
         if active_batches.exists():
             return active_batches.first().selling_price
         return None
@@ -30,66 +33,19 @@ class PrescriptionMedicineSerializer(serializers.ModelSerializer): # Renamed fro
     product_price = serializers.SerializerMethodField() # Changed to SerializerMethodField
     suggested_products = SuggestedProductSerializer(many=True, read_only=True)
 
-    # Explicitly define ForeignKey fields to handle potential empty strings from database
-    suggested_medicine = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), allow_null=True, required=False)
-    verified_medicine = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), allow_null=True, required=False)
-    verified_by = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), allow_null=True, required=False)
-
     class Meta:
-        model = PrescriptionMedicine
+        model = PrescriptionMedicine # Changed model to PrescriptionMedicine
         fields = '__all__'
-        read_only_fields = ['unit_price', 'total_price'] # These will be calculated
-
-    def to_representation(self, instance):
-        # Pre-process instance attributes to handle potential empty strings in ForeignKey IDs
-        if instance.suggested_medicine_id == '':
-            instance.suggested_medicine_id = None
-        if instance.verified_medicine_id == '':
-            instance.verified_medicine_id = None
-        if instance.verified_by_id == '':
-            instance.verified_by_id = None
-        if instance.extracted_quantity == '':
-            instance.extracted_quantity = None
-        if instance.verified_quantity == '':
-            instance.verified_quantity = None
-
-        ret = super().to_representation(instance)
-        return ret
-
-    def _get_selling_price_from_product(self, product):
-        # Prioritize batches with soonest expiry date
-        active_batches = product.batches.filter(expiry_date__gt=date.today()).order_by('expiry_date', 'selling_price')
-        if active_batches.exists():
-            return active_batches.first().selling_price
-        return None
-
-    def _calculate_prices(self, instance):
-        if instance.verified_medicine and instance.quantity_prescribed is not None:
-            selling_price = self._get_selling_price_from_product(instance.verified_medicine)
-            
-            if selling_price is not None:
-                instance.unit_price = selling_price
-                instance.total_price = selling_price * instance.quantity_prescribed
-            else:
-                instance.unit_price = 0.00
-                instance.total_price = 0.00
-        else:
-            instance.unit_price = 0.00
-            instance.total_price = 0.00
-        return instance
-
-    def create(self, validated_data):
-        instance = super().create(validated_data)
-        return self._calculate_prices(instance)
-
-    def update(self, instance, validated_data):
-        instance = super().update(instance, validated_data)
-        return self._calculate_prices(instance)
 
     def get_product_price(self, obj):
-        # This method is for read-only display of suggested medicine price, not for setting unit_price
         if obj.suggested_medicine:
-            return self._get_selling_price_from_product(obj.suggested_medicine)
+            primary_batch = obj.suggested_medicine.batches.filter(expiry_date__gt=date.today(), is_primary=True).first()
+            if primary_batch:
+                return primary_batch.selling_price
+            
+            active_batches = obj.suggested_medicine.batches.filter(expiry_date__gt=date.today()).order_by('selling_price')
+            if active_batches.exists():
+                return active_batches.first().selling_price
         return None
 
 class PrescriptionUploadSerializer(serializers.ModelSerializer):
@@ -139,20 +95,15 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         return SuggestedProductSerializer(list(all_suggested_products), many=True).data
 
     def get_processing_status(self, obj):
-        # Use the 'status' field from the Prescription model
-        if obj.status == 'ai_processing':
+        if obj.verification_status == 'AI_Processing':
             return 'Processing with AI...'
-        elif obj.status == 'ai_mapped':
+        elif obj.verification_status == 'AI_Processed':
             return f'AI Processing Complete ({obj.ai_confidence_score:.1%} confidence)'
-        elif obj.status == 'pending_verification':
-            return 'Ready for Verification'
-        elif obj.status == 'verified':
+        elif obj.verification_status == 'Pending_Review':
+            return 'Ready for Review'
+        elif obj.verification_status == 'Verified':
             return 'Verified by Pharmacist'
-        elif obj.status == 'rejected':
+        elif obj.verification_status == 'Rejected':
             return 'Rejected'
-        elif obj.status == 'dispensed':
-            return 'Dispensed'
-        elif obj.status == 'completed':
-            return 'Completed'
         else:
             return 'Uploaded'

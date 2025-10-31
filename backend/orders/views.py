@@ -90,7 +90,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             # If no user is authenticated, return an empty queryset
             return queryset.none()
 
-        return queryset.select_related('user').prefetch_related( # Removed 'address'
+        return queryset.select_related('user', 'address').prefetch_related(
             'items__product',
             'items__batch',
             'tracking_updates',

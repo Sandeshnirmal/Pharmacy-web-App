@@ -124,20 +124,40 @@ class InvoiceService:
         """Create invoice for an order"""
         try:
             with transaction.atomic():
-                # Calculate invoice amounts
-                subtotal = sum(item.unit_price_at_order * item.quantity for item in order.items.all())
-                tax_rate = Decimal('18.0')  # 18% GST
-                tax_amount = (subtotal * tax_rate) / 100
+                # Calculate invoice amounts dynamically based on order items and their batches
+                subtotal = Decimal('0.00')
+                total_tax_amount = Decimal('0.00')
+                
+                invoice_items_data = []
+
+                for order_item in order.items.all():
+                    item_total_price = order_item.unit_price_at_order * order_item.quantity
+                    item_tax_percentage = order_item.batch.tax_percentage if order_item.batch and order_item.batch.tax_percentage is not None else Decimal('0.00')
+                    item_tax_amount = item_total_price * (item_tax_percentage / Decimal('100'))
+                    
+                    subtotal += item_total_price
+                    total_tax_amount += item_tax_amount
+
+                    invoice_items_data.append({
+                        'product_name': order_item.product.name,
+                        'product_description': f"{order_item.product.manufacturer} - {order_item.product.category}",
+                        'quantity': order_item.quantity,
+                        'unit_price': order_item.unit_price_at_order,
+                        'total_price': item_total_price,
+                        'tax_rate': item_tax_percentage,
+                        'tax_amount': item_tax_amount,
+                    })
+
                 shipping_fee = order.shipping_fee or Decimal('0')
                 discount_amount = order.discount_amount or Decimal('0')
-                total_amount = subtotal + tax_amount + shipping_fee - discount_amount
+                total_amount = subtotal + total_tax_amount + shipping_fee - discount_amount
                 
                 # Create invoice
                 invoice = Invoice.objects.create(
                     order=order,
                     due_date=timezone.now() + timezone.timedelta(days=30),
                     subtotal=subtotal,
-                    tax_amount=tax_amount,
+                    tax_amount=total_tax_amount, # Use calculated total_tax_amount
                     discount_amount=discount_amount,
                     shipping_fee=shipping_fee,
                     total_amount=total_amount,
@@ -147,15 +167,16 @@ class InvoiceService:
                 )
                 
                 # Create invoice items
-                for order_item in order.items.all(): # Corrected to use order.items
+                for item_data in invoice_items_data:
                     InvoiceItem.objects.create(
                         invoice=invoice,
-                        product_name=order_item.product.name,
-                        product_description=f"{order_item.product.manufacturer} - {order_item.product.category}",
-                        quantity=order_item.quantity,
-                        unit_price=order_item.unit_price_at_order,
-                        total_price=order_item.unit_price_at_order * order_item.quantity,
-                        tax_rate=Decimal('18.0')
+                        product_name=item_data['product_name'],
+                        product_description=item_data['product_description'],
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        total_price=item_data['total_price'],
+                        tax_rate=item_data['tax_rate'],
+                        tax_amount=item_data['tax_amount']
                     )
                 
                 return invoice

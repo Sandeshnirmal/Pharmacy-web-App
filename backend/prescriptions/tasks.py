@@ -25,10 +25,14 @@ def process_prescription_ocr_task(self, prescription_id, image_path, user_id=Non
         extracted_medicines = ocr_results.get('medicines', []) 
         confidence_score = ocr_results.get('ocr_confidence', 0.0) # Use 'ocr_confidence' from OCRService result
         
-        prescription.ai_processed = True # Changed from ocr_processed to ai_processed based on model
-        prescription.ai_confidence_score = confidence_score # Changed from ocr_confidence_score to ai_confidence_score
-        prescription.status = 'pending_verification' # Move to next stage
+        prescription.ai_processed = True
+        prescription.ai_confidence_score = confidence_score
+        prescription.status = 'pending_verification' # Keep this for internal status
+        prescription.verification_status = 'Pending_Review' # Set this for frontend display and approval logic
+        logger.debug(f"Before save: Prescription {prescription_id} status='{prescription.status}', verification_status='{prescription.verification_status}'")
         prescription.save()
+        prescription.refresh_from_db() # Ensure we read the latest from DB
+        logger.debug(f"After save: Prescription {prescription_id} status='{prescription.status}', verification_status='{prescription.verification_status}'")
 
         # Create PrescriptionMedicine entries
         for medicine_data in extracted_medicines:
@@ -49,8 +53,14 @@ def process_prescription_ocr_task(self, prescription_id, image_path, user_id=Non
 
             # Get the suggested Product object if a local equivalent was found
             suggested_product_obj = None
-            if medicine_data.get('local_equivalent') and medicine_data['local_equivalent'].get('product_object'):
-                suggested_product_obj = medicine_data['local_equivalent']['product_object']
+            if medicine_data.get('local_equivalent'):
+                product_name_from_ocr = medicine_data['local_equivalent'].get('product_name')
+                if product_name_from_ocr:
+                    try:
+                        # Retrieve the Product object using its name
+                        suggested_product_obj = Product.objects.get(name=product_name_from_ocr, is_active=True)
+                    except Product.DoesNotExist:
+                        logger.warning(f"Suggested product '{product_name_from_ocr}' not found in database for prescription medicine.")
 
             prescription_medicine_instance = PrescriptionMedicine.objects.create(
                 prescription=prescription,

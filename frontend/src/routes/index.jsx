@@ -95,7 +95,7 @@ export const routes = [
     lazy: true,
   },
   {
-    path: "/purchase-bill-return/:poId",
+    path: "/purchase-bill-return/",
     element: PurchaseBillReturnPage,
     title: "Process Purchase Bill Return",
     hidden: true, // Don't show in navigation

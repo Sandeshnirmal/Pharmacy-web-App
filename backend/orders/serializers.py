@@ -1,33 +1,40 @@
 # order/serializers.py
 from rest_framework import serializers
-from django.db import transaction
+from decimal import Decimal # Import Decimal
 from .models import Order, OrderItem
-from product.models import Product, Batch
-from usermanagement.models import Address
-from inventory.models import StockMovement # Import StockMovement
-from prescriptions.models import Prescription # Import Prescription model
+from product.serializers import ProductSerializer
+from usermanagement.models import Address # Import Address model
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    product_id = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), source='product')
-    batch_id = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all(), source='batch')
+    product = ProductSerializer(read_only=True)
     product_name = serializers.CharField(source='product.name', read_only=True)
+    product_strength = serializers.CharField(source='product.strength', read_only=True)
+    product_form = serializers.CharField(source='product.form', read_only=True)
     batch_number = serializers.CharField(source='batch.batch_number', read_only=True)
-    quantity = serializers.IntegerField(allow_null=True, required=False) # Explicitly define quantity
+    tax_percentage = serializers.DecimalField(source='batch.tax_percentage', max_digits=5, decimal_places=2, read_only=True)
+    tax_amount = serializers.SerializerMethodField()
+    total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product_id', 'batch_id', 'quantity', 'unit_price_at_order',
-                 'product_name', 'batch_number']
-        read_only_fields = ['unit_price_at_order'] # unit_price_at_order will be set by the OrderSerializer
+        fields = ['id', 'product', 'quantity', 'unit_price', 'unit_price_at_order',
+                 'total_price', 'product_name', 'product_strength', 'product_form', 'batch_number',
+                 'tax_percentage', 'tax_amount']
+
+    def get_tax_amount(self, obj):
+        if obj.batch and obj.batch.tax_percentage is not None:
+            return obj.unit_price_at_order * obj.quantity * (obj.batch.tax_percentage / 100)
+        return Decimal('0.00')
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True)
+    items = OrderItemSerializer(many=True, read_only=True)
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_phone = serializers.CharField(source='user.phone_number', read_only=True)
     address_full = serializers.SerializerMethodField()
-    prescription_id = serializers.PrimaryKeyRelatedField(queryset=Prescription.objects.all(), allow_null=True, required=False, source='prescription')
+    prescription_id = serializers.CharField(source='prescription.id', read_only=True) # Assuming 'prescription' is a ForeignKey
     total_items = serializers.SerializerMethodField()
+    total_tax_amount = serializers.SerializerMethodField()
 
     # Allow setting address by ID
     address = serializers.PrimaryKeyRelatedField(queryset=Address.objects.all(), allow_null=True, required=False)
@@ -37,73 +44,24 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'user_name', 'user_email', 'user_phone', 'address', 'address_full',
                   'order_date', 'total_amount', 'discount_amount', 'shipping_fee',
                   'payment_method', 'payment_status', 'order_status', 'is_prescription_order',
-                  'prescription_id', 'delivery_method',
+                  'prescription_image_url', 'prescription_status', 'delivery_method',
                   'expected_delivery_date', 'notes', 'delivery_address', 'tracking_number',
-                  'created_at', 'updated_at', 'items', 'total_items']
+                  'created_at', 'updated_at', 'items', 'prescription_id', 'total_items', 'total_tax_amount']
         read_only_fields = ['user', 'order_date', 'total_amount', 'discount_amount', 'shipping_fee',
                             'payment_status', 'order_status', 'created_at', 'updated_at',
-                            'tracking_number', 'delivery_address']
+                            'tracking_number', 'delivery_address', 'prescription_image_url', 'total_tax_amount']
 
     def get_address_full(self, obj):
-        if obj.delivery_address:
-            return f"{obj.delivery_address.get('address_line1', '')}, {obj.delivery_address.get('city', '')}, {obj.delivery_address.get('state', '')} - {obj.delivery_address.get('pincode', '')}"
+        if obj.address:
+            return f"{obj.address.address_line1}, {obj.address.city}, {obj.address.state} - {obj.address.pincode}"
         return None
 
     def get_total_items(self, obj):
         return obj.items.count()
 
-    def create(self, validated_data):
-        items_data = validated_data.pop('items')
-        address_instance = validated_data.pop('address', None)
-        user = self.context['request'].user # Assuming user is available in context
-
-        with transaction.atomic():
-            # Populate delivery_address from Address instance if provided
-            if address_instance:
-                validated_data['delivery_address'] = {
-                    'address_line1': address_instance.address_line1,
-                    'address_line2': address_instance.address_line2,
-                    'city': address_instance.city,
-                    'state': address_instance.state,
-                    'pincode': address_instance.pincode,
-                    'country': address_instance.country,
-                }
-            
-            validated_data['user'] = user
-            validated_data['order_status'] = 'Pending' # Initial status
-            validated_data['payment_status'] = 'Pending' # Initial payment status
-
-            order = Order.objects.create(**validated_data)
-
-            total_amount = 0
-            for item_data in items_data:
-                product = item_data['product']
-                batch = item_data['batch']
-                quantity = item_data['quantity']
-
-                if batch.current_quantity < quantity:
-                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} (Batch: {batch.batch_number}). Available: {batch.current_quantity}, Requested: {quantity}")
-
-                # Deduct stock
-                batch.current_quantity -= quantity
-                batch.save(update_fields=['current_quantity'])
-
-                # Create StockMovement record
-                StockMovement.objects.create(
-                    product=product,
-                    batch=batch,
-                    quantity=quantity,
-                    movement_type='OUT',
-                    reason='Order placed',
-                    moved_by=user # Assuming user is the one placing the order
-                )
-
-                # Set unit_price_at_order from batch's selling price
-                item_data['unit_price_at_order'] = batch.selling_price
-                order_item = OrderItem.objects.create(order=order, **item_data)
-                total_amount += order_item.total_price
-
-            order.total_amount = total_amount
-            order.save(update_fields=['total_amount', 'order_status', 'payment_status', 'delivery_address'])
-
-        return order
+    def get_total_tax_amount(self, obj):
+        total_tax = Decimal('0.00')
+        for item in obj.items.all():
+            if item.batch and item.batch.tax_percentage is not None:
+                total_tax += item.unit_price_at_order * item.quantity * (item.batch.tax_percentage / 100)
+        return total_tax

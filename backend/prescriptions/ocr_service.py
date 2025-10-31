@@ -507,7 +507,6 @@ class OCRService:
         if best_match:
             logger.debug(f"Final best match: {best_match.name} with score {best_score:.2f}")
             return {
-                'product_object': best_match,
                 'product_name': best_match.name,
                 'composition': self._build_product_composition(best_match),
                 'form': (best_match.form or 'tablet').title(),

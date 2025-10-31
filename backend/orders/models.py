@@ -2,7 +2,6 @@ from django.db import models
 from usermanagement.models import User
 from usermanagement.models import Address
 from product.models import Product,Batch
-from prescriptions.models import Prescription # Import Prescription
 
 
 
@@ -30,7 +29,7 @@ class Order(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
-    # Removed address ForeignKey, relying on delivery_address JSONField
+    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True)
     order_date = models.DateTimeField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -39,7 +38,13 @@ class Order(models.Model):
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS)
     order_status = models.CharField(max_length=25, choices=ORDER_STATUS, default='Pending')
     is_prescription_order = models.BooleanField(default=False)
-    prescription = models.ForeignKey(Prescription, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders') # New ForeignKey
+    prescription_image_url = models.URLField(max_length=500, blank=True, null=True) # Store URL to image
+    PRESCRIPTION_STATUS_CHOICES = [
+        ('pending_review', 'Pending Review'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected'),
+    ]
+    prescription_status = models.CharField(max_length=20, choices=PRESCRIPTION_STATUS_CHOICES, default='pending_review')
     delivery_method = models.CharField(max_length=50, default='Standard Delivery')
     expected_delivery_date = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
@@ -50,11 +55,12 @@ class Order(models.Model):
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
-    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True) # Reverted to nullable to allow migration
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField()
-    unit_price_at_order = models.DecimalField(max_digits=10, decimal_places=2) # Removed redundant unit_price
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # Renamed for consistency
+    unit_price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
     prescription_detail = models.ForeignKey('prescriptions.PrescriptionMedicine', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
-    batch = models.ForeignKey(Batch, on_delete=models.PROTECT, null=True, blank=True) # Made nullable again to allow migration
+    batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, blank=True,related_name='orders')
 
     @property
     def total_price(self):

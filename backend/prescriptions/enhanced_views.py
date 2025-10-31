@@ -468,7 +468,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                     'id': new_product.id,
                     'name': new_product.name,
                     'manufacturer': new_product.manufacturer,
-                    'price': float(new_product.price)
+                    'price': float(new_product.get_default_batch().selling_price if new_product.get_default_batch() else 0.0)
                 }
             })
 # sdfsdf

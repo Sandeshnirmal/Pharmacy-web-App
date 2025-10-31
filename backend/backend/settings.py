@@ -24,11 +24,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u='
 
 # Google AI API Key for OCR
-GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyA8JFwu5DpLSKBfTTk2K3dUW61y32gZeoo')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyBFOWl2ohkpml5lBN9Atsqo87dI40Glopg')
 
 # Razorpay Configuration (Update with your actual keys)
-RAZORPAY_KEY_ID = 'rzp_live_46E992FtnTVX2O'  # Test key
-RAZORPAY_KEY_SECRET = '1qR4WgCT2k6K2Ud6r5cCoqtT'  # Test secret
+RAZORPAY_KEY_ID = 'rzp_test_u32HLv2OyCBfAN'  # Test key
+RAZORPAY_KEY_SECRET = 'Owlg61rwtT7V3RQKoYGKhsUC'  # Test secret
 
 # For production, use environment variables:
 # RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
