@@ -62,11 +62,12 @@ def create_payment_order(request):
         logger.info(f"Payment order created: {payment.id} for order {order_id}")
         
         return Response({
-            'razorpay_order_id': razorpay_order['id'], # Changed 'id' to 'razorpay_order_id' for clarity and consistency with mobile app expectation
+            'razorpay_order_id': razorpay_order['id'],
             'amount': razorpay_order['amount'],
             'currency': razorpay_order['currency'],
             'receipt': razorpay_order['receipt'],
-            'payment_id': payment.id
+            'payment_id': payment.id,
+            'key_id': getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_test_u32HLv2OyCBfAN') # Add key_id to response
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:

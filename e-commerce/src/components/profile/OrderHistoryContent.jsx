@@ -39,10 +39,10 @@ function OrderHistoryContent({ orders }) {
                   </p>
                   <span
                     className={`text-sm font-medium px-2 py-0.5 rounded-full ${getStatusClass(
-                      order.status
+                      order.order_status
                     )}`}
                   >
-                    {order.status}
+                    {order.order_status}
                   </span>
                 </div>
               </div>
@@ -51,7 +51,10 @@ function OrderHistoryContent({ orders }) {
                 <ul className="list-disc pl-5 text-gray-700">
                   {order.items && order.items.length > 0 ? (
                     order.items.map((item, index) => (
-                      <li key={index}>{item.product_name} (x{item.quantity})</li>
+                      <li key={index} className="flex justify-between">
+                        <span>{item.product_name} (x{item.quantity})</span>
+                        <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                      </li>
                     ))
                   ) : (
                     <li>No items found for this order.</li>
