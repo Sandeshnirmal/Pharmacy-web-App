@@ -12,37 +12,41 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Determine the environment and load the appropriate .env file
+DJANGO_ENV = os.environ.get('DJANGO_ENV', 'development')
+if DJANGO_ENV == 'production':
+    load_dotenv(os.path.join(BASE_DIR, '.env.production'))
+else:
+    load_dotenv(os.path.join(BASE_DIR, '.env.development'))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u='
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # Google AI API Key for OCR
-GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyA8JFwu5DpLSKBfTTk2K3dUW61y32gZeoo')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
 # Razorpay Configuration (Update with your actual keys)
-RAZORPAY_KEY_ID = 'rzp_test_u32HLv2OyCBfAN'  # Test key
-RAZORPAY_KEY_SECRET = 'Owlg61rwtT7V3RQKoYGKhsUC'  # Test secret
-
-# For production, use environment variables:
-# RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
-# RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
 
 # TPC Courier Configuration
-TPC_API_ENDPOINT = os.environ.get('TPC_API_ENDPOINT', 'https://www.tpcglobe.com') # Placeholder
-TPC_API_KEY = os.environ.get('TPC_API_KEY', '0236') # Placeholder
-TPC_API_SECRET = os.environ.get('TPC_API_SECRET', 'Admin@123') # Placeholder
+TPC_API_ENDPOINT = os.environ.get('TPC_API_ENDPOINT')
+TPC_API_KEY = os.environ.get('TPC_API_KEY')
+TPC_API_SECRET = os.environ.get('TPC_API_SECRET')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') # In production, specify actual hostnames, e.g., ['yourdomain.com']
 
 
 # Application definition
@@ -68,28 +72,18 @@ INSTALLED_APPS = [
     'payment',  # Payment app for Razorpay integration
     'courier',  # Professional courier integration
     'company_details', # App to store company details
+    'offline_sales', # App for offline sales management
+    'simple_history', # For tracking model changes
+    'cart', # Cart app for managing user shopping carts
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
+CORS_ALLOW_ALL_ORIGINS = DEBUG # Allow all origins in development
 
 # Allowed origins for production (comment out CORS_ALLOW_ALL_ORIGINS for production)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",    # React development server
-    "http://localhost:5173",    # Vite development server
-    "http://localhost:5174",    # Vite development server (alternative port)
-    "http://localhost:5175",    # Vite development server (alternative port)
-    "http://127.0.0.1:3000",    # React development server
-    "http://127.0.0.1:5173",    # Vite development server
-    "http://127.0.0.1:5174",    # Vite development server
-    "http://127.0.0.1:5175",    # Vite development server
-    "http://localhost:8080",    # Mobile app development
-    "http://127.0.0.1:8080", 
-    "http://192.168.77.6:8000",      # Mobile app development
-    "http://192.168.129.6:8001",     # Current Linux machine IP
-    "http://192.168.129.6:5174",     # Frontend development server
-    "http://192.168.129.6:3000",     # Alternative frontend port
-]
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '[]')
+import json
+CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
 
 # Allow credentials for authentication
 CORS_ALLOW_CREDENTIALS = True
@@ -137,14 +131,8 @@ CORS_ALLOW_PRIVATE_NETWORK = True
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 
 # CSRF settings for mobile app compatibility
-CSRF_TRUSTED_ORIGINS = [
-    'http://192.168.77.6:8000',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'http://192.168.129.6:8001',
-    'http://192.168.129.6:5174',
-    'http://192.168.129.6:3000',
-]
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '[]')
+CSRF_TRUSTED_ORIGINS = json.loads(CSRF_TRUSTED_ORIGINS)
 
 # Disable CSRF for API endpoints (since we disabled the middleware)
 CSRF_COOKIE_SECURE = False
@@ -239,8 +227,21 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cache settings
+CACHE_TTL = 60 * 5 # Cache for 5 minutes (300 seconds)
 
-
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1', # Assuming Redis runs on localhost:6379, database 1
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor', # Optional: for compressing cached data
+            'SERIALIZER': 'django_redis.serializers.pickle.PickleSerializer', # Use Pickle for DRF Response objects
+        },
+        'TIMEOUT': CACHE_TTL, # Use the defined TTL
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -259,32 +260,42 @@ REST_FRAMEWORK = {
 
 
 
+from datetime import timedelta, date
 
-# SIMPLE_JWT = {
-#     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),  # Short-lived access tokens
-#     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # Longer-lived refresh tokens
-#     'ROTATE_REFRESH_TOKENS': True,                 # Rotate refresh tokens on use
-#     'BLACKLIST_AFTER_ROTATION': True,              # Invalidate old refresh tokens
-#     'UPDATE_LAST_LOGIN': True,                     # Update user's last login on token refresh
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=50),  # Short-lived access tokens
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),   # Longer-lived refresh tokens
+    'ROTATE_REFRESH_TOKENS': True,                 # Rotate refresh tokens on use
+    'BLACKLIST_AFTER_ROTATION': True,              # Invalidate old refresh tokens
+    'UPDATE_LAST_LOGIN': True,                     # Update user's last login on token refresh
 
-#     'ALGORITHM': 'HS256',
-#     'SIGNING_KEY': 'django-insecure-wl&re62()vv=7)-zanf622cw5^gt-xyyu(8vf1ox^4had=8-u=', # Use your SECRET_KEY or a strong, separate key
-#     'VERIFYING_KEY': None,
-#     'AUDIENCE': None,
-#     'ISSUER': None,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': os.environ.get('SIMPLE_JWT_SIGNING_KEY'), # Use your SECRET_KEY or a strong, separate key
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
 
-#     'AUTH_HEADER_TYPES': ('Bearer',), # Common practice for JWT
-#     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
-#     'USER_ID_FIELD': 'id', # Assuming your custom User model uses 'id' as PK
-#     'USER_ID_CLAIM': 'user_id', # Claim name for user ID in token
+    'AUTH_HEADER_TYPES': ('Bearer',), # Common practice for JWT
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id', # Assuming your custom User model uses 'id' as PK
+    'USER_ID_CLAIM': 'user_id', # Claim name for user ID in token
 
-#     'TOKEN_TYPE_CLAIM': 'token_type',
-#     'JTI_CLAIM': 'jti', # JWT ID claim for blacklist
-#     'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti', # JWT ID claim for blacklist
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
 
-#     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5), # For sliding tokens, if you use them
-#     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # For sliding tokens
-# }
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5), # For sliding tokens, if you use them
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # For sliding tokens
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') # Use Redis database 0 for Celery broker
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') # Use Redis database 0 for Celery results
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True # Added to address deprecation warning
+CELERY_TIMEZONE = 'Asia/Calcutta' # Match your project's TIME_ZONE
 
 LOGGING = {
     'version': 1,
@@ -304,6 +315,14 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple' if not DEBUG else 'verbose',
         },
+        'celery_file': { # New handler for Celery logs
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'celery.log'),
+            'maxBytes': 1024 * 1024 * 5, # 5 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
         'django': {
@@ -311,19 +330,29 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'celery': { # Logger for Celery
+            'handlers': ['console', 'celery_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery.task': { # Logger for Celery tasks
+            'handlers': ['console', 'celery_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         'courier': { # Logger for your courier app
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG to see detailed API requests/responses
+            'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
         'requests': { # Logger for the requests library
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG to see detailed HTTP requests
+            'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
         'urllib3': { # Logger for urllib3, used by requests
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG to see detailed HTTP requests
+            'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
     },
