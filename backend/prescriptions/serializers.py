@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from datetime import date # Import date for current_selling_price calculation
-from .models import Prescription, PrescriptionMedicine
+from .models import Prescription, PrescriptionMedicine, PrescriptionWorkflowLog # Import PrescriptionWorkflowLog
 from product.serializers import ProductSerializer
 from datetime import date # Import date for current_selling_price calculation
 
@@ -108,3 +108,11 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             return 'Rejected'
         else:
             return 'Uploaded'
+
+class PrescriptionWorkflowLogSerializer(serializers.ModelSerializer):
+    """Serializer for PrescriptionWorkflowLog model"""
+    actor_name = serializers.CharField(source='actor.get_full_name', read_only=True)
+    
+    class Meta:
+        model = PrescriptionWorkflowLog
+        fields = '__all__'

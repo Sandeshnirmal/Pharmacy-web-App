@@ -234,7 +234,7 @@ const PrescriptionDetailScreen = () => {
                       >
                         <h3 className="font-bold text-teal-700 mb-2">Mapped Product:</h3>
                         <p className="text-sm text-teal-600"><strong>Name:</strong> {medicine.mapped_product.name || 'N/A'} ({medicine.mapped_product.brand_name || 'N/A'})</p>
-                        <p className="text-sm text-teal-600"><strong>Price:</strong> ${medicine.mapped_product.price || 'N/A'}</p>
+                        <p className="text-sm text-teal-600"><strong>Price:</strong> ₹{medicine.mapped_product.price || 'N/A'}</p>
                         <p className="text-sm text-teal-600"><strong>Strength:</strong> {medicine.mapped_product.strength || 'N/A'}</p>
                         <p className="text-sm text-teal-600"><strong>Manufacturer:</strong> {medicine.mapped_product.manufacturer || 'N/A'}</p>
                       </div>
@@ -244,7 +244,7 @@ const PrescriptionDetailScreen = () => {
                         <h3 className="font-bold text-blue-700 mb-2">Suggested Alternatives:</h3>
                         <ul className="list-disc list-inside text-sm text-blue-600 space-y-1">
                           {medicine.suggested_products.map(sp => (
-                            <li key={sp.id}>{sp.name || 'N/A'} (${sp.price || 'N/A'}) - {sp.manufacturer || 'N/A'}</li>
+                            <li key={sp.id}>{sp.name || 'N/A'} (₹{sp.price || 'N/A'}) - {sp.manufacturer || 'N/A'}</li>
                           ))}
                         </ul>
                       </div>

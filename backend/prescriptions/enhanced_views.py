@@ -6,11 +6,13 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Count, F
+from django.db.models import Q, Count, F, ExpressionWrapper, fields, DurationField, Sum
 from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
-from datetime import timedelta
+from django.views.decorators.cache import cache_page # Import cache_page
+from django.conf import settings # Import settings to get cache timeout
+from datetime import timedelta, datetime
 import uuid
 import os
 
@@ -18,7 +20,7 @@ from .models import (
     Prescription, PrescriptionMedicine, PrescriptionWorkflowLog
 )
 from .serializers import (
-    PrescriptionSerializer, PrescriptionMedicineSerializer, SuggestedProductSerializer
+    PrescriptionSerializer, PrescriptionMedicineSerializer, SuggestedProductSerializer, PrescriptionWorkflowLogSerializer
 )
 from .ocr_service import OCRService
 from .tasks import process_prescription_ocr_task # Import Celery task
@@ -113,9 +115,9 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                     actor=self.request.user if self.request.user.is_authenticated else None,
                     system_generated=True
                 )
-                print(f"OCR processing task initiated for prescription {prescription.id}")
+                # print(f"OCR processing task initiated for prescription {prescription.id}") # Removed debug print
             except Exception as e:
-                print(f"Failed to initiate OCR task for prescription {prescription.id}: {e}")
+                # print(f"Failed to initiate OCR task for prescription {prescription.id}: {e}") # Removed debug print
                 prescription.status = 'ocr_failed'
                 prescription.verification_status = 'OCR_Failed'
                 prescription.rejection_reason = f"Failed to initiate OCR task: {str(e)}"
@@ -139,7 +141,7 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         
         # Check verification status - use verification_status field primarily
         current_status = prescription.verification_status
-        print(f"Current Prescription Status: {current_status}") # Debug print
+        # print(f"Current Prescription Status: {current_status}") # Removed debug print
 
         if current_status not in ['pending_verification', 'Pending_Review', 'AI_Processed', 'Pending_AI_Processing']:
             return Response(
@@ -207,28 +209,33 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         serializer = PrescriptionWorkflowLogSerializer(logs, many=True)
         return Response(serializer.data)
     
-
-    
+    @cache_page(settings.CACHE_TTL) # Cache for a defined TTL
     @action(detail=False, methods=['get'], permission_classes=[IsVerifierOrAbove])
     def verification_queue(self, request):
         """Get prescriptions pending verification"""
+        # Optimize query to avoid N+1 for prescription_medicines.count()
+        # Annotate with medicine count and calculate priority score in the database
+        now_utc = timezone.now()
+        
         prescriptions = Prescription.objects.filter(
             status='pending_verification'
-        ).order_by('-upload_date')
+        ).annotate(
+            medicines_count=Count('prescription_medicines', distinct=True),
+            age_hours=ExpressionWrapper(
+                (now_utc - F('upload_date')) / timedelta(hours=1),
+                output_field=fields.FloatField()
+            )
+        ).annotate(
+            priority_score=ExpressionWrapper(
+                F('medicines_count') * 5 +
+                (1 - F('ai_confidence_score')) * 50 +
+                F('age_hours') * 2,
+                output_field=fields.FloatField()
+            )
+        ).order_by('-priority_score', '-upload_date') # Sort by priority score and then upload_date
 
         queue_data = []
         for prescription in prescriptions:
-            # Calculate priority score
-            from datetime import datetime
-            age_hours = (datetime.now(timezone.utc) - prescription.upload_date).total_seconds() / 3600
-            priority_score = min(age_hours * 2, 100)  # Max 100 points for age
-
-            if prescription.ai_confidence_score:
-                priority_score += (1 - prescription.ai_confidence_score) * 50
-
-            medicines_count = prescription.prescription_medicines.count()
-            priority_score += medicines_count * 5
-
             queue_data.append({
                 'id': prescription.id,
                 'prescription_number': prescription.prescription_number,
@@ -237,18 +244,16 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
                 'status': prescription.status,
                 'ai_confidence_score': prescription.ai_confidence_score,
                 'upload_date': prescription.upload_date,
-                'medicines_count': medicines_count,
-                'priority_score': round(priority_score, 2)
+                'medicines_count': prescription.medicines_count,
+                'priority_score': round(prescription.priority_score, 2)
             })
-
-        # Sort by priority score (descending)
-        queue_data.sort(key=lambda x: x['priority_score'], reverse=True)
 
         paginator = PrescriptionPageNumberPagination()
         paginated_queue = paginator.paginate_queryset(queue_data, request)
 
         return paginator.get_paginated_response(paginated_queue)
     
+    @cache_page(settings.CACHE_TTL) # Cache for a defined TTL
     @action(detail=False, methods=['get'], permission_classes=[IsPharmacistOrAdmin])
     def analytics(self, request):
         """Get prescription analytics"""
@@ -269,26 +274,32 @@ class EnhancedPrescriptionViewSet(viewsets.ModelViewSet):
         
         need_clarification = Prescription.objects.filter(status='need_clarification').count()
         
-        # Calculate average processing time
-        completed_prescriptions = Prescription.objects.filter(
-            verification_date__isnull=False
+        # Calculate average processing time using database aggregation
+        completed_prescriptions_stats = Prescription.objects.filter(
+            verification_date__isnull=False,
+            upload_date__isnull=False
+        ).annotate(
+            processing_time=ExpressionWrapper(
+                F('verification_date') - F('upload_date'),
+                output_field=DurationField()
+            )
+        ).aggregate(
+            total_processing_seconds=Sum('processing_time')
         )
         
-        total_time = 0
-        count = 0
-        for prescription in completed_prescriptions:
-            if prescription.upload_date and prescription.verification_date:
-                delta = prescription.verification_date - prescription.upload_date
-                total_time += delta.total_seconds() / 3600
-                count += 1
+        total_processing_seconds = completed_prescriptions_stats['total_processing_seconds']
+        count = Prescription.objects.filter(
+            verification_date__isnull=False,
+            upload_date__isnull=False
+        ).count()
         
-        average_processing_time = round(total_time / count, 2) if count > 0 else 0
+        average_processing_time = round((total_processing_seconds.total_seconds() / 3600) / count, 2) if count > 0 and total_processing_seconds else 0
         
 
         
         # Get top medicines
         top_medicines = PrescriptionMedicine.objects.filter(
-            verification_status='approved'
+            verification_status='verified' # Changed from 'approved' to 'verified' for consistency
         ).values('verified_medicine__name').annotate(
             count=Count('id')
         ).order_by('-count')[:10]
@@ -319,7 +330,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
         """Filter prescription medicines based on user permissions"""
         user = self.request.user
         queryset = PrescriptionMedicine.objects.all()
-        print(f"PrescriptionMedicineViewSet.get_queryset called. Initial queryset count: {queryset.count()}")
+        # print(f"PrescriptionMedicineViewSet.get_queryset called. Initial queryset count: {queryset.count()}") # Removed debug print
 
         # For 'remap_medicine' action, allow access to the medicine object regardless of user role
         # as the action itself has AllowAny permission.
@@ -330,7 +341,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             pass
         elif user.is_authenticated and hasattr(user, 'role') and user.role == 'customer':
             queryset = queryset.filter(prescription__user=user)
-            print(f"  - After customer filter: {queryset.count()}")
+            # print(f"  - After customer filter: {queryset.count()}") # Removed debug print
         else:
             # For unauthenticated users or other roles, return an empty queryset or apply stricter filters
             queryset = queryset.none() # Or raise permission denied
@@ -338,14 +349,14 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
         prescription_id = self.request.query_params.get('prescription')
         if prescription_id:
             queryset = queryset.filter(prescription_id=prescription_id)
-            print(f"  - After prescription_id filter ({prescription_id}): {queryset.count()}")
+            # print(f"  - After prescription_id filter ({prescription_id}): {queryset.count()}") # Removed debug print
 
         verification_status = self.request.query_params.get('verification_status')
         if verification_status:
             queryset = queryset.filter(verification_status=verification_status)
-            print(f"  - After verification_status filter ({verification_status}): {queryset.count()}")
+            # print(f"  - After verification_status filter ({verification_status}): {queryset.count()}") # Removed debug print
         
-        print(f"PrescriptionMedicineViewSet.get_queryset returning {queryset.count()} medicines.")
+        # print(f"PrescriptionMedicineViewSet.get_queryset returning {queryset.count()} medicines.") # Removed debug print
         return queryset.order_by('prescription__upload_date', 'line_number')
 
     @action(detail=True, methods=['post'], permission_classes=[IsVerifierOrAbove])
@@ -415,18 +426,18 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def remap_medicine(self, request, pk=None):
         """Remap prescription medicine to a different product"""
-        print(f"remap_medicine action called. PK: {pk}")
+        # print(f"remap_medicine action called. PK: {pk}") # Removed debug print
         try:
             medicine = self.get_object()
-            print(f"Medicine object retrieved: {medicine.id} - {medicine.extracted_medicine_name}")
+            # print(f"Medicine object retrieved: {medicine.id} - {medicine.extracted_medicine_name}") # Removed debug print
         except Exception as e:
-            print(f"Error retrieving medicine object with PK {pk}: {e}")
+            # print(f"Error retrieving medicine object with PK {pk}: {e}") # Removed debug print
             return Response({
                 'error': f'Medicine not found or invalid ID: {str(e)}'
             }, status=status.HTTP_404_NOT_FOUND)
 
         new_product_id = request.data.get('product_id')
-        print(f"New product ID from request: {new_product_id}")
+        # print(f"New product ID from request: {new_product_id}") # Removed debug print
 
         if not new_product_id:
             return Response({
@@ -435,8 +446,8 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
 
         try:
             from product.models import Product
-            new_product = Product.objects.get(id=new_product_id, is_active=True)
-            print(f"New product found: {new_product.name}")
+            new_product = Product.objects.prefetch_related('batches').get(id=new_product_id, is_active=True)
+            # print(f"New product found: {new_product.name}") # Removed debug print
 
             # Update the medicine mapping
             old_product = medicine.verified_medicine
@@ -447,7 +458,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             medicine.pharmacist_comment = request.data.get('comment', f'Remapped from {old_product.name if old_product else "unknown"} to {new_product.name}')
             medicine.verified_by = request.user if request.user.is_authenticated else None
             medicine.save()
-            print(f"Medicine {medicine.id} remapped successfully to {new_product.name}")
+            # print(f"Medicine {medicine.id} remapped successfully to {new_product.name}") # Removed debug print
 
             # Log the remapping action
             PrescriptionWorkflowLog.objects.create(
@@ -459,7 +470,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
                 actor=request.user if request.user.is_authenticated else None,
                 system_generated=False
             )
-            print("Workflow log created.")
+            # print("Workflow log created.") # Removed debug print
 
             return Response({
                 'success': True,
@@ -474,12 +485,12 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             })
 # sdfsdf
         except Product.DoesNotExist:
-            print(f"Product with ID {new_product_id} not found or inactive.")
+            # print(f"Product with ID {new_product_id} not found or inactive.") # Removed debug print
             return Response({
                 'error': 'Product not found or inactive'
             }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            print(f"Unhandled exception during remapping: {e}")
+            # print(f"Unhandled exception during remapping: {e}") # Removed debug print
             return Response({
                 'error': f'Failed to remap medicine: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -533,7 +544,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            print(f"Error in mobile_composition_prescription_upload: {e}")
+            # print(f"Error in mobile_composition_prescription_upload: {e}") # Removed debug print
             import traceback
             traceback.print_exc()
             return Response({
@@ -559,7 +570,7 @@ class PrescriptionMedicineViewSet(viewsets.ModelViewSet):
             from product.models import Product
 
             prescription = Prescription.objects.get(id=prescription_id)
-            product = Product.objects.get(id=product_id, is_active=True)
+            product = Product.objects.prefetch_related('batches').get(id=product_id, is_active=True)
 
             # Check if prescription can be modified
             if prescription.status in ['dispensed', 'completed']:

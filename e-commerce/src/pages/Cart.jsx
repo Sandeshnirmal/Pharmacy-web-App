@@ -83,7 +83,7 @@ function CartItem({ item, onUpdateQuantity, onRemoveItem }) {
         </button>
       </div>
       <div className="flex flex-col items-end justify-between h-24">
-        <p className="text-lg font-bold text-gray-900">${(price * item.quantity).toFixed(2)}</p>
+        <p className="text-lg font-bold text-gray-900">₹{(price * item.quantity).toFixed(2)}</p>
         {/* Quantity Selector */}
         <div className="flex items-center border border-gray-300 rounded-full">
           <button
@@ -125,20 +125,20 @@ function OrderSummary({
       <div className="space-y-3">
         <div className="flex justify-between text-gray-700">
           <span>Subtotal</span>
-          <span className="font-medium">${subtotal.toFixed(2)}</span>
+          <span className="font-medium">₹{subtotal.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-gray-700">
           <span>Shipping (est.)</span>
-          <span className="font-medium">${shipping.toFixed(2)}</span>
+          <span className="font-medium">₹{shipping.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-gray-700">
           <span>Tax (est.)</span>
-          <span className="font-medium">${tax.toFixed(2)}</span>
+          <span className="font-medium">₹{tax.toFixed(2)}</span>
         </div>
         <div className="border-t border-gray-200 pt-4 mt-4">
           <div className="flex justify-between text-lg font-bold text-gray-900">
             <span>Total</span>
-            <span>${total.toFixed(2)}</span>
+            <span>₹{total.toFixed(2)}</span>
           </div>
         </div>
       </div>

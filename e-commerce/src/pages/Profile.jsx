@@ -41,7 +41,7 @@ function ProfilePage() {
       try {
         setLoadingUser(true);
         const response = await authAPI.getCurrentUser();
-        if (response.data) {
+        if (response.success && response.data) {
           const fetchedUser = {
             id: response.data.id,
             first_name: response.data.first_name,
@@ -51,7 +51,12 @@ function ProfilePage() {
           };
           setUser(fetchedUser);
         } else {
-          setError("Failed to fetch user data.");
+          setError(response.error || "Failed to fetch user data.");
+          console.log(response.error) // Use error from response or default message
+          if (response.status === 401) { // If unauthorized, log out
+            logout();
+            navigate('/login');
+          }
         }
       } catch (err) {
         console.error("Error fetching user data:", err);

@@ -367,7 +367,7 @@ function ProductPage({ TopSellerCard }) { // Only accept TopSellerCard
           name: productResponse.data.name,
           description: productResponse.data.description,
           price: parseFloat(productResponse.data.current_batch.online_selling_price), // Store price as number
-          mrp_price: `$${parseFloat(productResponse.data.current_batch.online_mrp_price).toFixed(2)}`,
+          mrp_price: `₹${parseFloat(productResponse.data.current_batch.online_mrp_price).toFixed(2)}`,
           discount_percentage: parseFloat(productResponse.data.current_batch.online_discount_percentage),
           images: productResponse.data.images && productResponse.data.images.length > 0 ? productResponse.data.images.map(img => img.image_url) : ["https://via.placeholder.com/400x300?text=No+Image"],
           fullDescription: productResponse.data.description,
@@ -387,7 +387,7 @@ function ProductPage({ TopSellerCard }) { // Only accept TopSellerCard
           name: p.name,
           description: p.description,
           price: parseFloat(p.current_batch.online_selling_price), // Store price as number
-          mrp_price: `$${parseFloat(p.current_batch.online_mrp_price).toFixed(2)}`,
+          mrp_price: `₹${parseFloat(p.current_batch.online_mrp_price).toFixed(2)}`,
           discount_percentage: parseFloat(p.current_batch.online_discount_percentage),
           images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
           fullDescription: p.description,

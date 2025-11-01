@@ -1,8 +1,8 @@
-import React, { useState } from 'react'; // Import useState
+import React, { useState, memo } from 'react'; // Import useState and memo
 import { Link, useNavigate } from 'react-router-dom'; // Import useNavigate
 import { Search, ShoppingCart, User } from "lucide-react";
 
-function Navbar({ isAuthenticated }) {
+const Navbar = memo(({ isAuthenticated }) => { // Wrap in memo
   const [searchTerm, setSearchTerm] = useState(''); // State for search input
   const navigate = useNavigate(); // Initialize useNavigate
 
@@ -101,6 +101,6 @@ function Navbar({ isAuthenticated }) {
       </div>
     </nav>
   );
-}
+}); // Close memo wrapper
 
 export default Navbar;

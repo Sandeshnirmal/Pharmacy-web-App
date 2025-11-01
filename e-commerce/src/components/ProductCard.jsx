@@ -1,4 +1,4 @@
-import React, { memo } from "react"; // Import memo
+import React, { memo, useState, useEffect, useRef } from "react"; // Import memo, useState, useEffect, useRef
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext.jsx";
 import { useNotification } from "../context/NotificationContext.jsx";
@@ -19,6 +19,35 @@ export const ProductCard = memo(({ product }) => { // Wrap in memo
     addNotification(`${product.name} added to cart!`, 'success');
   };
 
+  const [imageSrc, setImageSrc] = useState('');
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    let observer;
+    if (imgRef.current) {
+      observer = new IntersectionObserver(
+        (entries, observer) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              setImageSrc(product.images[0]);
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        {
+          rootMargin: '0px 0px 100px 0px', // Load when 100px from viewport
+        }
+      );
+      observer.observe(imgRef.current);
+    }
+
+    return () => {
+      if (observer && imgRef.current) {
+        observer.unobserve(imgRef.current);
+      }
+    };
+  }, [product.images]);
+
   return (
     <div
       className="bg-white rounded-lg shadow-sm overflow-hidden flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
@@ -28,9 +57,11 @@ export const ProductCard = memo(({ product }) => { // Wrap in memo
         className={`flex justify-center items-center h-75 ${specificBgColor}`}
       >
         <img
-          src={product.images[0]}
+          ref={imgRef}
+          src={imageSrc || 'placeholder.png'} // Use a placeholder or a low-res image
           alt={product.name}
           className="max-h-full max-w-full object-fill p-4"
+          loading="lazy" // Native lazy loading as a fallback/enhancement
         />
       </div>
       <div className="p-4 flex flex-col flex-grow">
