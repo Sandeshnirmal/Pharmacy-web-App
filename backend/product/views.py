@@ -145,17 +145,30 @@ class ProductViewSet(viewsets.ModelViewSet):
         prescription_required = self.request.query_params.get('prescription_required', None)
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
+        filter_logic = self.request.query_params.get('filter_logic', 'and').lower() # Default to 'and'
+
+        category_q = Q()
+        search_q = Q()
 
         if category:
-            queryset = queryset.filter(category_id=category)
+            category_q = Q(category_id=category)
         if search:
-            queryset = queryset.filter(
+            search_q = (
                 Q(name__icontains=search) |
                 Q(brand_name__icontains=search) |
                 Q(generic_name__name__icontains=search) |
                 Q(manufacturer__icontains=search) |
-                Q(active_product_compositions__composition__name__icontains=search) # Use prefetched compositions
-            ).distinct()
+                Q(usage_instructions__icontains=search) |
+                Q(active_product_compositions__composition__name__icontains=search)
+            )
+
+        if filter_logic == 'or':
+            queryset = queryset.filter(category_q | search_q).distinct()
+        else: # Default to 'and' logic
+            if category:
+                queryset = queryset.filter(category_q)
+            if search:
+                queryset = queryset.filter(search_q)
         if stock_status:
             if stock_status == 'low':
                 queryset = queryset.filter(total_stock__lte=F('min_stock_level'))
@@ -241,7 +254,7 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
     serializer_class = EnhancedProductSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description', 'compositions__name'] # Add compositions__name
+    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description', 'usage_instructions', 'compositions__name'] # Add usage_instructions to search
     ordering_fields = ['current_selling_price_annotated', 'created_at', 'name'] # Use annotated price
     ordering = ['-created_at']
 
@@ -358,8 +371,50 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(total_stock__gt=0)
         if rating:
             queryset = queryset.filter(avg_rating__gte=rating)
+        
+        filter_logic = self.request.query_params.get('filter_logic', 'and').lower() # Default to 'and'
+
+        category_q = Q()
+        composition_q = Q()
+        search_q_manual = Q() # For manual construction in 'or' logic
+
+        if category:
+            category_q = Q(category_id=category)
         if composition:
-            queryset = queryset.filter(active_product_compositions__composition__name__icontains=composition)
+            composition_q = Q(active_product_compositions__composition__name__icontains=composition)
+
+        if filter_logic == 'or':
+            search_param = self.request.query_params.get('search')
+            if search_param:
+                for field in self.search_fields:
+                    # Handle related fields for search_q_manual
+                    if '__' in field:
+                        q_obj = Q(**{f"{field}__icontains": search_param})
+                        search_q_manual |= q_obj
+                    else:
+                        search_q_manual |= Q(**{f"{field}__icontains": search_param})
+            
+            # Combine all Q objects with OR logic
+            combined_q = category_q | search_q_manual | composition_q
+            queryset = queryset.filter(combined_q).distinct()
+        else: # Default to 'and' logic
+            if category:
+                queryset = queryset.filter(category_q)
+            if composition:
+                queryset = queryset.filter(composition_q)
+            # DjangoFilterBackend's SearchFilter will handle the 'search' parameter for 'and' logic automatically.
+
+        # Apply other filters regardless of filter_logic
+        if min_price:
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
+        if prescription_required is not None:
+            queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
+        if in_stock == 'true':
+            queryset = queryset.filter(total_stock__gt=0)
+        if rating:
+            queryset = queryset.filter(avg_rating__gte=rating)
 
         return queryset
 

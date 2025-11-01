@@ -186,8 +186,8 @@ const RateMaster = () => {
                         {product.name}
                       </td>
                       <td className="px-6 py-4">{product.manufacturer}</td>
-                      <td className="px-6 py-4">{product.category?.name || 'N/A'}</td>
-                      <td className="px-6 py-4">{product.stock_quantity}</td>
+                      <td className="px-6 py-4">{product.category_name || 'N/A'}</td>
+                      <td className="px-6 py-4">{product.total_stock_quantity}</td>
                       <td className="px-6 py-4 text-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleProductClick(product); }}
@@ -283,7 +283,7 @@ const RateMaster = () => {
                     selectedProduct.batches.map((batch) => (
                       <tr key={batch.id} className="bg-white border-b hover:bg-gray-50">
                         <td className="px-6 py-4">{batch.batch_number}</td>
-                        <td className="px-6 py-4">{batch.expiry_date}</td>
+                        <td className="px-6 py-4">{new Date(batch.expiry_date).toLocaleDateString()}</td> {/* Format expiry date */}
                         <td className="px-6 py-4">{batch.quantity}</td>
                         <td className="px-6 py-4">{batch.cost_price}</td>
                         <td className="px-6 py-4">{batch.online_mrp_price}</td>

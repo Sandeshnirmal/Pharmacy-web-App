@@ -67,7 +67,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         packing: item.packing || "",
         batch_number: item.batch_number || "",
         expiry_date: item.expiry_date || "",
-        free: item.free || 0,
+        // free: item.free || 0, // Removed as per user request
         tax: item.tax || "5",
         disc: item.disc || 0,
         amount: (item.quantity * parseFloat(item.unit_price)).toFixed(2),
@@ -158,7 +158,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         packing: "",
         batch_number: "",
         expiry_date: "",
-        free: 0,
+        // free: 0, // Removed as per user request
         tax: 5,
         disc: 0,
         amount: "0.00",
@@ -218,7 +218,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       tax_percentage: parseFloat(item.tax || 0), // Include tax_percentage
       batch_number: item.batch_number, // Include batch number
       expiry_date: item.expiry_date, // Include expiry date
-      // Add other fields if needed by the backend, e.g., notes for free/disc
+      free_quantity: 0, // Explicitly send 0 for free_quantity as it's removed from UI
     }));
 
     const payload = {
@@ -410,9 +410,9 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Qty <span className="text-red-500">*</span>
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  {/* <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Free
-                  </th>
+                  </th> */}
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Rate <span className="text-red-500">*</span>
                   </th>
@@ -511,7 +511,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                         required
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    {/* Removed Free field as per user request */}
+                    {/* <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="number"
                         name="free"
@@ -520,7 +521,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                         className="w-full p-1 border border-gray-200 rounded-md"
                         min="0"
                       />
-                    </td>
+                    </td> */}
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="number"

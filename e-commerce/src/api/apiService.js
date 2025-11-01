@@ -108,8 +108,11 @@ export const dashboardAPI = {
 
 export const productAPI = {
   // Enhanced product management
-  getProducts: (page = 1, pageSize = 10, params = {}) => 
-    axiosInstance.get('/api/products/enhanced-products/', { params: { ...params, page, page_size: pageSize } }),
+  getProducts: async (page = 1, pageSize = 10, params = {}) => {
+    const response = await axiosInstance.get('/api/products/enhanced-products/', { params: { ...params, page, page_size: pageSize } });
+    console.log("Raw Product API Response:", response.data); // Log raw response
+    return response;
+  },
   getProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
   createProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
   updateProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),

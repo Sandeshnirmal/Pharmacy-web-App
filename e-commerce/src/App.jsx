@@ -12,8 +12,9 @@ import CartPage from './pages/Cart.jsx'; // Import CartPage
 import CheckoutScreen from './pages/CheckoutScreen.jsx'; // Import CheckoutScreen
 import OrderConfirmationScreen from './pages/OrderConfirmationScreen.jsx'; // Import OrderConfirmationScreen
 import Invoice from './pages/Invoice.jsx'; // Import Invoice
-import UploadPrescriptionScreen from './pages/UploadPrescriptionScreen.jsx'; // Import UploadPrescriptionScreen
+// import UploadPrescriptionScreen from './pages/UploadPrescriptionScreen.jsx'; // Import UploadPrescriptionScreen
 import PrescriptionDetailScreen from './pages/PrescriptionDetailScreen.jsx'; // Import PrescriptionDetailScreen
+import PrescriptionHistoryPage from './pages/PrescriptionHistoryPage.jsx'; // Import PrescriptionHistoryPage
 import { TopSellerCard } from './pages/Home.jsx'; // Import TopSellerCard
 import { useAuth, AuthProvider } from './context/AuthContext.jsx'; // Import useAuth and AuthProvider
 import { CartProvider } from './context/CartContext.jsx'; // Import CartProvider
@@ -49,6 +50,7 @@ function AuthWrapper() {
           {isAuthenticated ? (
             <>
               <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/prescription-history" element={<PrescriptionHistoryPage />} />
               {/* Redirect authenticated users from login/register */}
               <Route path="/login" element={<Navigate to="/profile" replace />} />
               <Route path="/register" element={<Navigate to="/profile" replace />} />
@@ -67,7 +69,7 @@ function AuthWrapper() {
           <Route path="/order-confirmation/:orderId" element={<OrderConfirmationScreen />} />
           <Route path="/invoice/:orderId" element={<Invoice />} />
           <Route path="/shop" element={<Shop />} />
-          <Route path="/upload-prescription" element={<UploadPrescriptionScreen />} />
+          {/* <Route path="/upload-prescription" element={<UploadPrescriptionScreen />} /> */}
           <Route path="/my-prescriptions/:prescriptionId" element={<PrescriptionDetailScreen />} />
         </Routes>
       </main>

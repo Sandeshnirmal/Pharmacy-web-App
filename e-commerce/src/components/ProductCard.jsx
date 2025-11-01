@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react"; // Import memo
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext.jsx";
 import { useNotification } from "../context/NotificationContext.jsx";
@@ -7,7 +7,7 @@ import { useNotification } from "../context/NotificationContext.jsx";
  * A card component for the "Top Sellers" section on the Home page.
  * Uses online_selling_price and online_mrp_price directly from the product object.
  */
-export function ProductCard({ product }) {
+export const ProductCard = memo(({ product }) => { // Wrap in memo
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { addNotification } = useNotification();
@@ -66,4 +66,4 @@ export function ProductCard({ product }) {
       </div>
     </div>
   );
-}
+}); // Close memo wrapper

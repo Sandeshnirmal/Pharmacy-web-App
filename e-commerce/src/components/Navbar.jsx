@@ -1,8 +1,23 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react'; // Import useState
+import { Link, useNavigate } from 'react-router-dom'; // Import useNavigate
 import { Search, ShoppingCart, User } from "lucide-react";
 
 function Navbar({ isAuthenticated }) {
+  const [searchTerm, setSearchTerm] = useState(''); // State for search input
+  const navigate = useNavigate(); // Initialize useNavigate
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault(); // Prevent default form submission
+    if (searchTerm.trim()) {
+      navigate(`/shop?search=${encodeURIComponent(searchTerm.trim())}`); // Navigate to shop page with search query
+      setSearchTerm(''); // Clear search term after submission
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+  };
+
   return (
     <nav className="bg-white shadow-sm py-3 sticky top-0 z-50">
       <div className="max-w-screen-2xl mx-auto px-4 flex items-center justify-between">
@@ -18,17 +33,18 @@ function Navbar({ isAuthenticated }) {
           >
             Shop
           </Link>
-          <Link
+          {/* <Link
             to="/categories"
             className="hover:text-green-500 transition-colors duration-200"
           >
             Shop by Category
-          </Link>
+          </Link> */}
+          {/* n */}
           <Link
-            to="/upload-prescription"
+            to="/profile/prescription-history"
             className="hover:text-green-500 transition-colors duration-200"
           >
-            Upload Prescription
+            Prescriptions History
           </Link>
           <Link
             to="/about"
@@ -39,12 +55,16 @@ function Navbar({ isAuthenticated }) {
         </div>
         <div className="flex items-center space-x-4">
           <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-            <input
-              type="text"
-              placeholder="Search for medications..."
-              className="pl-10 pr-4 py-2 border rounded-full text-sm w-56 focus:outline-none focus:ring-2 focus:ring-green-400"
-            />
+            <form onSubmit={handleSearchSubmit}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                type="text"
+                placeholder="Search for medications..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                className="pl-10 pr-4 py-2 border rounded-full text-sm w-56 focus:outline-none focus:ring-2 focus:ring-green-400"
+              />
+            </form>
           </div>
           <Link
             to="/cart"

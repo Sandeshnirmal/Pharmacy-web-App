@@ -119,7 +119,7 @@ const SidebarNavbar = () => {
           </SidebarItem>
           <SidebarItem label="Sales Management">
             <SidebarItem label="Sales bill" to="/sale-billing" />
-            <SidebarItem label="sales return bill" to="/sale-return-billing" />
+            {/* <SidebarItem label="sales return bill" to="/sale-return-billing" /> */}
           </SidebarItem>
             
           <SidebarItem label="Prescriptions" to="/prescriptions" />

@@ -67,8 +67,17 @@ export function TopSellerCard({ product }) { // Export TopSellerCard
 }
 
 function HealthConcernCard({ concern }) {
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    navigate(`/shop?category=${concern.id}`); // Use concern.id instead of concern.name
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden text-center transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer">
+    <div
+      className="bg-white rounded-lg shadow-sm overflow-hidden text-center transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+      onClick={handleClick}
+    >
       <img
         src={concern.image}
         alt={concern.name}
@@ -468,6 +477,7 @@ function Home() {
         // Fetch categories (health concerns)
         const categoriesResponse = await productAPI.getCategories();
         const formattedConcerns = categoriesResponse.data.map(cat => ({
+          id: cat.id, // Include the category ID
           name: cat.name,
           description: cat.description || "Explore products in this category",
           image: cat.image || "https://via.placeholder.com/300x200?text=No+Image+Available", // Updated Placeholder

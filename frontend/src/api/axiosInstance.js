@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Base config
 const axiosInstance = axios.create({
-  baseURL: 'http://127.0.0.1:8000/',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/', // Use environment variable or default
   timeout: 10000, // Increased timeout for better reliability
   withCredentials: true, // Enable credentials for CORS
   headers: {
@@ -34,7 +34,7 @@ axiosInstance.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem('refresh_token');
-        const res = await axios.post('http://127.0.0.1:8000/api/token/refresh/', {
+        const res = await axios.post(`${axiosInstance.defaults.baseURL}api/token/refresh/`, { // Use baseURL from instance
           refresh: refreshToken,
         }, {
           withCredentials: true,

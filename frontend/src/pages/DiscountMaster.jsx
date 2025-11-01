@@ -13,24 +13,51 @@ const DiscountMaster = () => {
   const [selectedDiscountType, setSelectedDiscountType] = useState("product"); // "product" or "category"
   const [showAddEditModal, setShowAddEditModal] = useState(false); // To control modal visibility
   const [currentDiscount, setCurrentDiscount] = useState(null); // For editing a specific discount
+  const [dataLoaded, setDataLoaded] = useState(false); // New state to track if initial data is loaded
 
-  // State for new discount form (no longer needed as it's in the modal)
-  // const [newDiscount, setNewDiscount] = useState({
-  //   name: "",
-  //   percentage: "",
-  //   description: "",
-  //   target_type: "product",
-  //   target_id: null,
-  //   start_date: "",
-  //   end_date: "",
-  //   is_active: true,
-  // });
+  // Helper function to determine the effective status of a discount
+  const getEffectiveStatus = (discount) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize today's date to midnight
+
+    const startDate = discount.start_date ? new Date(discount.start_date) : null;
+    if (startDate) startDate.setHours(0, 0, 0, 0);
+
+    const endDate = discount.end_date ? new Date(discount.end_date) : null;
+    if (endDate) endDate.setHours(0, 0, 0, 0);
+
+    if (!discount.is_active) {
+      return { text: "Inactive", class: "bg-gray-100 text-gray-800" };
+    }
+    if (startDate && startDate > today) {
+      return { text: "Upcoming", class: "bg-blue-100 text-blue-800" };
+    }
+    if (endDate && endDate < today) {
+      return { text: "Expired", class: "bg-red-100 text-red-800" };
+    }
+    return { text: "Active", class: "bg-green-100 text-green-800" };
+  };
 
   useEffect(() => {
-    fetchDiscounts();
-    fetchProducts();
-    fetchCategories();
-  }, []);
+    const loadInitialData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await Promise.all([
+          fetchProducts(),
+          fetchCategories(),
+        ]);
+        await fetchDiscounts(); // Fetch discounts after products and categories are loaded
+        setDataLoaded(true);
+      } catch (err) {
+        console.error("Error loading initial data:", err);
+        setError("Failed to load initial data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadInitialData();
+  }, []); // Empty dependency array to run once on mount
 
   const fetchDiscounts = async () => {
     try {
@@ -47,12 +74,14 @@ const DiscountMaster = () => {
         setDiscounts([]);
       }
       console.log("Fetched discounts:", data); // Debug log
+      console.log("Current products state:", products); // Debug log
+      console.log("Current categories state:", categories); // Debug log
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
       console.error("Error fetching discounts:", error);
     } finally {
-      setLoading(false);
+      // setLoading(false); // Loading state is managed by loadInitialData
     }
   };
 
@@ -88,10 +117,12 @@ const DiscountMaster = () => {
         setProducts([]);
       }
       console.log("Fetched products for modal:", data); // Debug log
+      return data; // Return data for Promise.all
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
       console.error("Error fetching products:", error);
+      throw error; // Re-throw to propagate error to Promise.all
     }
   };
 
@@ -108,10 +139,12 @@ const DiscountMaster = () => {
         setCategories([]);
       }
       console.log("Fetched categories for modal:", categoriesResponse.data); // Debug log
+      return categoriesResponse.data; // Return data for Promise.all
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
       console.error("Error fetching categories:", error);
+      throw error; // Re-throw to propagate error to Promise.all
     }
   };
 
@@ -233,14 +266,17 @@ const DiscountMaster = () => {
                       : categories.find(c => c.id === discount.category)?.name || "N/A"}
                   </td>
                   <td className="px-6 py-4">{discount.description}</td>
-                  <td className="px-6 py-4">{discount.start_date || 'N/A'}</td>
-                  <td className="px-6 py-4">{discount.end_date || 'N/A'}</td>
+                  <td className="px-6 py-4">{discount.start_date ? new Date(discount.start_date).toLocaleDateString() : 'N/A'}</td>
+                  <td className="px-6 py-4">{discount.end_date ? new Date(discount.end_date).toLocaleDateString() : 'N/A'}</td>
                   <td className="px-6 py-4 text-center">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        discount.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                      {discount.is_active ? 'Yes' : 'No'}
-                    </span>
+                    {(() => {
+                      const status = getEffectiveStatus(discount);
+                      return (
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status.class}`}>
+                          {status.text}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button

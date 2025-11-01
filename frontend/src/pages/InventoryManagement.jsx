@@ -665,12 +665,12 @@ const fetchMedicines = async () => {
             >
               Add Composition
             </button>
-            <a
+            {/* <a
               href="/purchase-returns/new"
               className="bg-purple-600 text-white hover:bg-purple-700 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
             >
               Create Purchase Return
-            </a>
+            </a> */}
           </div>
         </div>
       </div>
@@ -772,9 +772,9 @@ const fetchMedicines = async () => {
                 <th scope="col" className="px-6 py-3 text-center">
                   Stock Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-center">
+                {/* <th scope="col" className="px-6 py-3 text-center">
                   Actions
-                </th>
+                </th> */}
               </tr>
             </thead>
             <tbody>
@@ -819,7 +819,7 @@ const fetchMedicines = async () => {
                         {status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    {/* <td className="px-6 py-4 text-center">
                       <button
                         onClick={() => openAddBatchModal(product)}
                         className="font-medium text-green-600 hover:underline mr-4"
@@ -832,7 +832,7 @@ const fetchMedicines = async () => {
                       >
                         View Batches
                       </button>
-                    </td>
+                    </td> */}
                   </tr>
                 );
               })}

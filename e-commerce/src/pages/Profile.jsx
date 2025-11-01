@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   User,
   ShoppingBag,
@@ -15,12 +15,11 @@ import SidebarLink from '../components/profile/SidebarLink';
 import PersonalInfoContent from '../components/profile/PersonalInfoContent';
 import OrderHistoryContent from '../components/profile/OrderHistoryContent';
 import AddressBookContent from '../components/profile/AddressBookContent';
-import PrescriptionHistoryContent from '../components/profile/PrescriptionHistoryContent'; // Import new component
-
 function ProfilePage() {
-  const [activeTab, setActiveTab] = useState("info");
-  const { user: authUser, logout } = useAuth(); // Renamed user to authUser to avoid conflict
   const navigate = useNavigate();
+  const { user: authUser, logout } = useAuth();
+
+  const [activeTab, setActiveTab] = useState("info");
 
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState(null);
@@ -186,8 +185,6 @@ function ProfilePage() {
             onDeleteAddress={handleDeleteAddress}
           />
         );
-      case "prescriptions":
-        return <PrescriptionHistoryContent />; // New component for prescription history
       case "payment":
         return (
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
@@ -244,8 +241,8 @@ function ProfilePage() {
               <SidebarLink
                 icon={FileText} // Using FileText icon for prescriptions
                 label="Prescription History"
-                isActive={activeTab === "prescriptions"}
-                onClick={() => setActiveTab("prescriptions")}
+                isActive={false} // This tab will now navigate to a dedicated page
+                onClick={() => navigate("/profile/prescription-history")}
               />
               <SidebarLink
                 icon={CreditCard}
