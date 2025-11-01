@@ -1,6 +1,8 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 function OrderHistoryContent({ orders }) {
+  const navigate = useNavigate(); // Initialize useNavigate
   const getStatusClass = (status) => {
     switch (status.toLowerCase()) {
       case "delivered":
@@ -53,13 +55,21 @@ function OrderHistoryContent({ orders }) {
                     order.items.map((item, index) => (
                       <li key={index} className="flex justify-between">
                         <span>{item.product_name} (x{item.quantity})</span>
-                        <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                        <span>₹{(item.unit_price_at_order * item.quantity).toFixed(2)}</span>
                       </li>
                     ))
                   ) : (
                     <li>No items found for this order.</li>
                   )}
                 </ul>
+              </div>
+              <div className="mt-4 text-right">
+                <button
+                  onClick={() => navigate(`/order-confirmation/${order.id}`)}
+                  className="text-teal-600 hover:text-teal-800 font-medium text-sm"
+                >
+                  View Details
+                </button>
               </div>
             </div>
           ))

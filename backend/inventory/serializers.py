@@ -39,11 +39,6 @@ class BatchCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         batch = super().create(validated_data)
         
-        # Update product stock quantity
-        product = batch.product
-        product.stock_quantity += batch.quantity
-        product.save()
-        
         # Create stock movement record
         StockMovement.objects.create(
             product=product,
@@ -194,6 +189,7 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                 batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
                 if batch:
                     batch.current_quantity += quantity_to_reverse # Add back to stock
+                    batch.quantity += quantity_to_reverse # Add back to total quantity
                     batch.save()
                     StockMovement.objects.create(
                         product=product,
@@ -236,6 +232,7 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                         batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
                         if batch:
                             batch.current_quantity -= quantity_difference # Decrease if new_quantity > old_quantity, increase if new_quantity < old_quantity
+                            batch.quantity -= quantity_difference # Adjust total quantity as well
                             batch.save()
                             movement_type = 'SUPPLIER_RETURN' if quantity_difference > 0 else 'SUPPLIER_RETURN_REVERSAL'
                             notes = f"Adjusted {abs(quantity_difference)} units of {product.name} from batch {batch.batch_number} due to update in Purchase Return #{instance.id}."
@@ -270,6 +267,7 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                     batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
                     if batch:
                         batch.current_quantity -= quantity # Decrease stock for new return item
+                        batch.quantity -= quantity # Decrease total quantity for new return item
                         batch.save()
                         StockMovement.objects.create(
                             product=product,

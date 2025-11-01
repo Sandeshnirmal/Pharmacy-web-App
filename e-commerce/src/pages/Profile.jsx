@@ -7,6 +7,7 @@ import {
   CreditCard,
   LogOut,
   ChevronRight,
+  FileText, // Added for prescription history icon
 } from "lucide-react";
 import { authAPI, userAPI, orderAPI, addressAPI } from "../api/apiService";
 import { useAuth } from '../context/AuthContext';
@@ -14,9 +15,13 @@ import SidebarLink from '../components/profile/SidebarLink';
 import PersonalInfoContent from '../components/profile/PersonalInfoContent';
 import OrderHistoryContent from '../components/profile/OrderHistoryContent';
 import AddressBookContent from '../components/profile/AddressBookContent';
+import PrescriptionHistoryContent from '../components/profile/PrescriptionHistoryContent'; // Import new component
 
 function ProfilePage() {
   const [activeTab, setActiveTab] = useState("info");
+  const { user: authUser, logout } = useAuth(); // Renamed user to authUser to avoid conflict
+  const navigate = useNavigate();
+
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState(null);
   const [addresses, setAddresses] = useState(null);
@@ -24,10 +29,15 @@ function ProfilePage() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
-  const { logout } = useAuth();
 
+  // Use authUser from context for initial check
   useEffect(() => {
+    if (!authUser) {
+      setError("User not authenticated.");
+      logout();
+      navigate('/login');
+      return;
+    }
     const fetchUserData = async () => {
       try {
         setLoadingUser(true);
@@ -55,7 +65,7 @@ function ProfilePage() {
     };
 
     fetchUserData();
-  }, [logout, navigate]);
+  }, [authUser, logout, navigate]); // Added authUser to dependency array
 
   useEffect(() => {
     if (!user || !user.id) return;
@@ -176,6 +186,8 @@ function ProfilePage() {
             onDeleteAddress={handleDeleteAddress}
           />
         );
+      case "prescriptions":
+        return <PrescriptionHistoryContent />; // New component for prescription history
       case "payment":
         return (
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
@@ -228,6 +240,12 @@ function ProfilePage() {
                 label="Address Book"
                 isActive={activeTab === "address"}
                 onClick={() => setActiveTab("address")}
+              />
+              <SidebarLink
+                icon={FileText} // Using FileText icon for prescriptions
+                label="Prescription History"
+                isActive={activeTab === "prescriptions"}
+                onClick={() => setActiveTab("prescriptions")}
               />
               <SidebarLink
                 icon={CreditCard}

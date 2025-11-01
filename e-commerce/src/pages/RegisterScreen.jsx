@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { authAPI } from '../api/apiService'; // Assuming authAPI is available
+import { authAPI, userAPI } from '../api/apiService'; // Assuming authAPI and userAPI are available
 
 function RegisterScreen() {
   const [firstName, setFirstName] = useState('');
@@ -34,6 +34,7 @@ function RegisterScreen() {
         email,
         phone_number: phone,
         password,
+        password_confirm: confirmPassword,
       });
 
       if (response.data) {
@@ -44,7 +45,22 @@ function RegisterScreen() {
       }
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.detail || 'An unexpected error occurred during registration.');
+      if (err.response?.data) {
+        const errorData = err.response.data;
+        let errorMessage = '';
+        if (errorData.password) {
+          errorMessage += `Password: ${errorData.password.join(' ')} `;
+        }
+        if (errorData.password_confirm) {
+          errorMessage += `Confirm Password: ${errorData.password_confirm.join(' ')} `;
+        }
+        if (errorData.detail) {
+          errorMessage += errorData.detail;
+        }
+        setError(errorMessage || 'An unexpected error occurred during registration.');
+      } else {
+        setError('An unexpected error occurred during registration.');
+      }
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom"; // Import useParams
 import logoImg from "../assets/full_logo.png";
-import { salesBillAPI, apiUtils } from '../api/apiService'; // Import salesBillAPI and apiUtils
+import { orderAPI, apiUtils } from '../api/apiService'; // Import orderAPI and apiUtils
 
 // --- SVG Icons (for a clean, dependency-free UI) ---
 const PharmacyLogo = () => (
@@ -14,30 +14,30 @@ const PharmacyLogo = () => (
 );
 
 const Invoice = () => {
-  const { billId } = useParams(); // Get billId from URL parameters
+  const { orderId } = useParams(); // Get orderId from URL parameters
   const [isLoading, setIsLoading] = useState(true);
-  const [billData, setBillData] = useState(null); // Renamed to billData
+  const [orderData, setOrderData] = useState(null); // Renamed to orderData
 
   // --- Data Fetching Effect ---
   useEffect(() => {
-    const fetchBillDetails = async () => {
+    const fetchOrderDetails = async () => {
       try {
         setIsLoading(true);
-        const response = await salesBillAPI.getSalesBill(billId); // Fetch sales bill data
-        setBillData(response.data);
+        const response = await orderAPI.getOrder(orderId); // Fetch order data
+        setOrderData(response.data);
       } catch (err) {
         const errorInfo = apiUtils.handleError(err);
-        console.error("Failed to fetch sales bill data:", err);
+        console.error("Failed to fetch order data:", err);
         // Handle error state in UI
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (billId) {
-      fetchBillDetails();
+    if (orderId) {
+      fetchOrderDetails();
     }
-  }, [billId]); // Depend on billId to re-fetch if it changes
+  }, [orderId]); // Depend on orderId to re-fetch if it changes
 
   const handlePrint = () => {
     window.print();
@@ -85,37 +85,37 @@ const Invoice = () => {
     );
   }
 
-  if (!billData) {
+  if (!orderData) {
     return (
       <div className="bg-gray-100 min-h-screen flex items-center justify-center">
         <p className="text-xl font-semibold text-red-500">
-          Error: Could not load sales bill data.
+          Error: Could not load order data.
         </p>
       </div>
     );
   }
 
-  // Calculate financial details for sales bill
-  const grossAmount = billData.items.reduce((total, item) => total + (parseFloat(item.quantity) * parseFloat(item.price_per_unit)), 0);
-  const discountAmount = parseFloat(billData.discount) || 0;
+  // Calculate financial details for order
+  const grossAmount = orderData.items.reduce((total, item) => total + (parseFloat(item.quantity) * parseFloat(item.unit_price_at_order)), 0);
+  const discountAmount = parseFloat(orderData.discount_amount || 0); // Assuming discount_amount exists
   const taxableAmount = grossAmount - discountAmount;
-  const gstPercentage = parseFloat(billData.gst_percentage) || 0;
+  const gstPercentage = parseFloat(orderData.gst_percentage || 0); // Assuming gst_percentage exists
   const gstAmount = (taxableAmount * gstPercentage) / 100;
   const netAmount = taxableAmount + gstAmount;
-  const paidAmount = parseFloat(billData.paid_amount) || 0;
-  const changeAmount = parseFloat(billData.change_amount) || 0;
-  const balanceDue = netAmount - paidAmount; // For sales, balance due is net - paid
+  const paidAmount = parseFloat(orderData.total_amount || 0); // Assuming total_amount is the paid amount
+  const changeAmount = 0; // Orders typically don't have change amount directly
+  const balanceDue = netAmount - paidAmount;
 
   // Determine status for the stamp
   let statusText = "PENDING";
   let statusColor = "yellow-500";
-  if (billData.status === "PAID") {
+  if (orderData.payment_status === "PAID") {
     statusText = "PAID";
     statusColor = "green-500";
-  } else if (billData.status === "CANCELLED") {
+  } else if (orderData.order_status === "CANCELLED") {
     statusText = "CANCELLED";
     statusColor = "red-500";
-  } else if (billData.status === "RETURNED" || billData.status === "PARTIALLY_RETURNED") {
+  } else if (orderData.order_status === "RETURNED" || orderData.order_status === "PARTIALLY_RETURNED") {
     statusText = "RETURNED"; // Or PARTIALLY RETURNED
     statusColor = "purple-500";
   }
@@ -125,10 +125,8 @@ const Invoice = () => {
     <div className="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
       <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-lg relative">
         {/* --- Status Stamp --- */}
-        <div className="absolute top-8 right-8 transform rotate-12">
-          <div className={`border-4 border-${statusColor} text-${statusColor} rounded-lg px-4 py-2 text-4xl font-black uppercase tracking-wider`}>
+        <div className={`absolute top-8 right-8 transform rotate-12 border-4 border-${statusColor} text-${statusColor} rounded-lg px-4 py-2 text-4xl font-black uppercase tracking-wider`}>
             {statusText}
-          </div>
         </div>
 
         {/* --- Invoice Body --- */}
@@ -144,14 +142,14 @@ const Invoice = () => {
             </div>
             <div className="text-left sm:text-right">
               <h2 className="text-3xl font-extrabold text-gray-700 uppercase tracking-wider">
-                Sales Bill
+                Order Invoice
               </h2>
               <div className="mt-2 text-gray-700">
                 <span className="text-sm font-semibold text-gray-600">
-                  Bill #{" "}
+                  Order #{" "}
                 </span>
                 <span className="font-mono">
-                  {billData.id}
+                  {orderData.order_number || orderData.id}
                 </span>
               </div>
             </div>
@@ -162,28 +160,31 @@ const Invoice = () => {
             <div>
               <h3 className="font-semibold text-gray-700 mb-2">To Customer:</h3>
               <p className="font-bold text-gray-800">
-                {billData.customer_name}
+                {orderData.user?.first_name} {orderData.user?.last_name}
               </p>
               <p className="text-gray-600 text-sm">
-                {billData.customer_address}
+                {orderData.delivery_address?.address_line_1}, {orderData.delivery_address?.address_line_2}
               </p>
               <p className="text-gray-600 text-sm">
-                {billData.customer_mobile}
+                {orderData.delivery_address?.city}, {orderData.delivery_address?.state} - {orderData.delivery_address?.pincode}
+              </p>
+              <p className="text-gray-600 text-sm">
+                {orderData.user?.phone_number}
               </p>
             </div>
             <div className="text-left md:text-right">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <span className="font-semibold text-gray-700">
-                  Bill Date:
+                  Order Date:
                 </span>
                 <span className="text-gray-800">
-                  {displayFormatDate(billData.bill_date)}
+                  {displayFormatDate(orderData.order_date)}
                 </span>
                 <span className="font-semibold text-gray-700">
-                  Payment Method:
+                  Payment Status:
                 </span>
                 <span className="text-gray-800">
-                  {billData.payment_method}
+                  {orderData.payment_status}
                 </span>
               </div>
             </div>
@@ -196,30 +197,29 @@ const Invoice = () => {
                 <thead>
                   <tr className="bg-gray-100 text-sm font-semibold text-gray-600">
                     <th className="p-3">Product Name</th>
-                    <th className="p-3 text-center w-24">Batch No</th>
                     <th className="p-3 text-center w-24">Qty</th>
                     <th className="p-3 text-right w-32">Price/Unit</th>
                     <th className="p-3 text-right w-32">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {billData.items.map((item, index) => (
+                  {orderData.items.map((item, index) => (
                     <tr key={index} className="border-b border-gray-100">
                       <td className="p-3">
                         <p className="font-semibold text-gray-800">
                           {item.product_name}
                         </p>
                         <p className="text-sm text-gray-500">
-                          Packing: {item.packing}, HSN: {item.hsn_code}
+                          {/* Assuming packing and hsn_code are not directly available on order items, or need to be fetched */}
+                          {/* Packing: {item.packing}, HSN: {item.hsn_code} */}
                         </p>
                       </td>
-                      <td className="p-3 text-center">{item.batch_no}</td>
-                      <td className="p-3 text-center">{item.quantity} {item.unit}</td>
+                      <td className="p-3 text-center">{item.quantity}</td>
                       <td className="p-3 text-right">
-                        ₹{parseFloat(item.price_per_unit).toFixed(2)}
+                        ₹{parseFloat(item.unit_price_at_order).toFixed(2)}
                       </td>
                       <td className="p-3 text-right font-medium text-gray-800">
-                        ₹{(parseFloat(item.quantity) * parseFloat(item.price_per_unit)).toFixed(2)}
+                        ₹{(parseFloat(item.quantity) * parseFloat(item.unit_price_at_order)).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -236,7 +236,7 @@ const Invoice = () => {
                   Notes:
                 </h3>
                 <p className="text-sm text-gray-600">
-                  {billData.notes || "No notes provided."}
+                  {orderData.notes || "No notes provided."}
                 </p>
               </div>
             </div>
@@ -282,14 +282,15 @@ const Invoice = () => {
                     ₹{paidAmount.toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between py-4 bg-green-100 rounded-b-lg px-4 mt-2">
+                {/* Change amount is not typical for orders, assuming it's part of sales bill */}
+                {/* <div className="flex justify-between py-4 bg-green-100 rounded-b-lg px-4 mt-2">
                   <span className="text-lg font-bold text-gray-800">
                     Change Amount:
                   </span>
                   <span className="text-lg font-bold text-green-600">
                     ₹{changeAmount.toFixed(2)}
                   </span>
-                </div>
+                </div> */}
                 {balanceDue > 0 && (
                   <div className="flex justify-between py-4 bg-red-100 rounded-b-lg px-4 mt-2">
                     <span className="text-lg font-bold text-gray-800">
@@ -309,7 +310,7 @@ const Invoice = () => {
             <div className="flex justify-between items-end">
               <div className="text-left text-sm text-gray-500">
                 <p>Thank you for your business.</p>
-                <p>This is a computer-generated bill.</p>
+                <p>This is a computer-generated invoice.</p>
               </div>
               <div className="text-right w-48">
                 <div className="h-12 border-b border-gray-400"></div>
@@ -323,14 +324,17 @@ const Invoice = () => {
 
         {/* --- Action Buttons (outside printable area) --- */}
         <div className="p-6 bg-gray-50 border-t rounded-b-lg flex justify-end gap-3 print:hidden">
-          <button className="py-2 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-            Download Receipt
+          <button
+            className="py-2 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            onClick={() => window.open(`http://127.0.0.1:8000/order/invoices/${orderData.id}/download/`, '_blank')}
+          >
+            Download Invoice
           </button>
           <button
             onClick={handlePrint}
             className="py-2 px-4 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
           >
-            Print Receipt
+            Print Invoice
           </button>
         </div>
       </div>

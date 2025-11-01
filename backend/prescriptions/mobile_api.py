@@ -1,7 +1,7 @@
 # Mobile API endpoints for prescription processing
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated # Import IsAuthenticated
 from rest_framework.response import Response
 from django.utils import timezone
 from django.core.files.storage import default_storage
@@ -16,7 +16,7 @@ from .pagination import PrescriptionPageNumberPagination # Import pagination cla
 logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def upload_prescription(request):
     """
     Mobile API: Upload prescription image for AI processing
@@ -76,7 +76,7 @@ def upload_prescription(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def get_prescription_status(request, prescription_id):
     """
     Mobile API: Get prescription processing status
@@ -111,7 +111,7 @@ def get_prescription_status(request, prescription_id):
         
         
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def get_medicine_suggestions(request, prescription_id):
     """
     Mobile API: Get AI-generated medicine suggestions
@@ -202,7 +202,7 @@ def get_medicine_suggestions(request, prescription_id):
         }, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def create_prescription_order(request):
     """
     Mobile API: Create order from prescription medicines
@@ -323,7 +323,7 @@ def create_prescription_order(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def reprocess_prescription_ocr(request, prescription_id):
     """
     Admin API: Reprocess prescription with OCR for better results asynchronously.
@@ -372,7 +372,7 @@ def reprocess_prescription_ocr(request, prescription_id):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def get_prescription_products(request, prescription_id):
     """
     Mobile API: Get all products related to a prescription for search/browsing
@@ -460,7 +460,7 @@ def get_prescription_products(request, prescription_id):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def search_prescription_medicines(request):
     """
     Mobile API: Search for medicines based on prescription history and general search
@@ -521,7 +521,7 @@ def search_prescription_medicines(request):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def upload_prescription_for_order(request):
     """
     Simple prescription upload for order verification - NO AI/OCR processing
@@ -587,7 +587,7 @@ def upload_prescription_for_order(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def get_prescription_verification_status(request, prescription_id):
     """
     Get prescription verification status for mobile app
@@ -621,7 +621,7 @@ def get_prescription_verification_status(request, prescription_id):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def upload_prescription_for_paid_order(request):
     """
     Upload prescription for paid order verification (after payment confirmation)
@@ -699,14 +699,16 @@ def upload_prescription_for_paid_order(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def get_prescription_detail_mobile(request, prescription_id):
     """
     Mobile API: Get a single prescription detail by ID, including all associated medicine details.
     """
     from .serializers import PrescriptionSerializer
+    logger.info(f"Attempting to fetch prescription details for user: {request.user.id}, prescription_id: {prescription_id}")
     try:
         prescription = Prescription.objects.get(id=prescription_id, user=request.user)
+        logger.info(f"Prescription {prescription_id} found for user {request.user.id}.")
         
         # Use the PrescriptionSerializer to get all data, including aggregated suggested_medicines
         serializer = PrescriptionSerializer(prescription)
@@ -717,12 +719,13 @@ def get_prescription_detail_mobile(request, prescription_id):
         }, status=status.HTTP_200_OK)
 
     except Prescription.DoesNotExist:
+        logger.warning(f"Prescription {prescription_id} not found for user {request.user.id}.")
         return Response({
             'success': False,
             'error': 'Prescription not found'
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        logger.error(f"Error fetching prescription detail: {e}")
+        logger.error(f"Error fetching prescription detail for user {request.user.id}, prescription_id {prescription_id}: {e}", exc_info=True)
         return Response({
             'success': False,
             'error': f'Failed to retrieve prescription details: {str(e)}'
@@ -730,7 +733,7 @@ def get_prescription_detail_mobile(request, prescription_id):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def get_user_prescriptions_mobile(request):
     """
     Mobile API: Get a list of all prescriptions for the authenticated user.
@@ -759,7 +762,7 @@ def get_user_prescriptions_mobile(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def get_prescriptions_by_id(request, prescription_id):
     """
     Mobile API: Get a single prescription by ID for the authenticated user.
@@ -782,10 +785,8 @@ def get_prescriptions_by_id(request, prescription_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-from rest_framework.permissions import IsAuthenticated # Add this import
-
 @api_view(['POST'])
-@permission_classes([AllowAny]) # Temporarily changed to AllowAny for debugging
+@permission_classes([IsAuthenticated]) # Changed to IsAuthenticated
 def update_prescription_medicine_selection(request):
     """
     Mobile API: Update the mapped product for a specific prescription medicine detail.

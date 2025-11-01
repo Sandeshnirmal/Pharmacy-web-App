@@ -229,11 +229,6 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             po_item.received_quantity += received_quantity
             po_item.save()
 
-            # Update product stock and create stock movement
-            product = po_item.product
-            product.stock_quantity += received_quantity
-            product.save()
-
             # Handle batch creation/update and link to StockMovement
             batch_number = po_item.batch_number # Get batch number from purchase order item
             expiry_date = po_item.expiry_date # Get expiry date from purchase order item
@@ -343,11 +338,12 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             ).first()
 
             if batch:
-                print(f"Before deduction: Batch {batch.batch_number}, Product {product.name}, Current Quantity: {batch.current_quantity}")
+                print(f"Before deduction: Batch {batch.batch_number}, Product {product.name}, Total Quantity: {batch.quantity}, Current Quantity: {batch.current_quantity}")
                 if batch.current_quantity >= quantity:
                     batch.current_quantity -= quantity
+                    batch.quantity -= quantity # Deduct from total quantity as well
                     batch.save()
-                    print(f"After deduction: Batch {batch.batch_number}, Product {product.name}, New Quantity: {batch.current_quantity}")
+                    print(f"After deduction: Batch {batch.batch_number}, Product {product.name}, New Total Quantity: {batch.quantity}, New Current Quantity: {batch.current_quantity}")
                     StockMovement.objects.create(
                         product=product,
                         batch=batch,

@@ -11,10 +11,12 @@ export const AuthProvider = ({ children }) => {
   const fetchUser = async () => {
     try {
       const response = await authAPI.getCurrentUser();
-      if (response.success) {
+      if (response.status === 200) { // Check for successful HTTP status
         setUser(response.data);
+        return { success: true, data: response.data };
       } else {
         setUser(null);
+        return { success: false, error: "Failed to fetch user data" };
       }
     } catch (error) {
       console.error("Failed to fetch user:", error);
@@ -45,10 +47,16 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authAPI.login(credentials);
-      if (response.access) {
+      // authAPI.login already stores tokens in localStorage
+      // and returns response.data which contains access and refresh
+      if (response && response.access) {
         setIsAuthenticated(true);
         await fetchUser(); // Fetch user after successful login
         return { success: true };
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+        return { success: false, error: response?.detail || "Login failed" };
       }
     } catch (error) {
       console.error("Login failed:", error);

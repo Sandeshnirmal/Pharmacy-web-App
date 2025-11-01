@@ -15,7 +15,7 @@ export const authAPI = {
     localStorage.setItem('access_token', access);
     localStorage.setItem('refresh_token', refresh);
     
-    return response.data;
+    return { success: true, access, refresh, data: response.data }; // Return consistent success format
   },
 
   logout: () => {
@@ -23,7 +23,14 @@ export const authAPI = {
     localStorage.removeItem('refresh_token');
   },
 
-  getCurrentUser: () => axiosInstance.get('/api/users/auth-me/'),
+  getCurrentUser: async () => {
+    try {
+      const response = await axiosInstance.get('/api/users/auth-me/');
+      return { success: true, data: response.data, status: response.status }; // Return consistent success format
+    } catch (error) {
+      return { success: false, error: error.response?.data?.detail || "Failed to fetch current user", status: error.response?.status };
+    }
+  },
 
   refreshToken: async () => {
     const refreshToken = localStorage.getItem('refresh_token');
@@ -212,7 +219,14 @@ export const prescriptionAPI = {
   getPrescriptionStatus: (id) => axiosInstance.get(`/prescription/mobile/status/${id}/`),
   getMedicineSuggestions: (id) => axiosInstance.get(`/prescription/mobile/suggestions/${id}/`),
   getPrescriptionProducts: (id) => axiosInstance.get(`/prescription/mobile/products/${id}/`),
-  getPrescriptionById: (id) => axiosInstance.get(`/prescription/mobile/id/${id}/`),
+  getPrescriptionById: async (id) => { // Make it async to wrap response
+    try {
+      const response = await axiosInstance.get(`/prescription/mobile/detail/${id}/`);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || "Failed to fetch prescription details", status: error.response?.status };
+    }
+  },
   createPrescriptionOrder: (orderData) => axiosInstance.post('/prescription/mobile/create-order/', orderData),
 };
 

@@ -53,6 +53,7 @@ const PurchaseBillReturnPage = ({ onReturnComplete, initialPurchaseOrderId }) =>
         setReturnItems(
             order.items.map((item) => ({
                 purchase_order_item: item.id,
+                product_id: item.product_details?.id, // Include product_id here
                 product_name: item.product_details?.name || "N/A",
                 batch_number: item.batch_number || "N/A",
                 original_quantity: item.quantity - item.returned_quantity, // Quantity available to return
@@ -113,11 +114,10 @@ const PurchaseBillReturnPage = ({ onReturnComplete, initialPurchaseOrderId }) =>
             reason: reason,
             notes: notes,
             items: itemsToReturn.map(item => {
-                const product_id = selectedPurchaseOrder.items.find(poItem => poItem.id === item.purchase_order_item)?.product_details?.id;
-                console.log(`Returning item: purchase_order_item=${item.purchase_order_item}, product_id=${product_id}, quantity=${item.returned_quantity}, unit_price=${item.unit_price}`);
+                console.log(`Returning item: purchase_order_item=${item.purchase_order_item}, product_id=${item.product_id}, quantity=${item.returned_quantity}, unit_price=${item.unit_price}`);
                 return {
                     purchase_order_item: item.purchase_order_item,
-                    product: product_id, // Get product ID
+                    product: item.product_id, // Use product ID from state
                     quantity: item.returned_quantity,
                     unit_price: item.unit_price,
                 };
@@ -139,7 +139,22 @@ const PurchaseBillReturnPage = ({ onReturnComplete, initialPurchaseOrderId }) =>
             }
         } catch (err) {
             const errorInfo = apiUtils.handleError(err);
-            setError(errorInfo.message || "Failed to process the return. Please check your inputs.");
+            const backendError = err.response?.data;
+            let errorMessage = errorInfo.message || "Failed to process the return. Please check your inputs.";
+
+            if (backendError) {
+                if (typeof backendError === 'string') {
+                    errorMessage = backendError;
+                } else if (backendError.detail) {
+                    errorMessage = backendError.detail;
+                } else if (backendError.message) {
+                    errorMessage = backendError.message;
+                } else if (Object.keys(backendError).length > 0) {
+                    // If it's an object with multiple errors, display them joined
+                    errorMessage = Object.values(backendError).flat().join('; ');
+                }
+            }
+            setError(errorMessage);
             console.error("Return submission error:", err.response?.data || err);
         } finally {
             setSubmitting(false);
@@ -150,15 +165,6 @@ const PurchaseBillReturnPage = ({ onReturnComplete, initialPurchaseOrderId }) =>
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-lg max-w-7xl mx-auto">
-            <div className="flex justify-between items-center pb-4 mb-6 border-b">
-                <h1 className="text-3xl font-bold text-gray-800">Process Purchase Bill Return</h1>
-                <button
-                    onClick={onReturnComplete}
-                    className="flex items-center text-indigo-600 hover:text-indigo-800 font-medium"
-                >
-                    <ArrowLeft className="mr-2" size={20} /> Back to Purchase Orders
-                </button>
-            </div>
 
             {successMessage && (
                 <div className="flex items-center bg-green-100 text-green-800 p-3 rounded-md mb-4">
@@ -186,6 +192,7 @@ const PurchaseBillReturnPage = ({ onReturnComplete, initialPurchaseOrderId }) =>
                         valueField="id"
                         required
                         className="w-full"
+                        autoFocus // Add autoFocus to the search input
                         columns={[
                             { header: 'Order ID', field: 'id' },
                             { header: 'Invoice No', field: 'invoice_number' },
@@ -322,7 +329,7 @@ const PurchaseBillReturnPage = ({ onReturnComplete, initialPurchaseOrderId }) =>
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex justify-end items-center mt-8 pt-6 border-t space-x-3">
+                        <div className="flex justify-start items-center mt-8 pt-6 border-t space-x-3">
                             <button
                                 type="button"
                                 onClick={onReturnComplete}

@@ -7,12 +7,14 @@ import {
 import { Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../api/apiService';
+import PurchaseBillReturnPage from './PurchaseBillReturnPage'; // Import the return form component
 
 const PurchaseReturnListPage = () => {
   const [purchaseReturns, setPurchaseReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showReturnForm, setShowReturnForm] = useState(false); // State to control form visibility
   const navigate = useNavigate();
 
   const fetchPurchaseReturns = useCallback(async () => {
@@ -59,19 +61,23 @@ const PurchaseReturnListPage = () => {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Paper elevation={3} sx={{ p: 4 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4" component="h1">
-            Purchase Returns
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => navigate('/purchase-returns/new')}
-          >
-            Create New Return
-          </Button>
+          {!showReturnForm && (
+            <Typography variant="h4" component="h1">
+              Purchase Returns
+            </Typography>
+          )}
+          {!showReturnForm && (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => setShowReturnForm(true)} // Show the form
+            >
+              Create New Return
+            </Button>
+          )}
         </Box>
 
-        <Box mb={3}>
+        {/* <Box mb={3}>
           <TextField
             fullWidth
             label="Search Purchase Returns (by PO ID, Supplier, Reason)"
@@ -85,7 +91,7 @@ const PurchaseReturnListPage = () => {
               ),
             }}
           />
-        </Box>
+        </Box> */}
 
         {loading && <CircularProgress sx={{ my: 2 }} />}
         {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
@@ -94,42 +100,74 @@ const PurchaseReturnListPage = () => {
           <Alert severity="info">No purchase returns found.</Alert>
         )}
 
-        {!loading && purchaseReturns.length > 0 && (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Return ID</TableCell>
-                <TableCell>Purchase Order ID</TableCell>
-                <TableCell>Supplier</TableCell>
-                <TableCell>Return Date</TableCell>
-                <TableCell>Total Amount</TableCell>
-                <TableCell>Reason</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="center">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {purchaseReturns.map((pr) => (
-                <TableRow key={pr.id}>
-                  <TableCell>{pr.id}</TableCell>
-                  <TableCell>{pr.purchase_order}</TableCell>
-                  <TableCell>{pr.supplier_name}</TableCell>
-                  <TableCell>{new Date(pr.return_date).toLocaleDateString()}</TableCell>
-                  <TableCell>{parseFloat(pr.total_amount).toFixed(2)}</TableCell>
-                  <TableCell>{pr.reason}</TableCell>
-                  <TableCell>{pr.status}</TableCell>
-                  <TableCell align="center">
-                    <IconButton color="info" onClick={() => handleEdit(pr.id)}>
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton color="error" onClick={() => handleDelete(pr.id)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        {showReturnForm ? (
+          <PurchaseBillReturnPage onReturnComplete={() => {
+            setShowReturnForm(false);
+            fetchPurchaseReturns(); // Refresh the list after return is complete
+          }} />
+        ) : (
+          <>
+            <Box mb={3}>
+              <TextField
+                fullWidth
+                label="Search Purchase Returns (by PO ID, Supplier, Reason)"
+                value={searchTerm}
+                onChange={handleSearchChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Box>
+
+            {loading && <CircularProgress sx={{ my: 2 }} />}
+            {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
+
+            {!loading && purchaseReturns.length === 0 && !error && (
+              <Alert severity="info">No purchase returns found.</Alert>
+            )}
+
+            {!loading && purchaseReturns.length > 0 && (
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Return ID</TableCell>
+                    <TableCell>Purchase Order ID</TableCell>
+                    <TableCell>Supplier</TableCell>
+                    <TableCell>Return Date</TableCell>
+                    <TableCell>Total Amount</TableCell>
+                    <TableCell>Reason</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="center">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {purchaseReturns.map((pr) => (
+                    <TableRow key={pr.id}>
+                      <TableCell>{pr.id}</TableCell>
+                      <TableCell>{pr.purchase_order}</TableCell>
+                      <TableCell>{pr.supplier_name}</TableCell>
+                      <TableCell>{new Date(pr.return_date).toLocaleDateString()}</TableCell>
+                      <TableCell>{parseFloat(pr.total_amount).toFixed(2)}</TableCell>
+                      <TableCell>{pr.reason}</TableCell>
+                      <TableCell>{pr.status}</TableCell>
+                      <TableCell align="center">
+                        <IconButton color="info" onClick={() => handleEdit(pr.id)}>
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton color="error" onClick={() => handleDelete(pr.id)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </>
         )}
       </Paper>
     </Container>

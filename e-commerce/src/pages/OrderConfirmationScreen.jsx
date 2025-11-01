@@ -25,11 +25,13 @@ const OrderConfirmationScreen = () => {
     try {
       setLoading(true);
       const response = await apiService.get(`/api/order/orders/${orderId}/`);
-      if (response.success) {
+      if (response.status >= 200 && response.status < 300) { // Corrected success check
         setOrder(response.data);
+        console.log(response.data)
       } else {
-        setError(response.error || 'Failed to fetch order details.');
-        toast.error(response.error || 'Failed to fetch order details.');
+        // Use response.data.detail or a generic message if response.data.error is not consistently present
+        setError(response.data?.detail || response.data?.error || 'Failed to fetch order details.');
+        toast.error(response.data?.detail || response.data?.error || 'Failed to fetch order details.');
       }
     } catch (err) {
       setError('Error fetching order details: ' + err.message);
@@ -104,7 +106,7 @@ const OrderConfirmationScreen = () => {
             <span className="font-medium">Order ID:</span> {order.order_number || order.id}
           </p>
           <p className="text-gray-600">
-            <span className="font-medium">Total Amount:</span> ₹{order.total_amount.toFixed(2)}
+            <span className="font-medium">Total Amount:</span> ₹{(!isNaN(parseFloat(order.total_amount)) ? parseFloat(order.total_amount) : 0).toFixed(2)}
           </p>
           <p className="text-gray-600">
             <span className="font-medium">Payment Status:</span> {order.payment_status}
@@ -114,20 +116,44 @@ const OrderConfirmationScreen = () => {
           </p>
           <p className="text-gray-600">
             <span className="font-medium">Delivery Address:</span>{' '}
-            {order.delivery_address?.address_line_1}, {order.delivery_address?.city},{' '}
-            {order.delivery_address?.state} - {order.delivery_address?.pincode}
+            {order.delivery_address?.address_line_1}, {order.delivery_address?.address_line_2 && `${order.delivery_address.address_line_2}, `}
+            {order.delivery_address?.city}, {order.delivery_address?.state} - {order.delivery_address?.pincode}
           </p>
         </div>
 
+        {/* Ordered Items */}
+        {order.items && order.items.length > 0 && (
+          <div className="text-left border-b border-gray-200 py-6 mb-6">
+            <p className="text-gray-700 text-xl font-semibold mb-4">Ordered Items</p>
+            <ul className="space-y-3">
+              {order.items.map((item) => (
+                <li key={item.id} className="flex justify-between items-center text-gray-700">
+                  <div>
+                    <p className="font-medium">{item.product_name}</p>
+                    <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
+                  </div>
+                  <p className="font-semibold">₹{((!isNaN(parseFloat(item.unit_price_at_order)) ? parseFloat(item.unit_price_at_order) : 0) * (!isNaN(parseFloat(item.quantity)) ? parseFloat(item.quantity) : 0)).toFixed(2)}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button
+          onClick={() => navigate(`/invoice/${order.id}`)}
+          className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 mr-4"
+        >
+          View Invoice
+        </button>
         <button
           onClick={() => navigate('/profile/order-history')}
           className="px-8 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition duration-300 mr-4"
         >
-          View Order History
+          Back to Order History
         </button>
         <button
           onClick={() => navigate('/')}
-          className="px-8 py-3 border border-teal-600 text-teal-600 rounded-lg hover:bg-teal-50 transition duration-300"
+          className="px-40 py-3 border mt-5 border-teal-600 text-teal-600 rounded-lg hover:bg-teal-50 transition duration-300"
         >
           Continue Shopping
         </button>

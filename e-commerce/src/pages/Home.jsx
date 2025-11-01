@@ -9,6 +9,7 @@ import {
   Star,
 } from "lucide-react";
 import ProductPage from "./ProductPage.jsx"; // Keep import for TopSellerCard prop
+import { ProductCard } from "../components/ProductCard.jsx"; // Import ProductCard
 import { useCart } from "../context/CartContext.jsx"; // Import useCart
 import { useNotification } from "../context/NotificationContext.jsx"; // Import useNotification
 
@@ -50,10 +51,8 @@ export function TopSellerCard({ product }) { // Export TopSellerCard
         </h3>
         <p className="text-gray-600 text-sm mb-3">{product.description}</p>
         <p className="font-bold text-xl text-gray-900 mb-4">
-          {product.online_selling_price && !isNaN(parseFloat(product.online_selling_price))
-            ? `₹${parseFloat(product.online_selling_price).toFixed(2)}`
-            : product.online_mrp_price && !isNaN(parseFloat(product.online_mrp_price))
-            ? `₹${parseFloat(product.online_mrp_price).toFixed(2)}`
+          {product.price && !isNaN(product.price)
+            ? `₹${product.price.toFixed(2)}`
             : "N/A"}
         </p>
         <button
@@ -284,7 +283,7 @@ function TopSellers({ topSellers }) {
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {topSellers.map((product) => (
-            <TopSellerCard
+            <ProductCard
               key={product.id}
               product={product}
             />

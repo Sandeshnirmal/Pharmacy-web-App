@@ -25,10 +25,10 @@ function Navbar({ isAuthenticated }) {
             Shop by Category
           </Link>
           <Link
-            to="/prescriptions"
+            to="/upload-prescription"
             className="hover:text-green-500 transition-colors duration-200"
           >
-            Prescriptions
+            Upload Prescription
           </Link>
           <Link
             to="/about"
