@@ -95,11 +95,9 @@ function ProductGallery({ images }) {
 function ProductInfo({ product }) {
   const [quantity, setQuantity] = useState(1);
   const { addToCart } = useCart();
-  const { addNotification } = useNotification();
 
-  const handleAddToCart = () => {
-    addToCart(product, quantity); // Pass the full product object and quantity
-    addNotification(`${product.name} added to cart!`, 'success');
+  const handleAddToCart = async () => {
+    await addToCart(product, quantity);
   };
 
   return (

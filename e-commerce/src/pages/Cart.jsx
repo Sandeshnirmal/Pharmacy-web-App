@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight, Plus, Minus, X } from "lucide-react";
 import { useCart } from "../context/CartContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -151,9 +151,11 @@ function OrderSummary({
         >
           Proceed to Checkout
         </button>
-        <button className="w-full text-center text-green-600 font-semibold hover:text-green-800">
+        <Link to="/shop">
+          <button className="w-full text-center text-green-600 font-semibold hover:text-green-800">
           Continue Shopping
-        </button>
+        </button></Link>
+        
       </div>
     </div>
   );

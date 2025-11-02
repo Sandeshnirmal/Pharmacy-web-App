@@ -399,17 +399,28 @@ const CheckoutScreen = () => {
 
       {/* Order Summary */}
       <section className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-700">Order Summary</h2>
-        <p className="text-gray-600 mb-4">{cart.items.length} items in your cart</p>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-700">
+          Order Summary
+        </h2>
+        <p className="text-gray-600 mb-4">
+          {cart.items.length} items in your cart
+        </p>
         <ul className="space-y-2">
           {cart.items.slice(0, 3).map((item) => (
-            <li key={item.id} className="flex justify-between items-center text-gray-700">
-              <span>{item.name} x{item.quantity}</span>
+            <li
+              key={item.id}
+              className="flex justify-between items-center text-gray-700"
+            >
+              <span>
+                {item.name} x{item.quantity}
+              </span>
               <span>₹{(item.price * item.quantity).toFixed(2)}</span>
             </li>
           ))}
           {cart.items.length > 3 && (
-            <li className="text-gray-500 italic">... and {cart.items.length - 3} more items</li>
+            <li className="text-gray-500 italic">
+              ... and {cart.items.length - 3} more items
+            </li>
           )}
         </ul>
       </section>
@@ -417,7 +428,9 @@ const CheckoutScreen = () => {
       {/* Delivery Address */}
       <section className="bg-white p-6 rounded-lg shadow-md mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-semibold text-gray-700">Delivery Address</h2>
+          <h2 className="text-2xl font-semibold text-gray-700">
+            Delivery Address
+          </h2>
           <button
             onClick={handleAddAddress}
             className="text-teal-600 hover:text-teal-800 font-medium"
@@ -433,7 +446,9 @@ const CheckoutScreen = () => {
               <div
                 key={address.id}
                 className={`p-4 border rounded-lg cursor-pointer ${
-                  selectedAddressIndex === index ? 'border-teal-500 bg-teal-50' : 'border-gray-300'
+                  selectedAddressIndex === index
+                    ? "border-teal-500 bg-teal-50"
+                    : "border-gray-300"
                 }`}
                 onClick={() => setSelectedAddressIndex(index)}
               >
@@ -460,25 +475,63 @@ const CheckoutScreen = () => {
                 </p>
                 {selectedAddressIndex === index && isCheckingPincode && (
                   <p className="text-teal-600 ml-7 mt-2 flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg
+                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-teal-500"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     {pincodeServiceabilityMessage}
                   </p>
                 )}
-                {selectedAddressIndex === index && !isCheckingPincode && pincodeServiceabilityMessage && (
-                  <p className={`ml-7 mt-2 flex items-center ${isPincodeServiceable ? 'text-green-600' : 'text-red-600'}`}>
-                    <svg className={`h-4 w-4 mr-2 ${isPincodeServiceable ? 'text-green-500' : 'text-red-500'}`} fill="currentColor" viewBox="0 0 20 20">
-                      {isPincodeServiceable ? (
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      ) : (
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                      )}
-                    </svg>
-                    {pincodeServiceabilityMessage}
-                  </p>
-                )}
+                {selectedAddressIndex === index &&
+                  !isCheckingPincode &&
+                  pincodeServiceabilityMessage && (
+                    <p
+                      className={`ml-7 mt-2 flex items-center ${
+                        isPincodeServiceable ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      <svg
+                        className={`h-4 w-4 mr-2 ${
+                          isPincodeServiceable
+                            ? "text-green-500"
+                            : "text-red-500"
+                        }`}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        {isPincodeServiceable ? (
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        ) : (
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                            clipRule="evenodd"
+                          />
+                        )}
+                      </svg>
+                      {pincodeServiceabilityMessage}
+                    </p>
+                  )}
               </div>
             ))}
           </div>
@@ -487,13 +540,17 @@ const CheckoutScreen = () => {
 
       {/* Payment Method */}
       <section className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-700">Payment Method</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-700">
+          Payment Method
+        </h2>
         <div className="space-y-4">
           {paymentMethods.map((method) => (
             <div
               key={method.id}
               className={`p-4 border rounded-lg cursor-pointer ${
-                paymentMethod === method.id ? 'border-teal-500 bg-teal-50' : 'border-gray-300'
+                paymentMethod === method.id
+                  ? "border-teal-500 bg-teal-50"
+                  : "border-gray-300"
               }`}
               onClick={() => setPaymentMethod(method.id)}
             >
@@ -505,7 +562,9 @@ const CheckoutScreen = () => {
                   checked={paymentMethod === method.id}
                   onChange={() => setPaymentMethod(method.id)}
                 />
-                <span className="ml-3 text-gray-800 font-medium">{method.name}</span>
+                <span className="ml-3 text-gray-800 font-medium">
+                  {method.name}
+                </span>
               </label>
               <p className="text-gray-600 ml-7">{method.description}</p>
             </div>
@@ -515,7 +574,9 @@ const CheckoutScreen = () => {
 
       {/* Order Notes */}
       <section className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-700">Order Notes (Optional)</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-700">
+          Order Notes (Optional)
+        </h2>
         <textarea
           className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
           rows="3"
@@ -527,7 +588,9 @@ const CheckoutScreen = () => {
 
       {/* Price Summary */}
       <section className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-700">Price Summary</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-700">
+          Price Summary
+        </h2>
         <div className="space-y-2">
           <div className="flex justify-between text-gray-700">
             <span>Subtotal</span>
@@ -553,32 +616,55 @@ const CheckoutScreen = () => {
             <span>₹{cart.total.toFixed(2)}</span>
           </div>
         </div>
+        {/* Place Order Button */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white p-4 shadow-lg">
+          <button
+            onClick={placeOrder}
+            disabled={
+              isPlacingOrder ||
+              addresses.length === 0 ||
+              selectedAddressIndex === -1 ||
+              !isPincodeServiceable
+            }
+            className={`w-full py-3 rounded-lg text-white font-bold text-lg transition duration-300 ${
+              isPlacingOrder ||
+              addresses.length === 0 ||
+              selectedAddressIndex === -1 ||
+              !isPincodeServiceable
+                ? "bg-orange-500 cursor-not-allowed"
+                : "bg-teal-600 hover:bg-teal-700"
+            }`}
+          >
+            {isPlacingOrder ? (
+              <span className="flex items-center justify-center">
+                <svg
+                  className="animate-spin h-5 w-5 mr-3 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Placing Order...
+              </span>
+            ) : (
+              `Place Order • ₹${cart.total.toFixed(2)}`
+            )}
+          </button>
+        </div>
       </section>
-
-      {/* Place Order Button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white p-4 shadow-lg">
-        <button
-          onClick={placeOrder}
-          disabled={isPlacingOrder || addresses.length === 0 || selectedAddressIndex === -1 || !isPincodeServiceable}
-          className={`w-full py-3 rounded-lg text-white font-bold text-lg transition duration-300 ${
-            isPlacingOrder || addresses.length === 0 || selectedAddressIndex === -1 || !isPincodeServiceable
-              ? 'bg-teal-300 cursor-not-allowed'
-              : 'bg-teal-600 hover:bg-teal-700'
-          }`}
-        >
-          {isPlacingOrder ? (
-            <span className="flex items-center justify-center">
-              <svg className="animate-spin h-5 w-5 mr-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Placing Order...
-            </span>
-          ) : (
-            `Place Order • ₹${cart.total.toFixed(2)}`
-          )}
-        </button>
-      </div>
     </div>
   );
 };
