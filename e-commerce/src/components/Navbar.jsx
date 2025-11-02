@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, ShoppingCart, User, Menu, X } from "lucide-react";
 import logo from '../assets/infxmart_words.png';
+import { useCart } from '../context/CartContext.jsx';
 
 const Navbar = ({ isAuthenticated }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const navigate = useNavigate();
+  const { cartItems } = useCart();
+
+  const totalItems = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -72,8 +76,13 @@ const Navbar = ({ isAuthenticated }) => {
             </form>
           </div>
 
-          <Link to="/cart" aria-label="Cart" className="text-gray-700 hover:text-green-500 transition-colors duration-300">
+          <Link to="/cart" aria-label="Cart" className="relative text-gray-700 hover:text-green-500 transition-colors duration-300">
             <ShoppingCart className="h-7 w-7" />
+            {totalItems > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                {totalItems}
+              </span>
+            )}
           </Link>
 
           {isAuthenticated ? (

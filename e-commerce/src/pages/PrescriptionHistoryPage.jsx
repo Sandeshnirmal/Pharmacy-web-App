@@ -292,7 +292,7 @@ const PrescriptionHistoryPage = () => {
                     >
                       {prescription.image_url ? (
                         <img
-                          src={prescription.image_url}
+                          src={`http://localhost:8000${prescription.image_url}`}
                           alt="Prescription"
                           className="w-20 h-20 object-cover rounded-md"
                         />
