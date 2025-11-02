@@ -1,5 +1,6 @@
 import React, { memo } from "react";
 import { ProductCard } from "./ProductCard.jsx";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export const ProductListSection = memo(({
   products,
@@ -18,6 +19,8 @@ export const ProductListSection = memo(({
     return <div className="text-center py-16 text-red-500">{error}</div>;
   }
 
+  const totalPages = Math.ceil(totalProducts / productsPerPage);
+
   return (
     <div>
       {products.length === 0 ? (
@@ -31,22 +34,23 @@ export const ProductListSection = memo(({
       )}
 
       {/* Pagination Controls */}
-      {totalProducts > productsPerPage && (
-        <div className="flex justify-center mt-8 space-x-2">
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center mt-12 space-x-2 bg-gray-50 p-4 rounded-lg">
           <button
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            className="px-4 py-2 border rounded-md text-gray-700 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center px-3 py-2 border rounded-md text-gray-600 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Previous
+            <ChevronLeft className="h-5 w-5" />
+            <span className="ml-1">Previous</span>
           </button>
-          {[...Array(Math.ceil(totalProducts / productsPerPage))].map((_, index) => (
+          {[...Array(totalPages)].map((_, index) => (
             <button
               key={index + 1}
               onClick={() => handlePageChange(index + 1)}
-              className={`px-4 py-2 border rounded-md ${
+              className={`px-4 py-2 border rounded-md transition-colors ${
                 currentPage === index + 1
-                  ? "bg-green-500 text-white"
+                  ? "bg-green-500 text-white shadow-md"
                   : "bg-white text-gray-700 hover:bg-gray-100"
               }`}
             >
@@ -55,10 +59,11 @@ export const ProductListSection = memo(({
           ))}
           <button
             onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === Math.ceil(totalProducts / productsPerPage)}
-            className="px-4 py-2 border rounded-md text-gray-700 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={currentPage === totalPages}
+            className="flex items-center px-3 py-2 border rounded-md text-gray-600 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Next
+            <span className="mr-1">Next</span>
+            <ChevronRight className="h-5 w-5" />
           </button>
         </div>
       )}

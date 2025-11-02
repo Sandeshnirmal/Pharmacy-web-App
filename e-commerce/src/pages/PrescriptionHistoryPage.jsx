@@ -29,7 +29,8 @@ const PrescriptionHistoryPage = () => {
 
       try {
         setLoading(true);
-        const response = await prescriptionAPI.getPrescriptions();
+        // Pass user ID to fetch only their prescriptions
+        const response = await prescriptionAPI.getPrescriptions(1, 10, { user_id: user.id });
         if (response.data && Array.isArray(response.data.results)) {
           setPrescriptions(response.data.results);
         } else {
@@ -44,9 +45,12 @@ const PrescriptionHistoryPage = () => {
       }
     };
 
-    fetchUserPrescriptions();
+    if (user && user.id) {
+      fetchUserPrescriptions();
+    }
   }, [user, navigate, addNotification, isAuthenticated]);
 
+  // This function is called after a new prescription is uploaded
   const fetchUserPrescriptions = async () => {
     if (!isAuthenticated) {
       addNotification('You must be logged in to view prescription history.', 'error');
@@ -56,7 +60,8 @@ const PrescriptionHistoryPage = () => {
 
     try {
       setLoading(true);
-      const response = await prescriptionAPI.getPrescriptions();
+      // Pass user ID to fetch only their prescriptions
+      const response = await prescriptionAPI.getPrescriptions(1, 10, { user_id: user.id });
       if (response.data && Array.isArray(response.data.results)) {
         setPrescriptions(response.data.results);
       } else {

@@ -12,7 +12,7 @@ import ProductPage from "./ProductPage.jsx"; // Keep import for TopSellerCard pr
 import { ProductCard } from "../components/ProductCard.jsx"; // Import ProductCard
 import { useCart } from "../context/CartContext.jsx"; // Import useCart
 import { useNotification } from "../context/NotificationContext.jsx"; // Import useNotification
-
+import logo from "../assets/hero-e.webp";
 // --- Reusable Components ---
 
 /**
@@ -78,12 +78,12 @@ function HealthConcernCard({ concern }) {
       className="bg-white rounded-lg shadow-sm overflow-hidden text-center transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
       onClick={handleClick}
     >
-      <img
+      {/* <img
         src={concern.image}
         alt={concern.name}
         className="w-full h-80 object-cover"
-      />
-      <div className="p-4">
+      /> */}
+      <div className="p-4 bg-amber-300">
         <h3 className="font-semibold text-lg text-gray-900 mb-1">
           {concern.name}
         </h3>
@@ -154,26 +154,48 @@ function TimerBox({ value, label }) {
 
 function Hero() {
   return (
-    <header className="bg-gray-50">
-      <div className="max-w-screen-2xl mx-auto px-4 grid md:grid-cols-2 items-center gap-8 py-12 md:py-24">
-        <div className="space-y-6 text-center md:text-left">
-          <h1 className="text-5xl md:text-7xl font-bold text-gray-900 tracking-tight leading-tight">
-            Your Health, <br /> Delivered.
-          </h1>
-          <p className="text-lg text-gray-600 max-w-md mx-auto md:mx-0">
-            Find your medication, vitamins, and health essentials quickly and
-            discreetly.
+    <header className="relative bg-gradient-to-br from-green-50 to-cyan-100 overflow-hidden">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 items-center gap-12 py-20 md:py-32">
+        <div className="relative z-10 space-y-8 text-center md:text-left">
+          <div className="space-y-4">
+            <span className="inline-block bg-green-200 text-green-800 text-sm font-semibold px-4 py-1 rounded-full">
+              Your Trusted Online Pharmacy
+            </span>
+            <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tighter leading-tight">
+              Your Health,
+              <br />
+              <span className="text-green-500">Delivered Fast.</span>
+            </h1>
+          </div>
+          <p className="text-lg text-gray-700 max-w-md mx-auto md:mx-0">
+            Experience the future of pharmacy. Get your medications, vitamins,
+            and health essentials delivered to your doorstep, hassle-free.
           </p>
-          <button className="bg-green-400 text-black font-bold py-3 px-8 rounded-full transition-all duration-300 hover:bg-green-500 hover:shadow-md hover:-translate-y-0.5 text-lg">
-            Shop Health Essentials
-          </button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start">
+            <Link
+              to="/shop"
+              className="inline-block bg-green-500 text-white font-bold py-4 px-10 rounded-full text-lg shadow-lg transform transition-all duration-300 hover:bg-green-600 hover:scale-105 hover:shadow-xl"
+            >
+              Shop Now
+            </Link>
+            <Link
+              to="/about"
+              className="inline-block bg-gray-200 text-gray-800 font-bold py-4 px-10 rounded-full text-lg shadow-md transform transition-all duration-300 hover:bg-gray-300 hover:scale-105 hover:shadow-lg"
+            >
+              Learn More
+            </Link>
+          </div>
         </div>
-        <div className="relative h-64 md:h-96 w-full">
-          <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbZBMlP4Kc3Lg2flkgRV6EEoMOQWK74Vwxce1ZKiVc-1ym8BKNOaOScpts64y1KQfSBcAIs_yyP3s2mTaZvdBXUOlJndFuhhkTRVunlDqq_DcMNKSPND9-Sv02VmgZI4aLwIaeA1_ggEy5YM4lU_bvKV-AcNVl3pMvh9hnUwyWdLbEUrdkfR4JMa4Wh9JHjekiYA2dmD-hqEhsCysmCXFeaM42RE5GxcHIscDYLiKTBeGOrp4gbXfeiPgHX9-Y2fJ1aG2aP409mtIb"
-            alt="Medicine bottles and dispenser"
-            className="absolute inset-0 w-full h-full object-cover rounded-xl shadow-lg"
-          />
+        <div className="relative h-80 md:h-auto">
+          <div className="absolute -top-16 -right-16 w-96 h-96 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+          <div className="absolute -bottom-16 -left-16 w-96 h-96 bg-cyan-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+          <div className="relative z-10">
+            <img
+              src={logo}
+              alt="A pharmacist handing a prescription to a customer"
+              className="w-full h-full object-cover rounded-3xl shadow-2xl transform transition-transform duration-500"
+            />
+          </div>
         </div>
       </div>
     </header>

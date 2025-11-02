@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import logo from '../assets/full_logo.png';
 
 const Footer = memo(() => {
   return (
@@ -7,10 +8,7 @@ const Footer = memo(() => {
         <div className="grid lg:grid-cols-3 gap-12">
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
-              <span className="w-8 h-8 bg-green-400 rounded-full"></span>
-              <span className="font-bold text-2xl text-gray-900">
-                PharmaCare
-              </span>
+              <img src={logo} alt="Full logo" className='w-[10vw] h-auto min-w-50'/>
             </div>
             <div className="flex space-x-4"></div>
           </div>
@@ -134,7 +132,7 @@ const Footer = memo(() => {
           </div>
         </div>
         <div className="border-t mt-12 pt-8 text-center text-sm text-gray-500">
-          © {new Date().getFullYear()} PharmaCare. All rights reserved.
+          © {new Date().getFullYear()} InfixMart. All rights reserved.
         </div>
       </div>
     </footer>

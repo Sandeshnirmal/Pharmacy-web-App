@@ -151,55 +151,58 @@ function Shop() {
     <div className="max-w-screen-2xl mx-auto px-4 py-8">
       <h1 className="text-4xl font-bold text-gray-900 mb-8">Our Shop</h1>
 
-      {/* Segment/Tab Navigation */}
-      <div className="mb-8 flex space-x-4 border-b border-gray-200">
-        <button
-          className={`py-2 px-4 text-lg font-medium ${
-            segment === "all" ? "border-b-2 border-green-500 text-green-600" : "text-gray-600 hover:text-gray-800"
-          }`}
-          onClick={() => handleSegmentChange("all")}
-        >
-          All Products
-        </button>
-        <button
-          className={`py-2 px-4 text-lg font-medium ${
-            segment === "featured" ? "border-b-2 border-green-500 text-green-600" : "text-gray-600 hover:text-gray-800"
-          }`}
-          onClick={() => handleSegmentChange("featured")}
-        >
-          Featured
-        </button>
-        <button
-          className={`py-2 px-4 text-lg font-medium ${
-            segment === "on_sale" ? "border-b-2 border-green-500 text-green-600" : "text-gray-600 hover:text-gray-800"
-          }`}
-          onClick={() => handleSegmentChange("on_sale")}
-        >
-          On Sale
-        </button>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="md:col-span-1">
+          <ProductFilters
+            localSearchInput={localSearchInput}
+            handleSearchInputChange={handleSearchInputChange}
+            localCategoryInput={localCategoryInput}
+            handleCategoryFilterChange={handleCategoryFilterChange}
+            localFilterLogicInput={localFilterLogicInput}
+            setLocalFilterLogicInput={setLocalFilterLogicInput}
+            categories={categories}
+          />
+        </div>
+
+        <div id="filter-select" className="md:col-span-3">
+          <div className="mb-8 flex items-center space-x-4 border-b border-gray-200">
+            <button
+              className={`py-2 px-4 text-lg font-medium ${
+                segment === "all" ? "border-b-2 border-green-500 text-green-600" : "text-gray-600 hover:text-gray-800"
+              }`}
+              onClick={() => handleSegmentChange("all")}
+            >
+              All Products
+            </button>
+            <button
+              className={`py-2 px-4 text-lg font-medium ${
+                segment === "featured" ? "border-b-2 border-green-500 text-green-600" : "text-gray-600 hover:text-gray-800"
+              }`}
+              onClick={() => handleSegmentChange("featured")}
+            >
+              Featured
+            </button>
+            <button
+              className={`py-2 px-4 text-lg font-medium ${
+                segment === "on_sale" ? "border-b-2 border-green-500 text-green-600" : "text-gray-600 hover:text-gray-800"
+              }`}
+              onClick={() => handleSegmentChange("on_sale")}
+            >
+              On Sale
+            </button>
+          </div>
+
+          <ProductListSection
+            products={products}
+            loading={loading}
+            error={error}
+            currentPage={currentPage}
+            totalProducts={totalProducts}
+            productsPerPage={productsPerPage}
+            handlePageChange={handlePageChange}
+          />
+        </div>
       </div>
-
-      {/* Filters Section (moved to top) */}
-      <ProductFilters
-        localSearchInput={localSearchInput}
-        handleSearchInputChange={handleSearchInputChange}
-        localCategoryInput={localCategoryInput}
-        handleCategoryFilterChange={handleCategoryFilterChange}
-        localFilterLogicInput={localFilterLogicInput}
-        setLocalFilterLogicInput={setLocalFilterLogicInput}
-        categories={categories}
-      />
-
-      {/* Product Listing and Pagination */}
-      <ProductListSection
-        products={products}
-        loading={loading}
-        error={error}
-        currentPage={currentPage}
-        totalProducts={totalProducts}
-        productsPerPage={productsPerPage}
-        handlePageChange={handlePageChange}
-      />
     </div>
   );
 }

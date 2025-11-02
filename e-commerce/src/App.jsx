@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Home from './pages/Home.jsx'; // Keep Home as direct import
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
@@ -8,6 +8,7 @@ import { useAuth, AuthProvider } from './context/AuthContext.jsx';
 import { CartProvider } from './context/CartContext.jsx';
 import { NotificationProvider } from './context/NotificationContext.jsx';
 import Notification from './components/Notification.jsx';
+import AboutUsPage from './pages/About.jsx';
 
 // Lazy-loaded components
 const ProductPage = lazy(() => import('./pages/ProductPage.jsx'));
@@ -21,6 +22,7 @@ const OrderConfirmationScreen = lazy(() => import('./pages/OrderConfirmationScre
 const Invoice = lazy(() => import('./pages/Invoice.jsx'));
 const PrescriptionDetailScreen = lazy(() => import('./pages/PrescriptionDetailScreen.jsx'));
 const PrescriptionHistoryPage = lazy(() => import('./pages/PrescriptionHistoryPage.jsx'));
+const About = lazy(() => import('./pages/About.jsx'));
 
 function App() {
   return (
@@ -36,6 +38,8 @@ function App() {
 
 function AuthWrapper() {
   const { isAuthenticated, loading } = useAuth(); // Now useAuth is inside AuthProvider
+  const location = useLocation();
+  const showNavbarAndFooter = !['/login', '/register'].includes(location.pathname);
 
   if (loading) {
     return <div className="flex justify-center items-center min-h-screen">Loading application...</div>;
@@ -43,7 +47,7 @@ function AuthWrapper() {
 
   return (
     <>
-      <Navbar isAuthenticated={isAuthenticated} />
+      {showNavbarAndFooter && <Navbar isAuthenticated={isAuthenticated} />}
       <main>
         <Suspense fallback={<div className="flex justify-center items-center min-h-screen">Loading page...</div>}>
           <Routes>
@@ -73,10 +77,11 @@ function AuthWrapper() {
             <Route path="/shop" element={<Shop />} />
             {/* <Route path="/upload-prescription" element={<UploadPrescriptionScreen />} /> */}
             <Route path="/my-prescriptions/:prescriptionId" element={<PrescriptionDetailScreen />} />
+            <Route path="/about" element={<AboutUsPage />} />
           </Routes>
         </Suspense>
       </main>
-      <Footer />
+      {showNavbarAndFooter && <Footer />}
       <Notification />
     </>
   );
