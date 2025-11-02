@@ -241,12 +241,12 @@ class PrescriptionWorkflowLog(models.Model):
     to_status = models.CharField(max_length=30)
 
     # Change details
-    action_taken = models.CharField(max_length=100)
+    action = models.CharField(max_length=100)
     notes = models.TextField(blank=True)
     system_generated = models.BooleanField(default=False)  # True for AI actions
 
     # User and timestamp
-    performed_by = models.ForeignKey(
+    actor = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
         related_name='workflow_actions',

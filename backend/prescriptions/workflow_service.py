@@ -25,7 +25,7 @@ class PrescriptionWorkflowService:
     def __init__(self):
         self.ocr_service = OCRService()
     
-    def process_uploaded_prescription(self, prescription: Prescription, user: User) -> Dict[str, Any]:
+    def process_uploaded_prescription(self, prescription: Prescription, user: Any) -> Dict[str, Any]:
         """
         Process newly uploaded prescription through AI workflow
         """
@@ -142,25 +142,64 @@ class PrescriptionWorkflowService:
                 except Product.DoesNotExist:
                     pass
             
+            # Determine initial mapping and status based on local_equivalent
+            initial_suggested_medicine = None
+            initial_verification_status = 'pending'
+            initial_is_valid_for_order = False
+            initial_extracted_dosage = medicine_data.get('composition', '')
+            initial_extracted_medicine_name = medicine_data.get('input_medicine_name', '') # Use input_medicine_name from OCR result
+
+            if medicine_data.get('local_equivalent'):
+                try:
+                    product_name = medicine_data['local_equivalent']['product_name']
+                    initial_suggested_medicine = Product.objects.get(name=product_name)
+                    initial_verification_status = 'approved' # Automatically approve if a local equivalent is found
+                    initial_is_valid_for_order = True
+                    initial_extracted_dosage = medicine_data['local_equivalent'].get('composition', initial_extracted_dosage)
+                    initial_extracted_medicine_name = product_name # Use the mapped product name
+                except Product.DoesNotExist:
+                    # If local_equivalent product not found in DB, revert to pending
+                    initial_suggested_medicine = None
+                    initial_verification_status = 'pending'
+                    initial_is_valid_for_order = False
+                    initial_extracted_dosage = medicine_data.get('composition', '')
+                    initial_extracted_medicine_name = medicine_data.get('input_medicine_name', '')
+
             # Create prescription medicine
             prescription_medicine = PrescriptionMedicine.objects.create(
                 prescription=prescription,
                 line_number=idx,
-                extracted_medicine_name=medicine_data.get('input_brand', ''),
-                extracted_dosage=self._extract_dosage_info(medicine_data),
+                extracted_medicine_name=initial_extracted_medicine_name,
+                extracted_dosage=initial_extracted_dosage,
                 extracted_frequency=medicine_data.get('frequency', ''),
                 extracted_duration=medicine_data.get('duration', ''),
                 extracted_instructions=medicine_data.get('instructions', ''),
-                suggested_medicine=suggested_product,
+                suggested_medicine=initial_suggested_medicine, # This is now the automatically mapped product
                 ai_confidence_score=medicine_data.get('match_confidence', 0.0),
-                verification_status='pending'
+                verification_status=initial_verification_status,
+                is_valid_for_order=initial_is_valid_for_order,
+                quantity_prescribed=1, # Default quantity, can be updated later
+                unit_price=initial_suggested_medicine.batches.first().selling_price if initial_suggested_medicine and initial_suggested_medicine.batches.first() else 0.0,
+                total_price=initial_suggested_medicine.batches.first().selling_price if initial_suggested_medicine and initial_suggested_medicine.batches.first() else 0.0,
             )
             
-            # Add alternative suggestions if available
-            if suggested_product:
-                # Find similar products based on composition
-                similar_products = self._find_similar_products(suggested_product)
-                prescription_medicine.suggested_products.set(similar_products[:5])
+            # Add all suggested products (including the one that might have been auto-mapped)
+            if medicine_data.get('local_equivalent'):
+                # Add the auto-mapped product to suggested_products if it exists
+                if initial_suggested_medicine:
+                    prescription_medicine.suggested_products.add(initial_suggested_medicine)
+                
+                # Find similar products based on composition (excluding the auto-mapped one if already added)
+                similar_products = self._find_similar_products(initial_suggested_medicine or Product.objects.get(name=medicine_data['local_equivalent']['product_name']))
+                for s_product in similar_products:
+                    prescription_medicine.suggested_products.add(s_product)
+            elif medicine_data.get('suggested_products'): # If local_equivalent was not found, but other suggestions exist
+                for s_product_data in medicine_data['suggested_products']:
+                    try:
+                        s_product = Product.objects.get(name=s_product_data['product_name'])
+                        prescription_medicine.suggested_products.add(s_product)
+                    except Product.DoesNotExist:
+                        pass
     
     def _extract_dosage_info(self, medicine_data: Dict) -> str:
         """

@@ -1,0 +1,1 @@
+{"offline-sales":"http://127.0.0.1:8000/api/offline-sales/offline-sales/","offline-sale-items":"http://127.0.0.1:8000/api/offline-sales/offline-sale-items/","bill-returns":"http://127.0.0.1:8000/api/offline-sales/bill-returns/","offline-customers":"http://127.0.0.1:8000/api/offline-sales/offline-customers/"}

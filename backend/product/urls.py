@@ -3,12 +3,13 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, ProductViewSet, BatchViewSet, InventoryViewSet,
     GenericNameViewSet, EnhancedProductViewSet, ProductReviewViewSet,
-    WishlistViewSet
+    WishlistViewSet, ExcelUploadView, DiscountViewSet, # Import DiscountViewSet
+    BulkCategoryCreateAPIView, BulkGenericNameCreateAPIView, BulkProductCreateAPIView # Import new views
 )
 
 # Enhanced imports
 try:
-    from .enhanced_views import CompositionViewSet, ProductViewSet 
+    from .enhanced_views import CompositionViewSet, ProductViewSet
     enhanced_available = True
 except ImportError:
     enhanced_available = False
@@ -29,6 +30,7 @@ router.register(r'reviews', ProductReviewViewSet)
 router.register(r'wishlist', WishlistViewSet, basename='wishlist')
 router.register(r'batches', BatchViewSet)
 router.register(r'inventory', InventoryViewSet)
+router.register(r'discounts', DiscountViewSet) # Register DiscountViewSet
 
 urlpatterns = [
     # Enhanced API endpoints
@@ -36,4 +38,10 @@ urlpatterns = [
 
     # Legacy endpoints
     path('legacy/', include(router.urls)),
+
+    # Bulk creation endpoints
+    path('bulk-categories/', BulkCategoryCreateAPIView.as_view(), name='bulk-category-create'),
+    path('bulk-generic-names/', BulkGenericNameCreateAPIView.as_view(), name='bulk-generic-name-create'),
+    path('bulk-products/', BulkProductCreateAPIView.as_view(), name='bulk-product-create'),
+    path('upload-excel/', ExcelUploadView.as_view(), name='excel-upload'), # New endpoint for Excel upload
 ]

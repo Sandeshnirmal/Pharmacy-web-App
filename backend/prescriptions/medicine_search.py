@@ -13,10 +13,13 @@ from difflib import SequenceMatcher
 import logging
 import google.generativeai as genai
 from django.conf import settings
+from .ocr_service import OCRService # Import OCRService
+import os # Import os
+import uuid # Import uuid
 
 logger = logging.getLogger(__name__)
 
-# Configure Google AI
+# Configure Google AI (already done in OCRService, but keep for other potential uses)
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 
 
@@ -214,126 +217,6 @@ class MedicineSearchEngine:
         return min(confidence, 1.0)
 
 
-class PrescriptionOCREngine:
-    """OCR-based prescription analysis with composition matching"""
-
-    def __init__(self):
-        self.model = genai.GenerativeModel("models/gemini-2.0-flash")
-
-    def extract_medicines_from_image(self, image_data):
-        """Extract medicines from prescription image using OCR"""
-        try:
-            # Convert base64 to PIL Image if needed
-            if isinstance(image_data, str):
-                image_data = base64.b64decode(image_data)
-
-            image = Image.open(io.BytesIO(image_data))
-
-            # Prepare prompt for medicine extraction
-            prompt = """
-            Analyze this prescription image and extract all medicines mentioned.
-            For each medicine, provide:
-            1. Medicine name (generic or brand name)
-            2. Strength/dosage (e.g., 500mg, 250mg)
-            3. Form (tablet, capsule, syrup, etc.)
-            4. Frequency (if mentioned)
-            5. Duration (if mentioned)
-            6. Composition/active ingredients (if visible)
-
-            Format the response as JSON:
-            {
-                "medicines": [
-                    {
-                        "name": "medicine name",
-                        "strength": "dosage",
-                        "form": "tablet/capsule/etc",
-                        "frequency": "frequency if mentioned",
-                        "duration": "duration if mentioned",
-                        "composition": ["active ingredient 1", "active ingredient 2"]
-                    }
-                ]
-            }
-
-            Only extract medicines that are clearly visible and readable.
-            """
-
-            response = self.model.generate_content([prompt, image])
-
-            # Parse the response
-            import json
-            try:
-                # Extract JSON from response
-                response_text = response.text
-                # Find JSON in the response
-                start_idx = response_text.find('{')
-                end_idx = response_text.rfind('}') + 1
-
-                if start_idx != -1 and end_idx != -1:
-                    json_str = response_text[start_idx:end_idx]
-                    extracted_data = json.loads(json_str)
-                    return extracted_data.get('medicines', [])
-                else:
-                    logger.error(f'No JSON found in OCR response: {response_text}')
-                    return []
-
-            except json.JSONDecodeError as e:
-                logger.error(f'JSON decode error: {e}, Response: {response.text}')
-                return []
-
-        except Exception as e:
-            logger.error(f'OCR extraction error: {e}')
-            return []
-
-    def find_matching_products(self, extracted_medicines):
-        """Find matching products in database for extracted medicines"""
-        search_engine = MedicineSearchEngine()
-        results = []
-
-        for medicine in extracted_medicines:
-            # Create search text from extracted data
-            search_text = f"{medicine.get('name', '')} {medicine.get('strength', '')} {medicine.get('form', '')}"
-
-            # Extract medicine info
-            medicine_info = search_engine.extract_medicine_info(search_text)
-
-            # Find matches
-            matches = search_engine.find_similar_medicines(medicine_info, limit=3)
-
-            # Add composition matching
-            if medicine.get('composition'):
-                composition_matches = self.find_by_composition(medicine['composition'])
-                # Merge composition matches with name matches
-                for comp_match in composition_matches:
-                    # Check if already in matches
-                    existing = next((m for m in matches if m['product'].id == comp_match.id), None)
-                    if not existing:
-                        matches.append({
-                            'product': comp_match,
-                            'confidence': 0.8,  # High confidence for composition match
-                            'match_type': 'composition'
-                        })
-
-            results.append({
-                'extracted_medicine': medicine,
-                'search_text': search_text,
-                'matches': matches
-            })
-
-        return results
-
-    def find_by_composition(self, compositions):
-        """Find products by composition/active ingredients"""
-        products = Product.objects.filter(is_active=True)
-
-        for comp_name in compositions:
-            # Search in product compositions
-            products = products.filter(
-                Q(compositions__name__icontains=comp_name) | # Corrected lookup
-                Q(generic_name__name__icontains=comp_name) |
-                Q(name__icontains=comp_name)
-            )
-
-        return products.distinct()[:5]
 
 
 @api_view(['POST'])
@@ -347,6 +230,7 @@ def prescription_ocr_analysis(request):
         "image_url": "url_to_image" // alternative to base64
     }
     """
+    temp_image_path = None
     try:
         image_data = request.data.get('image')
         image_url = request.data.get('image_url')
@@ -356,21 +240,54 @@ def prescription_ocr_analysis(request):
                 'error': 'Either image data or image URL is required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        ocr_engine = PrescriptionOCREngine()
+        ocr_service = OCRService() # Instantiate our OCRService
+
+        image_to_process = None
 
         # Handle image URL
-        if image_url and not image_data:
+        if image_url:
             import requests
             try:
                 response = requests.get(image_url)
-                image_data = response.content
+                image_data = response.content # Fetch content from URL
+                # Save to a temporary file for OCRService
+                temp_image_path = os.path.join(settings.MEDIA_ROOT, 'temp_prescriptions', f'temp_ocr_{uuid.uuid4()}.jpg')
+                os.makedirs(os.path.dirname(temp_image_path), exist_ok=True)
+                with open(temp_image_path, 'wb') as f:
+                    f.write(image_data)
+                image_to_process = temp_image_path
             except Exception as e:
+                logger.error(f'Failed to fetch image from URL: {str(e)}')
                 return Response({
                     'error': f'Failed to fetch image from URL: {str(e)}'
                 }, status=status.HTTP_400_BAD_REQUEST)
+        elif image_data: # Handle base64 image data
+            # Save base64 to a temporary file for OCRService
+            image_bytes = base64.b64decode(image_data)
+            temp_image_path = os.path.join(settings.MEDIA_ROOT, 'temp_prescriptions', f'temp_ocr_{uuid.uuid4()}.jpg')
+            os.makedirs(os.path.dirname(temp_image_path), exist_ok=True)
+            with open(temp_image_path, 'wb') as f:
+                f.write(image_bytes)
+            image_to_process = temp_image_path
+        
+        if not image_to_process:
+             return Response({
+                'error': 'No valid image data or URL provided for processing.'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extract medicines from image
-        extracted_medicines = ocr_engine.extract_medicines_from_image(image_data)
+        # Extract medicines using our OCRService
+        ocr_results = ocr_service.process_prescription_image(image_to_process)
+
+        if not ocr_results['success']:
+            return Response({
+                'success': False,
+                'error': ocr_results.get('error', 'OCR processing failed.'),
+                'extracted_medicines': [],
+                'matches': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        extracted_medicines = ocr_results['medicines']
+        # analyzed_matches = ocr_results['processing_summary'] # This is not the actual matches, but a summary
 
         if not extracted_medicines:
             return Response({
@@ -380,15 +297,15 @@ def prescription_ocr_analysis(request):
                 'message': 'No medicines could be extracted from the prescription image'
             })
 
-        # Find matching products
-        matches = ocr_engine.find_matching_products(extracted_medicines)
-
-        # Format response
+        # The OCRService.process_prescription_image already returns 'medicines' with 'local_equivalent'
+        # We need to reformat this output to match the expected 'matches' structure of this endpoint.
         formatted_matches = []
-        for match_group in matches:
+        for medicine_data in ocr_results['medicines']:
+            local_equivalent = medicine_data.get('local_equivalent')
+            
             medicine_matches = []
-            for match in match_group['matches']:
-                product = match['product']
+            if local_equivalent and local_equivalent.get('product_object'):
+                product = local_equivalent['product_object']
                 medicine_matches.append({
                     'id': product.id,
                     'name': product.name,
@@ -397,13 +314,13 @@ def prescription_ocr_analysis(request):
                     'strength': product.strength,
                     'form': product.form,
                     'medicine_type': product.medicine_type,
-                    'price': float(product.price),
-                    'mrp': float(product.mrp),
+                    'price': float(product.batches.first().selling_price if product.batches.first() else 0.0), # Use batch price
+                    'mrp': float(product.batches.first().mrp_price if product.batches.first() else 0.0), # Use batch mrp
                     'stock_quantity': product.stock_quantity,
                     'is_prescription_required': product.is_prescription_required,
                     'image_url': product.image_url,
-                    'confidence': round(match['confidence'], 2),
-                    'match_type': match['match_type'],
+                    'confidence': round(local_equivalent['confidence'], 2),
+                    'match_type': 'composition', # Always composition match from OCRService
                     'compositions': [
                         {
                             'name': pc.composition.name,
@@ -412,18 +329,27 @@ def prescription_ocr_analysis(request):
                         } for pc in product.product_compositions.all()
                     ] if hasattr(product, 'product_compositions') else []
                 })
-
+            
             formatted_matches.append({
-                'extracted_medicine': match_group['extracted_medicine'],
-                'search_text': match_group['search_text'],
+                'extracted_medicine': {
+                    'medicine_name': medicine_data.get('input_medicine_name'),
+                    'generic_name': medicine_data.get('generic_name'),
+                    'composition': medicine_data.get('composition'),
+                    'strength': medicine_data.get('strength'),
+                    'form': medicine_data.get('form'),
+                    'frequency': medicine_data.get('frequency'),
+                },
+                'search_text': medicine_data.get('input_medicine_name'), # Or a more detailed string
                 'matches': medicine_matches
             })
 
         return Response({
             'success': True,
-            'extracted_medicines': extracted_medicines,
-            'matches': formatted_matches,
-            'total_extracted': len(extracted_medicines)
+            'extracted_medicines': extracted_medicines, # This is the raw extracted data from Gemini
+            'matches': formatted_matches, # This is the matched products
+            'total_extracted': len(extracted_medicines),
+            'ocr_confidence': ocr_results['ocr_confidence'],
+            'processing_summary': ocr_results['processing_summary']
         })
 
     except Exception as e:
@@ -431,6 +357,9 @@ def prescription_ocr_analysis(request):
         return Response({
             'error': f'OCR analysis failed: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    finally:
+        if temp_image_path and os.path.exists(temp_image_path):
+            os.remove(temp_image_path) # Clean up temporary file
 
 
 @api_view(['POST'])

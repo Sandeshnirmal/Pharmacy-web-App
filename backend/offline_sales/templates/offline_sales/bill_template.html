@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Invoice #{{ sale.id }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #333;
+            -webkit-print-color-adjust: exact;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .invoice-container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: #fff;
+            border: 1px solid #eee;
+            box-shadow: 0 0 10px rgba(0, 0, 0, .15);
+            padding: 30px;
+            box-sizing: border-box;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+        }
+        .header .logo-section {
+            display: flex;
+            align-items: center;
+        }
+        .header .logo-section img {
+            width: 40px;
+            height: 40px;
+            margin-right: 10px;
+        }
+        .header .logo-section h1 {
+            font-size: 24px;
+            margin: 0;
+            color: #333;
+        }
+        .header .logo-section p {
+            font-size: 10px;
+            margin: 0;
+            color: #777;
+        }
+        .header .invoice-details {
+            text-align: right;
+        }
+        .header .invoice-details h2 {
+            font-size: 28px;
+            margin: 0 0 5px 0;
+            color: #333;
+            text-transform: uppercase;
+        }
+        .header .invoice-details p {
+            margin: 0;
+            font-size: 12px;
+            color: #555;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .customer-details, .bill-info {
+            width: 48%;
+            display: inline-block;
+            vertical-align: top;
+        }
+        .customer-details {
+            margin-bottom: 20px;
+        }
+        .customer-details p, .bill-info p {
+            margin: 0;
+            font-size: 12px;
+            color: #555;
+        }
+        .bill-info {
+            text-align: right;
+        }
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+        }
+        .items-table th, .items-table td {
+            border: 1px solid #eee;
+            padding: 8px;
+            text-align: left;
+        }
+        .items-table th {
+            background-color: #f9f9f9;
+            font-weight: bold;
+            font-size: 12px;
+            color: #555;
+        }
+        .items-table td {
+            font-size: 12px;
+            color: #555;
+        }
+        .items-table .description-col {
+            width: 50%;
+        }
+        .items-table .qty-col, .items-table .unit-price-col, .items-table .total-col {
+            width: 15%;
+            text-align: right;
+        }
+        .summary-table {
+            width: 300px;
+            float: right;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        .summary-table tr td {
+            padding: 5px 0;
+            font-size: 12px;
+            color: #555;
+        }
+        .summary-table tr.total-row td {
+            font-weight: bold;
+            font-size: 14px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .summary-table .label {
+            text-align: left;
+            padding-right: 10px;
+        }
+        .summary-table .value {
+            text-align: right;
+        }
+        .terms-conditions {
+            margin-top: 20px;
+            clear: both;
+            font-size: 10px;
+            color: #777;
+        }
+        .terms-conditions h3 {
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .footer-section {
+            margin-top: 50px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+            text-align: center;
+            font-size: 10px;
+            color: #777;
+        }
+        .signature-line {
+            width: 200px;
+            border-bottom: 1px solid #333;
+            margin: 30px 0 5px auto;
+        }
+        .authorised-signature {
+            text-align: right;
+            font-size: 12px;
+            color: #333;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <div class="header">
+            <div class="logo-section">
+                <!-- Assuming a logo image exists or just use text -->
+                <!-- <img src="/static/logo.png" alt="Infixmart Logo"> -->
+                <div>
+                    <h1>Infixmart</h1>
+                    <p>123 Health St, Wellness City, 12345</p>
+                </div>
+            </div>
+            <div class="invoice-details">
+                <h2>INVOICE</h2>
+                <p>Invoice #: INV{{ sale.id }}</p>
+                <p>Invoice Date: {{ sale.sale_date|date:"d M Y" }}</p>
+                <p>Payment Date: N/A</p>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+            <div class="customer-details">
+                <p class="section-title">Bill To:</p>
+                {% if sale.customer_name %}
+                    <p><strong>{{ sale.customer_name }}</strong></p>
+                    {% if sale.customer_address %}<p>{{ sale.customer_address }}</p>{% endif %}
+                    {% if sale.customer_phone %}<p>{{ sale.customer_phone }}</p>{% endif %}
+                    <!-- Assuming email might be available in customer_details if customer is linked -->
+                    {% if sale.customer_details.email %}<p>{{ sale.customer_details.email }}</p>{% endif %}
+                {% else %}
+                    <p>Guest Customer</p>
+                {% endif %}
+            </div>
+            <div class="bill-info">
+                <!-- Additional bill info if needed, currently empty in image -->
+            </div>
+        </div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th class="description-col">Description</th>
+                    <th class="qty-col">Qty</th>
+                    <th class="unit-price-col">Unit Price</th>
+                    <th class="total-col">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in sale.items.all %}
+                <tr>
+                    <td class="description-col">
+                        <strong>{{ item.product.name }}</strong><br>
+                        <small>{{ item.product.manufacturer }} - {{ item.product.category.name }}</small>
+                    </td>
+                    <td class="qty-col">{{ item.quantity }}</td>
+                    <td class="unit-price-col">₹{{ item.price_per_unit|floatformat:2 }}</td>
+                    <td class="total-col">₹{{ item.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div style="clear: both;"></div>
+
+        <table class="summary-table">
+            <tr>
+                <td class="label">Subtotal:</td>
+                <td class="value">₹{{ sale.total_amount|floatformat:2 }}</td>
+            </tr>
+            <tr>
+                <td class="label">Tax:</td>
+                <td class="value">₹{{ (sale.total_amount * sale.gst_percentage / 100)|floatformat:2 }}</td>
+            </tr>
+            <tr>
+                <td class="label">Discount:</td>
+                <td class="value">- ₹{{ sale.discount|floatformat:2 }}</td>
+            </tr>
+            <tr class="total-row">
+                <td class="label">Total Amount:</td>
+                <td class="value">₹{{ (sale.total_amount + (sale.total_amount * sale.gst_percentage / 100) - sale.discount)|floatformat:2 }}</td>
+            </tr>
+        </table>
+
+        <div class="terms-conditions">
+            <h3>Terms & Conditions:</h3>
+            <ol>
+                <li>Payment is due within 30 days of invoice date.</li>
+                <li>All medicines are subject to availability and expiry date verification.</li>
+                <li>Prescription medicines require valid prescription for delivery.</li>
+                <li>Returns are accepted within 7 days for unopened medicines.</li>
+                <li>GST is included in the total amount.</li>
+                <li>For any queries, contact customer support.</li>
+            </ol>
+        </div>
+
+        <div class="footer-section">
+            <p>Thank you for your business.</p>
+            <p>This is a computer-generated invoice.</p>
+            <div class="signature-line"></div>
+            <p class="authorised-signature">Authorised Signature</p>
+        </div>
+    </div>
+</body>
+</html>

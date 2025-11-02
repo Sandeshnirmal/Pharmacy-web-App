@@ -46,12 +46,14 @@
                 const base64Image = event.target.result.split(',')[1]; // Get base64 part
                 
                 try {
-                    const response = await fetch('http://localhost:8000/api/prescriptions/ocr/analyze/', {
+                    const response = await fetch('http://localhost:8000/api/prescriptions/ocr/analyze/', { // Changed to relative path
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             // Add CSRF token if needed for Django (not strictly required for AllowAny, but good practice)
                             // 'X-CSRFToken': getCookie('csrftoken') 
+                            // Placeholder for authentication token (e.g., Bearer Token)
+                            // 'Authorization': 'Bearer YOUR_AUTH_TOKEN_HERE' 
                         },
                         body: JSON.stringify({ image: base64Image })
                     });
@@ -60,11 +62,24 @@
                     if (response.ok) {
                         responseOutput.textContent = JSON.stringify(data, null, 2);
                     } else {
-                        responseOutput.textContent = `Error: ${response.status} - ${JSON.stringify(data, null, 2)}`;
+                        let errorMessage = `Error: ${response.status}`;
+                        if (response.status === 400) {
+                            errorMessage += ' - Bad Request. Please ensure the image is valid.';
+                            if (data.image) {
+                                errorMessage += ` Image error: ${data.image.join(', ')}`;
+                            }
+                        } else if (response.status === 401 || response.status === 403) {
+                            errorMessage += ' - Authentication Required. Please log in or provide valid credentials.';
+                        } else if (response.status === 500) {
+                            errorMessage += ' - Server Error. Please try again later.';
+                        } else {
+                            errorMessage += ` - ${JSON.stringify(data, null, 2)}`;
+                        }
+                        responseOutput.textContent = errorMessage;
                         responseOutput.classList.add('error');
                     }
                 } catch (error) {
-                    responseOutput.textContent = `Network error: ${error.message}`;
+                    responseOutput.textContent = `Network error: Could not connect to the server. Please check your internet connection or try again later. (${error.message})`;
                     responseOutput.classList.add('error');
                 }
             };

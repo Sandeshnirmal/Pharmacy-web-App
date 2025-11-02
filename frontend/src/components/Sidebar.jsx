@@ -93,19 +93,45 @@ const SidebarNavbar = () => {
         <h2 className="text-lg font-semibold mb-8 text-gray-900">
           Admin Panel
         </h2>
-      
+
         <nav className="space-y-2">
           <SidebarItem label="Dashboard" to="/Dashboard" />
           {/* <SidebarItem label="Medicines" to="/Medicines" /> */}
-          
-          <SidebarItem label="Inventory Management" to="/Inventory" />
-          <SidebarItem label="Prescriptions" to="/Prescription" />
-          {/* <SidebarItem label="Pending Reviews" to="/Pending_Prescriptions" /> */}
-          {/* <SidebarItem label="AI Test Page" to="/AI_Test" /> */}
+
+          {/* <SidebarItem label="Inventory Management" to="/inventory" /> */}
+          <SidebarItem label="Purchase Bill" to="/purchase-bill">
+            {/* <SidebarItem
+              label="Purchase Bills List"
+              to="/purchase-billing"
+            /> */}
+            <SidebarItem
+              label="Purchase Bill Inventory Upload"
+              to="/purchase-bill/inventory-upload"
+            />
+            {/* <SidebarItem
+              label="Purchase Bill Return"
+              to="/purchase-returns/new"
+            /> */}
+            <SidebarItem
+              label="Purchase Returns List"
+              to="/purchase-returns"
+            />
+          </SidebarItem>
+          <SidebarItem label="Sales Management">
+            <SidebarItem label="Sales bill" to="/sale-billing" />
+            {/* <SidebarItem label="sales return bill" to="/sale-return-billing" /> */}
+          </SidebarItem>
+            
+          <SidebarItem label="Prescriptions" to="/prescriptions" />
           <SidebarItem label="Orders" to="/Orders" />
           <SidebarItem label="Customers" to="/Customers" />
           <SidebarItem label="User Management" to="/Users" />
           <SidebarItem label="Reports & Analytics" to="/Reports" />
+          <SidebarItem label="Master">
+            <SidebarItem label="Discount Master" to="/discount-master" />
+            <SidebarItem label="Rate Master" to="/rate-master" />
+            <SidebarItem label="Product Master" to="/inventory" />
+          </SidebarItem>
         </nav>
       </div>
       <img className="pt-3" src="/src/assets/full_logo.png" alt="logo" />

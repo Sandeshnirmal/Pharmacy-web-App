@@ -2,9 +2,21 @@ node_modules
 node_modules
 __pycache__/
 *.pyc
+<<<<<<< HEAD
 *.pyo
 *.pyd
 venv/
 db.sqlite3
 .env
 
+=======
+__pycache__/
+*.pyc
+# Ignore virtual environment
+venv/
+backend/venv/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+>>>>>>> v3

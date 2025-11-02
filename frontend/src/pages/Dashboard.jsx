@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import axiosInstance from '../api/axiosInstance';
 import ModernStatsCard from '../components/ModernStatsCard';
 import useRealTimeData from '../hooks/useRealTimeData';
-import APITestPanel from '../components/APITestPanel';
+import APITestPanel from '../components/APITestPanel'; // Keep if APITestPanel is used elsewhere or intended for future use
+import { orderAPI, prescriptionAPI, userAPI, productAPI, apiUtils } from '../api/apiService';
 
 function DashboardMainContent() {
   const [dashboardData, setDashboardData] = useState({
@@ -23,21 +23,17 @@ function DashboardMainContent() {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Fetch all required data in parallel
+      // Fetch all required data in parallel using apiService
       const [ordersRes, prescriptionsRes, usersRes, productsRes] =
         await Promise.all([
-          axiosInstance.get("order/orders/"),
-          axiosInstance.get("prescription/prescriptions/"),
-          axiosInstance.get("user/users/"),
-          axiosInstance.get("/api/products/enhanced-products/"),
+          orderAPI.getOrders(),
+          prescriptionAPI.getPrescriptions(),
+          userAPI.getUsers(),
+          productAPI.getProducts(),
         ]);
 
       const orders = ordersRes.data.results || ordersRes.data;
@@ -50,7 +46,7 @@ function DashboardMainContent() {
       const pendingReviews = prescriptions.filter(p => p.verification_status === 'Pending_Review').length;
       const lowStockProducts = products.filter(p => p.stock_quantity && p.stock_quantity < 10);
 
-      setDashboardData({
+      const newDashboardData = {
         stats: {
           totalOrders: orders.length,
           totalPrescriptions: prescriptions.length,
@@ -62,15 +58,48 @@ function DashboardMainContent() {
         recentOrders: orders.slice(0, 5),
         recentPrescriptions: prescriptions.slice(0, 5),
         lowStockProducts: lowStockProducts.slice(0, 5)
-      });
+      };
+      setDashboardData(newDashboardData);
       setLastUpdated(new Date());
+      return { data: newDashboardData }; // Return the data in the expected format
     } catch (err) {
-      setError('Failed to fetch dashboard data');
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message || 'Failed to fetch dashboard data');
       console.error('Dashboard error:', err);
+      throw err; // Re-throw the error so useRealTimeData can catch it
     } finally {
       setLoading(false);
     }
-  };
+  }, [setLoading, setDashboardData, setLastUpdated, setError]); // Add all state setters as dependencies
+
+  // Integrate useRealTimeData hook for periodic data fetching
+  // Assuming useRealTimeData takes a fetch function and an interval in milliseconds
+  const { 
+    data: realTimeDashboardData, 
+    loading: realTimeLoading, 
+    error: realTimeError, 
+    lastUpdated: realTimeLastUpdated, 
+    startPolling, 
+    stopPolling 
+  } = useRealTimeData(fetchDashboardData, 60000); // Poll every 60 seconds
+
+  useEffect(() => {
+    if (realTimeDashboardData) {
+      setDashboardData(realTimeDashboardData);
+    }
+    if (realTimeLastUpdated) {
+      setLastUpdated(realTimeLastUpdated);
+    }
+    setLoading(realTimeLoading);
+    setError(realTimeError);
+  }, [realTimeDashboardData, realTimeLoading, realTimeError, realTimeLastUpdated]);
+
+  useEffect(() => {
+    startPolling(); // Start polling when component mounts
+    return () => stopPolling(); // Stop polling when component unmounts
+  }, [startPolling, stopPolling]); // Dependencies for starting/stopping polling
+
+  // ... rest of the component remains the same
 
   const getStatusClass = (status) => {
     switch (status) {
@@ -206,14 +235,26 @@ function DashboardMainContent() {
             </span>
           </div>
         </div>
-        {lastUpdated && (
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Last Updated</p>
-            <p className="text-sm font-medium text-gray-700">
-              {lastUpdated.toLocaleTimeString()}
-            </p>
-          </div>
-        )}
+        <div className="flex items-center space-x-4">
+          {lastUpdated && (
+            <div className="text-right">
+              <p className="text-sm text-gray-500">Last Updated</p>
+              <p className="text-sm font-medium text-gray-700">
+                {lastUpdated.toLocaleTimeString()}
+              </p>
+            </div>
+          )}
+          <button
+            onClick={fetchDashboardData}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.181m0-4.54l-3.181-3.181" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348H4.992v-.001m0 0l3.181-3.181A1.64 1.64 0 0112 4.001h2.008m-2.008 3.181l-3.181-3.181m0 0A1.64 1.64 0 0112 19.999h2.008m-2.008-3.181l3.181 3.181m0 0h4.992v-.001m0 0l-3.181-3.181A1.64 1.64 0 0012 16.001h-2.008m2.008-3.181l-3.181 3.181" />
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -234,7 +275,7 @@ function DashboardMainContent() {
 
       {/* E-Commerce Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
+        <Link to="/Orders" className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-center space-x-4">
             <div className="bg-blue-100 p-3 rounded-lg">
               <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -246,9 +287,9 @@ function DashboardMainContent() {
               <p className="text-sm text-gray-600">Process pending orders</p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
+        <Link to="/Inventory" className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-center space-x-4">
             <div className="bg-green-100 p-3 rounded-lg">
               <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -260,9 +301,9 @@ function DashboardMainContent() {
               <p className="text-sm text-gray-600">Manage stock levels</p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
+        <Link to="/Customers" className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-center space-x-4">
             <div className="bg-purple-100 p-3 rounded-lg">
               <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,9 +315,9 @@ function DashboardMainContent() {
               <p className="text-sm text-gray-600">Manage customer accounts</p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
+        <Link to="/ReportsAnalytics" className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
           <div className="flex items-center space-x-4">
             <div className="bg-yellow-100 p-3 rounded-lg">
               <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -288,7 +329,7 @@ function DashboardMainContent() {
               <p className="text-sm text-gray-600">View sales reports</p>
             </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Recent Activity Grid */}

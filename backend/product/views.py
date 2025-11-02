@@ -2,48 +2,174 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db.models import Q, Sum, Count, F, Avg
+from rest_framework.generics import ListCreateAPIView # Import ListCreateAPIView
+from rest_framework.views import APIView # Import APIView for file upload
+from django.db.models import Q, Sum, Count, F, Avg, Prefetch
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
+import openpyxl # Import openpyxl
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductViewHistory
+    ProductViewHistory, Discount, ProductComposition # Import ProductComposition model
 )
 from .serializers import (
     CategorySerializer, ProductSerializer, BatchSerializer,
     InventorySerializer, GenericNameSerializer, EnhancedProductSerializer,
-    ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer
+    ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer,
+    BulkCategorySerializer, BulkGenericNameSerializer, BulkProductSerializer, # Import new serializers
+    FileSerializer, # Import FileSerializer
+    DiscountSerializer # Import DiscountSerializer
 )
 
+from django.db.models import Subquery, OuterRef # Import Subquery and OuterRef
+
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all().order_by('name')
+    queryset = Category.objects.annotate(
+        products_count=Count('product', filter=Q(product__is_active=True))
+    ).all().order_by('name')
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
 
+class BulkCategoryCreateAPIView(ListCreateAPIView):
+    queryset = Category.objects.all()
+    serializer_class = BulkCategorySerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can bulk create
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+class BulkGenericNameCreateAPIView(ListCreateAPIView):
+    queryset = GenericName.objects.all()
+    serializer_class = BulkGenericNameSerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can bulk create
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+class BulkProductCreateAPIView(ListCreateAPIView):
+    queryset = Product.objects.all()
+    serializer_class = BulkProductSerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can bulk create
+
+    def get_serializer(self, *args, **kwargs):
+        if isinstance(kwargs.get('data', {}), list):
+            kwargs['many'] = True
+        return super().get_serializer(*args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+class ExcelUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = FileSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        file = serializer.validated_data['file']
+
+        try:
+            workbook = openpyxl.load_workbook(file)
+            sheet = workbook.active
+            
+            headers = [cell.value for cell in sheet[1]]
+            data_rows = []
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                row_data = dict(zip(headers, row))
+                data_rows.append(row_data)
+
+            # Process products
+            product_serializer = BulkProductSerializer(data=data_rows, many=True, context={'request': request})
+            product_serializer.is_valid(raise_exception=True)
+            product_serializer.save()
+
+            return Response({"message": "Excel file processed successfully", "data": product_serializer.data}, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all().order_by('name')
     serializer_class = ProductSerializer
     permission_classes = [AllowAny]  # Allow public access for mobile app browsing
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        # Use select_related for ForeignKey relationships and prefetch_related for ManyToMany/reverse ForeignKey
+        queryset = Product.objects.all().select_related(
+            'generic_name', 'category', 'created_by'
+        ).prefetch_related(
+            'batches',
+            Prefetch(
+                'productcomposition_set',
+                queryset=ProductComposition.objects.filter(is_active=True).select_related('composition'),
+                to_attr='active_product_compositions'
+            )
+        ).annotate(
+            total_stock=Coalesce(Sum('batches__current_quantity'), 0),
+            # Annotate current_selling_price to avoid N+1 in serializer
+            current_selling_price_annotated=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0
+                    ).order_by('expiry_date', '-current_quantity').values(
+                        'online_selling_price' if self.request.query_params.get('channel') == 'online' else \
+                        ('offline_selling_price' if self.request.query_params.get('channel') == 'offline' else 'selling_price')
+                    )[:1]
+                ),
+                0.0 # Default to 0.0 if no available batch
+            )
+        ).order_by('name')
+
         category = self.request.query_params.get('category', None)
         search = self.request.query_params.get('search', None)
         stock_status = self.request.query_params.get('stock_status', None)
         prescription_required = self.request.query_params.get('prescription_required', None)
+        min_price = self.request.query_params.get('min_price')
+        max_price = self.request.query_params.get('max_price')
+        filter_logic = self.request.query_params.get('filter_logic', 'and').lower() # Default to 'and'
+
+        category_q = Q()
+        search_q = Q()
 
         if category:
-            queryset = queryset.filter(category_id=category)
+            category_q = Q(category_id=category)
         if search:
-            queryset = queryset.filter(
+            search_q = (
                 Q(name__icontains=search) |
+                Q(brand_name__icontains=search) |
                 Q(generic_name__name__icontains=search) |
-                Q(manufacturer__icontains=search)
+                Q(manufacturer__icontains=search) |
+                Q(usage_instructions__icontains=search) |
+                Q(active_product_compositions__composition__name__icontains=search)
             )
+
+        if filter_logic == 'or':
+            queryset = queryset.filter(category_q | search_q).distinct()
+        else: # Default to 'and' logic
+            if category:
+                queryset = queryset.filter(category_q)
+            if search:
+                queryset = queryset.filter(search_q)
         if stock_status:
-            queryset = queryset.annotate(total_stock=Sum('batches__current_quantity'))
             if stock_status == 'low':
                 queryset = queryset.filter(total_stock__lte=F('min_stock_level'))
             elif stock_status == 'out':
@@ -52,27 +178,35 @@ class ProductViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(total_stock__gt=F('min_stock_level'))
         if prescription_required is not None:
             queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
+        if min_price:
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
 
         return queryset
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         """Get products with low stock"""
-        products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock__lte=F('min_stock_level'))
+        # Use the optimized queryset from get_queryset
+        products = self.get_queryset().filter(total_stock__lte=F('min_stock_level'))
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def out_of_stock(self, request):
         """Get products that are out of stock"""
-        products = self.get_queryset().annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock=0)
+        # Use the optimized queryset from get_queryset
+        products = self.get_queryset().filter(total_stock=0)
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
 
+
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.all().order_by('-created_at')
     serializer_class = BatchSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -90,13 +224,17 @@ class BatchViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class InventoryViewSet(viewsets.ModelViewSet):
     queryset = Inventory.objects.all()
     serializer_class = InventorySerializer
     permission_classes = [IsAuthenticated]
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class GenericNameViewSet(viewsets.ModelViewSet):
-    queryset = GenericName.objects.all().order_by('name')
+    queryset = GenericName.objects.annotate(
+        products_count=Count('product', filter=Q(product__is_active=True))
+    ).all().order_by('name')
     serializer_class = GenericNameSerializer
     permission_classes = [IsAuthenticated]
 
@@ -110,20 +248,107 @@ class GenericNameViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
 class EnhancedProductViewSet(viewsets.ModelViewSet):
     """Enhanced product viewset with additional features for mobile app"""
-    queryset = Product.objects.select_related('category', 'generic_name').prefetch_related(
-        'images', 'reviews', 'tags__tag', 'batches' # Add 'batches' here
-    ).all()
     serializer_class = EnhancedProductSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description']
-    ordering_fields = ['price', 'created_at', 'name']
+    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description', 'usage_instructions', 'compositions__name'] # Add usage_instructions to search
+    ordering_fields = ['current_selling_price_annotated', 'created_at', 'name'] # Use annotated price
     ordering = ['-created_at']
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        # Use select_related for ForeignKey relationships and prefetch_related for ManyToMany/reverse ForeignKey
+        queryset = Product.objects.all().select_related(
+            'generic_name', 'category', 'created_by'
+        ).prefetch_related(
+            'batches',
+            'images', 'reviews', 'tags__tag', # Existing prefetches
+            Prefetch(
+                'productcomposition_set',
+                queryset=ProductComposition.objects.filter(is_active=True).select_related('composition'),
+                to_attr='active_product_compositions'
+            )
+        ).annotate(
+            total_stock=Coalesce(Sum('batches__current_quantity'), 0),
+            # Annotate current_selling_price to avoid N+1 in serializer
+            current_selling_price_annotated=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0
+                    ).order_by('expiry_date', '-current_quantity').values(
+                        'online_selling_price' if self.request.query_params.get('channel') == 'online' else \
+                        ('offline_selling_price' if self.request.query_params.get('channel') == 'offline' else 'selling_price')
+                    )[:1]
+                ),
+                0.0 # Default to 0.0 if no available batch
+            ),
+            avg_rating=Coalesce(Avg('reviews__rating'), 0.0), # Annotate average rating
+            # Annotate offline pricing from the default batch
+            offline_mrp_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('offline_mrp_price')[:1]
+                ),
+                0.0
+            ),
+            offline_discount_percentage=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('offline_discount_percentage')[:1]
+                ),
+                0.0
+            ),
+            offline_selling_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('offline_selling_price')[:1]
+                ),
+                0.0
+            ),
+            # Annotate online pricing from the default batch
+            online_mrp_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('online_mrp_price')[:1]
+                ),
+                0.0
+            ),
+            online_discount_percentage=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('online_discount_percentage')[:1]
+                ),
+                0.0
+            ),
+            online_selling_price=Coalesce(
+                Subquery(
+                    Batch.objects.filter(
+                        product=OuterRef('pk'),
+                        current_quantity__gt=0,
+                        expiry_date__gte=timezone.now().date()
+                    ).order_by('expiry_date').values('online_selling_price')[:1]
+                ),
+                0.0
+            )
+        )
 
         # Filter parameters
         category = self.request.query_params.get('category')
@@ -132,27 +357,64 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         prescription_required = self.request.query_params.get('prescription_required')
         in_stock = self.request.query_params.get('in_stock')
         rating = self.request.query_params.get('min_rating')
+        composition = self.request.query_params.get('composition') # New filter for composition
 
         if category:
             queryset = queryset.filter(category_id=category)
         if min_price:
-            # This filter needs to be adjusted to use current_selling_price from batches
-            # For now, it's commented out as 'price' is not a direct field on Product
-            # queryset = queryset.filter(price__gte=min_price)
-            pass
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
         if max_price:
-            # This filter needs to be adjusted to use current_selling_price from batches
-            # For now, it's commented out as 'price' is not a direct field on Product
-            # queryset = queryset.filter(price__lte=max_price)
-            pass
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
         if prescription_required is not None:
             queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
         if in_stock == 'true':
-            queryset = queryset.annotate(total_stock=Sum('batches__current_quantity')).filter(total_stock__gt=0)
+            queryset = queryset.filter(total_stock__gt=0)
         if rating:
-            queryset = queryset.annotate(
-                avg_rating=Avg('reviews__rating')
-            ).filter(avg_rating__gte=rating)
+            queryset = queryset.filter(avg_rating__gte=rating)
+        
+        filter_logic = self.request.query_params.get('filter_logic', 'and').lower() # Default to 'and'
+
+        category_q = Q()
+        composition_q = Q()
+        search_q_manual = Q() # For manual construction in 'or' logic
+
+        if category:
+            category_q = Q(category_id=category)
+        if composition:
+            composition_q = Q(active_product_compositions__composition__name__icontains=composition)
+
+        if filter_logic == 'or':
+            search_param = self.request.query_params.get('search')
+            if search_param:
+                for field in self.search_fields:
+                    # Handle related fields for search_q_manual
+                    if '__' in field:
+                        q_obj = Q(**{f"{field}__icontains": search_param})
+                        search_q_manual |= q_obj
+                    else:
+                        search_q_manual |= Q(**{f"{field}__icontains": search_param})
+            
+            # Combine all Q objects with OR logic
+            combined_q = category_q | search_q_manual | composition_q
+            queryset = queryset.filter(combined_q).distinct()
+        else: # Default to 'and' logic
+            if category:
+                queryset = queryset.filter(category_q)
+            if composition:
+                queryset = queryset.filter(composition_q)
+            # DjangoFilterBackend's SearchFilter will handle the 'search' parameter for 'and' logic automatically.
+
+        # Apply other filters regardless of filter_logic
+        if min_price:
+            queryset = queryset.filter(current_selling_price_annotated__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(current_selling_price_annotated__lte=max_price)
+        if prescription_required is not None:
+            queryset = queryset.filter(is_prescription_required=prescription_required.lower() == 'true')
+        if in_stock == 'true':
+            queryset = queryset.filter(total_stock__gt=0)
+        if rating:
+            queryset = queryset.filter(avg_rating__gte=rating)
 
         return queryset
 
@@ -249,12 +511,18 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         batch, created = Batch.objects.get_or_create(
             product=product,
             batch_number=batch_number,
+    
             defaults={
                 'quantity': batch_data.get('quantity', 0),
                 'current_quantity': batch_data.get('quantity', 0),
                 'expiry_date': batch_data.get('expiry_date'),
                 'cost_price': batch_data.get('cost_price', 0),
-                'selling_price': batch_data.get('selling_price', 0),
+                'mrp_price': batch_data.get('mrp_price', 0),
+                'discount_percentage': batch_data.get('discount_percentage', 0),
+                'online_mrp_price': batch_data.get('online_mrp_price', 0),
+                'online_discount_percentage': batch_data.get('online_discount_percentage', 0),
+                'offline_mrp_price': batch_data.get('offline_mrp_price', 0),
+                'offline_discount_percentage': batch_data.get('offline_discount_percentage', 0),
                 'is_primary': is_primary,
             }
         )
@@ -262,10 +530,15 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
         if not created:
             # Update existing batch
             batch.quantity = batch_data.get('quantity', batch.quantity)
-            batch.current_quantity = batch_data.get('quantity', batch.current_quantity) # Assuming full replacement or adjustment
+            batch.current_quantity = batch_data.get('current_quantity', batch.current_quantity) # Assuming full replacement or adjustment
             batch.expiry_date = batch_data.get('expiry_date', batch.expiry_date)
             batch.cost_price = batch_data.get('cost_price', batch.cost_price)
-            batch.selling_price = batch_data.get('selling_price', batch.selling_price)
+            batch.mrp_price = batch_data.get('mrp_price', batch.mrp_price)
+            batch.discount_percentage = batch_data.get('discount_percentage', batch.discount_percentage)
+            batch.online_mrp_price = batch_data.get('online_mrp_price', batch.online_mrp_price)
+            batch.online_discount_percentage = batch_data.get('online_discount_percentage', batch.online_discount_percentage)
+            batch.offline_mrp_price = batch_data.get('offline_mrp_price', batch.offline_mrp_price)
+            batch.offline_discount_percentage = batch_data.get('offline_discount_percentage', batch.offline_discount_percentage)
             batch.is_primary = is_primary # Update is_primary
             batch.save()
 
@@ -362,3 +635,19 @@ class WishlistViewSet(viewsets.ModelViewSet):
                 'in_wishlist': True,
                 'data': serializer.data
             })
+
+
+class DiscountViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows discounts to be viewed or edited.
+    """
+    queryset = Discount.objects.all().select_related('product', 'category', 'created_by').order_by('-created_at')
+    serializer_class = DiscountSerializer
+    permission_classes = [IsAuthenticated] # Only authenticated users can manage discounts
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description', 'product__name', 'category__name']
+    ordering_fields = ['name', 'percentage', 'start_date', 'end_date', 'created_at']
+    ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

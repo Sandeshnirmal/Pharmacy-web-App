@@ -1,0 +1,10 @@
+.git
+.gitignore
+.vscode
+__pycache__
+*.pyc
+*.log
+.env.development
+.env.production
+celery.log
+server.log

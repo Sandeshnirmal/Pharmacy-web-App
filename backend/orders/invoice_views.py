@@ -7,6 +7,7 @@ from rest_framework import status
 from .models import Order
 from .invoice_service import Invoice, InvoiceService
 import logging
+from .views import OrderPagination # Import OrderPagination
 
 logger = logging.getLogger(__name__)
 
@@ -145,18 +146,17 @@ def get_user_invoices(request):
     logger.info(f"Available orders for user: {list(Order.objects.filter(user=request.user).values_list('id', flat=True))}")
     try:
         user_orders = Order.objects.filter(user=request.user)
-        invoices = Invoice.objects.filter(order__in=user_orders).order_by('-created_at')
+        queryset = Invoice.objects.filter(order__in=user_orders).order_by('-created_at')
         
+        paginator = OrderPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
         invoices_data = []
-        for invoice in invoices:
+        for invoice in paginated_queryset:
             invoice_data = InvoiceService.get_invoice_data(invoice)
             invoices_data.append(invoice_data)
         
-        return Response({
-            'success': True,
-            'invoices': invoices_data,
-            'total_invoices': len(invoices_data)
-        }, status=status.HTTP_200_OK)
+        return paginator.get_paginated_response(invoices_data)
         
     except Exception as e:
         logger.error(f"Error fetching user invoices: {str(e)}")

@@ -8,12 +8,51 @@ from django.db.models import Q, Count, Sum
 from django.utils import timezone
 from rest_framework_simplejwt.authentication import JWTAuthentication # Import JWTAuthentication
 from django.db import transaction # New import
-from product.models import Product # Moved import
+from product.models import Product, Batch # Moved import, added Batch
+from inventory.models import StockMovement # Import StockMovement
 from .models import Order, OrderItem, OrderTracking, OrderStatusHistory
 from .serializers import OrderSerializer, OrderItemSerializer
 import logging
+import base64
+import uuid
+import os # Import os module
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.conf import settings # Import settings to get MEDIA_URL
 
 logger = logging.getLogger(__name__)
+
+def save_base64_image_and_get_url(base64_string, filename_prefix="prescription"):
+    """
+    Saves a base64 encoded image to default storage and returns its URL.
+    """
+    if not base64_string:
+        return None
+
+    try:
+        if ';base64,' in base64_string:
+            format, imgstr = base64_string.split(';base64,')
+            ext = format.split('/')[-1] # e.g., 'jpeg'
+        else:
+            # Assume it's just the base64 string without the prefix
+            imgstr = base64_string
+            ext = 'jpeg' # Default to jpeg if format is not provided
+
+        file_name = f"{filename_prefix}_{uuid.uuid4()}.{ext}"
+        
+        # Save the image to default storage (e.g., MEDIA_ROOT)
+        path = default_storage.save(os.path.join('order_prescriptions', file_name), ContentFile(base64.b64decode(imgstr)))
+        
+        # Construct the URL
+        return settings.MEDIA_URL + path
+    except Exception as e:
+        logger.error(f"Error saving base64 image: {e}")
+        return None
+
+# Ensure MEDIA_ROOT and MEDIA_URL are configured in settings.py
+# Example:
+# MEDIA_URL = '/media/'
+# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 class OrderPagination(PageNumberPagination):
     page_size = 10
@@ -51,7 +90,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             # If no user is authenticated, return an empty queryset
             return queryset.none()
 
-        return queryset
+        return queryset.select_related('user', 'address').prefetch_related(
+            'items__product',
+            'items__batch',
+            'tracking_updates',
+            'status_history'
+        )
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
@@ -271,7 +315,7 @@ def create_paid_order_for_prescription(request):
 
         # Initialize variables at the beginning to avoid UnboundLocalError
         is_prescription_order = False
-        prescription_image_to_set = None
+        prescription_image_url_to_set = None # Changed from prescription_image_to_set
         prescription_status_to_set = None
 
         # Extract and validate request data
@@ -281,7 +325,7 @@ def create_paid_order_for_prescription(request):
         payment_method = request.data.get('payment_method', 'RAZORPAY') # Get payment method from request
         notes = request.data.get('notes', '')
 
-        prescription_image_base64 = request.data.get('prescription_image_base64')
+        prescription_image_base64 = request.data.get('prescription_image_base64') # Still get base64 from request
         prescription_status_from_request = request.data.get('prescription_status')
 
         # Validate required fields
@@ -342,7 +386,12 @@ def create_paid_order_for_prescription(request):
         # Determine initial prescription status and image data if it's a prescription order
         if is_prescription_order:
             if prescription_image_base64:
-                prescription_image_to_set = prescription_image_base64
+                prescription_image_url_to_set = save_base64_image_and_get_url(prescription_image_base64)
+                if not prescription_image_url_to_set:
+                    return Response({
+                        'success': False,
+                        'error': 'Failed to save prescription image.'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 prescription_status_to_set = prescription_status_from_request if prescription_status_from_request else 'pending_review'
             else:
                 # If prescription is required but not uploaded, return error
@@ -351,13 +400,13 @@ def create_paid_order_for_prescription(request):
                     'success': False,
                     'error': 'Prescription required but not uploaded.'
                 }, status=status.HTTP_400_BAD_REQUEST)
-        # If not a prescription order, prescription_status_to_set and prescription_image_to_set remain None,
+        # If not a prescription order, prescription_status_to_set and prescription_image_url_to_set remain None,
         # allowing the model's defaults/nullability to apply.
 
         # Explicitly capture the state of variables derived from the request
         # to avoid potential UnboundLocalError in nested blocks.
         _is_prescription_order_from_request = is_prescription_order
-        _prescription_image_to_set_from_request = prescription_image_to_set
+        _prescription_image_url_to_set_from_request = prescription_image_url_to_set # Changed variable name
         _prescription_status_to_set_from_request = prescription_status_to_set
 
         # Check if an existing order_id is provided to update an existing pending or aborted order
@@ -372,7 +421,7 @@ def create_paid_order_for_prescription(request):
                     logger.info(f"Existing order {existing_order_id} for user {request.user.id} is already paid and completed. Returning it.")
                     # Potentially update prescription details if they are sent again
                     if _is_prescription_order_from_request: # Use the explicitly bound variable
-                        order.prescription_image_base64 = _prescription_image_to_set_from_request
+                        order.prescription_image_url = _prescription_image_url_to_set_from_request
                         order.prescription_status = _prescription_status_to_set_from_request
                         order.save() # Save only if prescription details were updated
                     
@@ -402,7 +451,18 @@ def create_paid_order_for_prescription(request):
         # Validate order items and calculate total amount
         validated_items = []
         total_amount_calculated = 0.0
-        # is_prescription_order is already determined above
+        
+        product_ids = [item.get('product_id') for item in items_data if item.get('product_id')]
+        products = Product.objects.filter(id__in=product_ids, is_active=True)
+        products_map = {product.id: product for product in products}
+
+        if len(products_map) != len(set(product_ids)):
+            missing_product_ids = set(product_ids) - set(products_map.keys())
+            logger.warning(f"Some products not found or inactive: {missing_product_ids}")
+            return Response({
+                'success': False,
+                'error': f"Some products not found or inactive: {', '.join(map(str, missing_product_ids))}"
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         for item in items_data:
             product_id = item.get('product_id')
@@ -415,35 +475,33 @@ def create_paid_order_for_prescription(request):
                     'error': 'Invalid item data: product_id and quantity are required.'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            try:
-                product = Product.objects.get(id=product_id, is_active=True)
-                if product.stock_quantity < quantity:
-                    raise ValueError(f"Insufficient stock for {product.name}")
-                
-                # is_prescription_order is already determined above
-                # if product.is_prescription_required:
-                #     is_prescription_order = True
-
-                # Use product's current price if price_at_order is not provided or invalid
-                unit_price = float(price_at_order) if price_at_order is not None else float(product.price)
-                total_amount_calculated += unit_price * quantity
-
-                validated_items.append({
-                    'product': product,
-                    'quantity': int(quantity),
-                    'unit_price': unit_price,
-                })
-            except Product.DoesNotExist:
-                logger.warning(f"Product with ID {product_id} not found or inactive for order creation.")
+            product = products_map.get(product_id)
+            if not product:
+                # This case should ideally be caught by the products_map check above, but as a safeguard
+                logger.warning(f"Product with ID {product_id} not found or inactive for order creation (secondary check).")
                 return Response({
                     'success': False,
                     'error': f"Product with ID {product_id} not found or inactive."
                 }, status=status.HTTP_400_BAD_REQUEST)
-            except ValueError as e:
+
+            if product.stock_quantity < quantity:
                 return Response({
                     'success': False,
-                    'error': str(e)
+                    'error': f"Insufficient stock for {product.name}"
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if product.is_prescription_required:
+                is_prescription_order = True
+
+            # Use product's current price if price_at_order is not provided or invalid
+            unit_price = float(price_at_order) if price_at_order is not None else float(product.price)
+            total_amount_calculated += unit_price * quantity
+
+            validated_items.append({
+                'product': product,
+                'quantity': int(quantity),
+                'unit_price': unit_price,
+            })
 
         if total_amount_calculated <= 0:
             return Response({
@@ -489,11 +547,11 @@ def create_paid_order_for_prescription(request):
 
                 # Only set prescription fields if it's a prescription order
                 if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order.prescription_image_base64 = _prescription_image_to_set_from_request
+                    order.prescription_image_url = _prescription_image_url_to_set_from_request
                     order.prescription_status = _prescription_status_to_set_from_request
                 else:
                     # If it's no longer a prescription order, clear these fields
-                    order.prescription_image_base64 = None
+                    order.prescription_image_url = None
                     order.prescription_status = 'pending_review' # Reset to default or a non-prescription specific status
 
                 # Determine old status for history
@@ -513,11 +571,11 @@ def create_paid_order_for_prescription(request):
 
                 # Only set prescription fields if it's a prescription order
                 if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order.prescription_image_base64 = _prescription_image_to_set_from_request
+                    order.prescription_image_url = _prescription_image_url_to_set_from_request
                     order.prescription_status = _prescription_status_to_set_from_request
                 else:
                     # If it's no longer a prescription order, clear these fields
-                    order.prescription_image_base64 = None
+                    order.prescription_image_url = None
                     order.prescription_status = 'verified' # Reset to default or a non-prescription specific status
 
                 order.save()
@@ -532,6 +590,23 @@ def create_paid_order_for_prescription(request):
                         unit_price_at_order=item_data['unit_price'],
                     )
                 
+                # Deduct inventory for each item
+                for item_data in validated_items:
+                    deduct_inventory_from_batches(
+                        order=order,
+                        product=item_data['product'],
+                        quantity_to_deduct=item_data['quantity'],
+                        user=request.user
+                    )
+                # Deduct inventory for each item
+                for item_data in validated_items:
+                    deduct_inventory_from_batches(
+                        order=order,
+                        product=item_data['product'],
+                        quantity_to_deduct=item_data['quantity'],
+                        user=request.user
+                    )
+
                 OrderStatusHistory.objects.create(
                     order=order,
                     old_status=old_status_for_history,
@@ -559,7 +634,7 @@ def create_paid_order_for_prescription(request):
 
                 # Only add prescription fields to kwargs if it's a prescription order
                 if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order_kwargs['prescription_image_base64'] = _prescription_image_to_set_from_request
+                    order_kwargs['prescription_image_url'] = _prescription_image_url_to_set_from_request
                     order_kwargs['prescription_status'] = _prescription_status_to_set_from_request
                 # If not a prescription order, these fields are omitted, and model defaults apply.
 
@@ -573,6 +648,14 @@ def create_paid_order_for_prescription(request):
                         unit_price_at_order=item_data['unit_price'],
                     )
                 
+                # Deduct inventory for each item
+                for item_data in validated_items:
+                    deduct_inventory_from_batches(
+                        product=item_data['product'],
+                        quantity_to_deduct=item_data['quantity'],
+                        user=request.user
+                    )
+
                 OrderStatusHistory.objects.create(
                     order=order,
                     old_status='',
@@ -591,6 +674,7 @@ def create_paid_order_for_prescription(request):
                 'delivery_address': order.delivery_address,
                 'is_prescription_order': order.is_prescription_order,
                 'prescription_status': order.prescription_status,
+                'prescription_image_url': order.prescription_image_url, # Added prescription_image_url to response
                 'message': 'Order created/updated successfully.'
             }, status=status.HTTP_201_CREATED)
                 
@@ -794,7 +878,7 @@ def get_order_status_history(request, order_id):
     """Get status change history for an order"""
     try:
         order = Order.objects.get(id=order_id, user=request.user)
-        status_history = OrderStatusHistory.objects.filter(order=order).order_by('-timestamp')
+        status_history = OrderStatusHistory.objects.filter(order=order).select_related('changed_by').order_by('-timestamp')
 
         history_data = []
         for history in status_history:
@@ -802,7 +886,7 @@ def get_order_status_history(request, order_id):
                 'id': history.id,
                 'old_status': history.old_status,
                 'new_status': history.new_status,
-                'changed_by': history.changed_by.email if history.changed_by else 'System', # Changed to .email
+                'changed_by': history.changed_by.email if history.changed_by else 'System',
                 'reason': history.reason,
                 'timestamp': history.timestamp,
             })
@@ -877,7 +961,7 @@ def create_pending_order(request):
         delivery_address_data = request.data.get('delivery_address', {})
         payment_method = request.data.get('payment_method', '')  # Match model choices
         total_amount = request.data.get('total_amount', 0)
-        prescription_image_base64 = request.data.get('prescription_image')
+        prescription_image_base64 = request.data.get('prescription_image') # Still get base64 from request
         notes = request.data.get('notes', '')
 
         if not items_data:
@@ -893,6 +977,16 @@ def create_pending_order(request):
             order_status='Pending',
             payment_status='Pending'
         ).order_by('-created_at').first()
+
+        prescription_image_url_to_set = None
+        prescription_image_base64 = request.data.get('prescription_image')
+        if prescription_image_base64:
+            prescription_image_url_to_set = save_base64_image_and_get_url(prescription_image_base64)
+            if not prescription_image_url_to_set:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to save prescription image.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         if existing_pending_order:
             # Compare items of the existing pending order with the new cart items
@@ -955,12 +1049,24 @@ def create_pending_order(request):
                 is_prescription_order=True, # Assuming all pending orders might be prescription related initially
                 total_amount=total_amount,
                 delivery_address=delivery_address_data, # Store delivery address as JSON
-                prescription_image_base64=prescription_image_base64, # Store base64 image directly
+                prescription_image_url=prescription_image_url_to_set, # Store URL to image
                 prescription_status='pending_review', # Always set to 'pending_review' for prescription orders
                 notes=notes,
             )
 
             # Add order items
+            product_ids = [item.get('product_id') for item in items_data if item.get('product_id')]
+            products = Product.objects.filter(id__in=product_ids, is_active=True)
+            products_map = {product.id: product for product in products}
+
+            if len(products_map) != len(set(product_ids)):
+                missing_product_ids = set(product_ids) - set(products_map.keys())
+                logger.warning(f"Some products not found or inactive: {missing_product_ids}")
+                return Response({
+                    'success': False,
+                    'error': f"Some products not found or inactive: {', '.join(map(str, missing_product_ids))}"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             for item in items_data:
                 product_id = item.get('product_id')
                 quantity = item.get('quantity')
@@ -973,8 +1079,15 @@ def create_pending_order(request):
                         'error': 'Invalid item data: product_id and quantity are required for all items.'
                     }, status=status.HTTP_400_BAD_REQUEST)
 
+                product = products_map.get(product_id)
+                if not product:
+                    logger.error(f"create_pending_order: Product with ID {product_id} not found for order {order.id}.")
+                    return Response({
+                        'success': False,
+                        'error': f"Product with ID {product_id} not found."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
                 try:
-                    product = Product.objects.get(id=product_id)
                     OrderItem.objects.create(
                         order=order,
                         product=product,
@@ -982,12 +1095,6 @@ def create_pending_order(request):
                         unit_price_at_order=price if price is not None else product.price,
                     )
                     logger.debug(f"OrderItem created for product {product_id} (Order {order.id})")
-                except Product.DoesNotExist:
-                    logger.error(f"create_pending_order: Product with ID {product_id} not found for order {order.id}.")
-                    return Response({
-                        'success': False,
-                        'error': f"Product with ID {product_id} not found."
-                    }, status=status.HTTP_400_BAD_REQUEST)
                 except Exception as e:
                     logger.exception(f"create_pending_order: Error creating order item for product {product_id} (Order {order.id}).")
                     return Response({
@@ -1016,6 +1123,7 @@ def create_pending_order(request):
                 'payment_method': payment_method,
                 'total_amount': float(order.total_amount),
                 'prescription_id': order.id, # Return order ID as prescription ID for consistency
+                'prescription_image_url': order.prescription_image_url, # Added prescription_image_url to response
                 'message': 'Pending order created successfully'
             }, status=status.HTTP_201_CREATED)
 
@@ -1060,3 +1168,52 @@ def confirm_prescription_order(request, order_id):
         return Response({
             'error': f'Failed to confirm order: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def deduct_inventory_from_batches(order, product, quantity_to_deduct, user):
+    """
+    Deducts the specified quantity of a product from batches,
+    prioritizing those with the earliest expiry dates.
+    Records stock movements for each deduction.
+    """
+    if quantity_to_deduct <= 0:
+        return
+
+    batches = Batch.objects.filter(
+        product=product,
+        current_quantity__gt=0,
+        expiry_date__gte=timezone.now().date() # Only consider non-expired batches
+    ).order_by('expiry_date') # Prioritize earliest expiry
+
+    remaining_to_deduct = quantity_to_deduct
+    deducted_batches_info = []
+
+    for batch in batches:
+        if remaining_to_deduct <= 0:
+            break
+
+        deduct_from_batch = min(remaining_to_deduct, batch.current_quantity)
+        batch.current_quantity -= deduct_from_batch
+        batch.save(update_fields=['current_quantity'])
+
+        # Record stock movement
+        StockMovement.objects.create(
+            product=product,
+            batch=batch,
+            movement_type='OUT',
+            quantity=deduct_from_batch,
+            reference_number=f"ORDER_{order.id}_PRODUCT_{product.id}",
+            notes=f"Deducted for order {order.id} (Product: {product.name}, Batch: {batch.batch_number})",
+            created_by=user
+        )
+        deducted_batches_info.append({
+            'batch_id': batch.id,
+            'batch_number': batch.batch_number,
+            'deducted_quantity': deduct_from_batch
+        })
+        remaining_to_deduct -= deduct_from_batch
+    
+    if remaining_to_deduct > 0:
+        raise ValueError(f"Insufficient stock for product {product.name}. Needed {quantity_to_deduct}, but could only deduct {quantity_to_deduct - remaining_to_deduct}.")
+    
+    return deducted_batches_info

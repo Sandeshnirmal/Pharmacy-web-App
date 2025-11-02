@@ -75,7 +75,8 @@ export const dashboardAPI = {
 
 export const productAPI = {
   // Enhanced product management
-  getProducts: () => axiosInstance.get('/api/products/enhanced-products/'),
+  getProducts: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/api/products/enhanced-products/', { params: { ...params, page, page_size: pageSize } }),
   getProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
   createProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
   updateProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),
@@ -95,10 +96,21 @@ export const productAPI = {
     axiosInstance.delete(`/api/products/enhanced-products/${productId}/remove_composition/`, { data: compositionData }),
   
   // Inventory management
+  // Batch management using legacy/batches endpoint
+  addBatch: (batchData) =>
+    axiosInstance.post('/api/products/legacy/batches/', batchData),
+  updateBatch: (batchId, batchData) =>
+    axiosInstance.patch(`/api/products/legacy/batches/${batchId}/`, batchData),
+  getBatches: (productId, params = {}) =>
+    axiosInstance.get(`/api/products/legacy/batches/`, { params: { ...params, product: productId } }),
+  deleteBatch: (batchId) =>
+    axiosInstance.delete(`/api/products/legacy/batches/${batchId}/`),
+  
+  // Original updateStock (if still needed for other purposes, otherwise remove)
+  // For now, keeping it as it might be used elsewhere, but batch creation/update will use new functions.
   updateStock: (productId, stockData) => 
     axiosInstance.post(`/api/products/enhanced-products/${productId}/update_stock/`, stockData),
-  createBatch: (productId, batchData) =>
-    axiosInstance.post(`/api/products/enhanced-products/${productId}/create_batch/`, batchData),
+
   getLowStockAlert: () => axiosInstance.get('/api/products/enhanced-products/low_stock_alert/'),
   getInventorySummary: () => axiosInstance.get('/api/products/enhanced-products/inventory_summary/'),
   
@@ -106,6 +118,7 @@ export const productAPI = {
   getLegacyProducts: (params = {}) => axiosInstance.get('/api/products/legacy/products/', { params }),
   getCategories: () => axiosInstance.get('/api/products/legacy/categories/'),
   getGenericNames: () => axiosInstance.get('/api/products/legacy/generic-names/'),
+  createGenericName: (data) => axiosInstance.post('/api/products/legacy/generic-names/', data),
 };
 
 // ============================================================================
@@ -114,7 +127,8 @@ export const productAPI = {
 
 export const prescriptionAPI = {
   // Enhanced prescription management
-  getPrescriptions: (params = {}) => axiosInstance.get('/prescription/enhanced-prescriptions/', { params }),
+  getPrescriptions: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/prescription/enhanced-prescriptions/', { params: { ...params, page, page_size: pageSize } }),
   getPrescription: (id) => axiosInstance.get(`/prescription/enhanced-prescriptions/${id}/`),
   createPrescription: (prescriptionData) => axiosInstance.post('/prescription/enhanced-prescriptions/', prescriptionData),
   updatePrescription: (id, prescriptionData) => axiosInstance.patch(`/prescription/enhanced-prescriptions/${id}/`, prescriptionData),
@@ -122,8 +136,8 @@ export const prescriptionAPI = {
   // Prescription verification workflow
   verifyPrescription: (id, verificationData) => 
     axiosInstance.post(`/prescription/enhanced-prescriptions/${id}/verify_prescription/`, verificationData),
-  getVerificationQueue: (params = {}) => 
-    axiosInstance.get('/prescription/enhanced-prescriptions/verification_queue/', { params }),
+  getVerificationQueue: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/prescription/enhanced-prescriptions/verification_queue/', { params: { ...params, page, page_size: pageSize } }),
   
   // Prescription medicines
   getPrescriptionMedicines: (params = {}) => axiosInstance.get('/prescription/medicines/', { params }),
@@ -177,6 +191,29 @@ export const prescriptionAPI = {
 };
 
 // ============================================================================
+// INVENTORY MANAGEMENT API
+// ============================================================================
+
+export const inventoryAPI = {
+  getPurchaseOrders: (page = 1, pageSize = 10, params = {}) =>
+    axiosInstance.get('/api/inventory/purchase-orders/', { params: { ...params, page, page_size: pageSize } }),
+  createPurchaseOrder: (orderData) =>
+    axiosInstance.post('/api/inventory/purchase-orders/', orderData),
+  getPurchaseOrder: (id) =>
+    axiosInstance.get(`/api/inventory/purchase-orders/${id}/`),
+  updatePurchaseOrder: (id, orderData) =>
+    axiosInstance.patch(`/api/inventory/purchase-orders/${id}/`, orderData),
+  deletePurchaseOrder: (id) =>
+    axiosInstance.delete(`/api/inventory/purchase-orders/${id}/`),
+  returnPurchaseOrderItems: (id, items) =>
+    axiosInstance.post(`/api/inventory/purchase-orders/${id}/return_items/`, items),
+  getSuppliers: (params = {}) =>
+    axiosInstance.get('/api/inventory/suppliers/', { params }),
+  getPurchaseReturns: (page = 1, pageSize = 10, params = {}) =>
+    axiosInstance.get('/api/inventory/purchase-returns/', { params: { ...params, page, page_size: pageSize } }),
+};
+
+// ============================================================================
 // COURIER MANAGEMENT API (TPC Specific)
 // ============================================================================
 
@@ -212,7 +249,8 @@ export const courierAPI = {
 // ============================================================================
 
 export const orderAPI = {
-  getOrders: (params = {}) => axiosInstance.get('/order/orders/', { params }),
+  getOrders: (page = 1, pageSize = 10, params = {}) => 
+    axiosInstance.get('/order/orders/', { params: { ...params, page, page_size: pageSize } }),
   getOrder: (id) => axiosInstance.get(`/order/orders/${id}/`),
   createOrder: (orderData) => axiosInstance.post('/order/orders/', orderData),
   updateOrder: (id, orderData) => axiosInstance.patch(`/order/orders/${id}/`, orderData),
@@ -231,6 +269,47 @@ export const orderAPI = {
       'Accept': 'application/pdf',
     }
   }),
+};
+
+// ============================================================================
+// DISCOUNT MANAGEMENT API
+// ============================================================================
+
+export const discountAPI = {
+  getDiscounts: (params = {}) => axiosInstance.get('/api/discounts/', { params }),
+  getDiscount: (id) => axiosInstance.get(`/api/discounts/${id}/`),
+  createDiscount: (discountData) => axiosInstance.post('/api/discounts/', discountData),
+  updateDiscount: (id, discountData) => axiosInstance.patch(`/api/discounts/${id}/`, discountData),
+  deleteDiscount: (id) => axiosInstance.delete(`/api/discounts/${id}/`),
+};
+
+// ============================================================================
+// OFFLINE SALES API
+// ============================================================================
+
+export const salesBillAPI = {
+  getSalesBills: (page = 1, pageSize = 10, params = {}) =>
+    axiosInstance.get('/api/offline-sales/offline-sales/', { params: { ...params, page, page_size: pageSize } }),
+  getSalesBill: (id) => axiosInstance.get(`/api/offline-sales/offline-sales/${id}/`),
+  createSalesBill: (billData) => axiosInstance.post('/api/offline-sales/offline-sales/', billData),
+  updateSalesBill: (id, billData) => axiosInstance.patch(`/api/offline-sales/offline-sales/${id}/`, billData),
+  deleteSalesBill: (id) => axiosInstance.delete(`/api/offline-sales/offline-sales/${id}/`),
+  generateInvoice: (id) => axiosInstance.get(`/api/offline-sales/offline-sales/${id}/generate-invoice/`),
+  createBillReturn: (returnData) => axiosInstance.post('/api/offline-sales/bill-returns/', returnData),
+  cancelSalesBill: (id, cancellationReason) => axiosInstance.post(`/api/offline-sales/offline-sales/${id}/cancel-bill/`, { cancellation_reason: cancellationReason }),
+};
+
+// ============================================================================
+// OFFLINE CUSTOMER API
+// ============================================================================
+
+export const offlineCustomerAPI = {
+  findOrCreateCustomer: (customerData) => 
+    axiosInstance.post('/api/offline-sales/offline-customers/find-or-create/', customerData),
+  searchCustomerByPhone: (phoneNumber) =>
+    axiosInstance.get(`/api/offline-sales/offline-customers/search-by-phone/`, { params: { phone_number: phoneNumber } }),
+  getCustomers: (params = {}) =>
+    axiosInstance.get('/api/offline-sales/offline-customers/', { params }),
 };
 
 // ============================================================================

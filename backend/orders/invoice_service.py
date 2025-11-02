@@ -124,20 +124,40 @@ class InvoiceService:
         """Create invoice for an order"""
         try:
             with transaction.atomic():
-                # Calculate invoice amounts
-                subtotal = sum(item.unit_price_at_order * item.quantity for item in order.items.all())
-                tax_rate = Decimal('18.0')  # 18% GST
-                tax_amount = (subtotal * tax_rate) / 100
+                # Calculate invoice amounts dynamically based on order items and their batches
+                subtotal = Decimal('0.00')
+                total_tax_amount = Decimal('0.00')
+                
+                invoice_items_data = []
+
+                for order_item in order.items.all():
+                    item_total_price = order_item.unit_price_at_order * order_item.quantity
+                    item_tax_percentage = order_item.batch.tax_percentage if order_item.batch and order_item.batch.tax_percentage is not None else Decimal('0.00')
+                    item_tax_amount = item_total_price * (item_tax_percentage / Decimal('100'))
+                    
+                    subtotal += item_total_price
+                    total_tax_amount += item_tax_amount
+
+                    invoice_items_data.append({
+                        'product_name': order_item.product.name,
+                        'product_description': f"{order_item.product.manufacturer} - {order_item.product.category}",
+                        'quantity': order_item.quantity,
+                        'unit_price': order_item.unit_price_at_order,
+                        'total_price': item_total_price,
+                        'tax_rate': item_tax_percentage,
+                        'tax_amount': item_tax_amount,
+                    })
+
                 shipping_fee = order.shipping_fee or Decimal('0')
                 discount_amount = order.discount_amount or Decimal('0')
-                total_amount = subtotal + tax_amount + shipping_fee - discount_amount
+                total_amount = subtotal + total_tax_amount + shipping_fee - discount_amount
                 
                 # Create invoice
                 invoice = Invoice.objects.create(
                     order=order,
                     due_date=timezone.now() + timezone.timedelta(days=30),
                     subtotal=subtotal,
-                    tax_amount=tax_amount,
+                    tax_amount=total_tax_amount, # Use calculated total_tax_amount
                     discount_amount=discount_amount,
                     shipping_fee=shipping_fee,
                     total_amount=total_amount,
@@ -147,15 +167,16 @@ class InvoiceService:
                 )
                 
                 # Create invoice items
-                for order_item in order.items.all(): # Corrected to use order.items
+                for item_data in invoice_items_data:
                     InvoiceItem.objects.create(
                         invoice=invoice,
-                        product_name=order_item.product.name,
-                        product_description=f"{order_item.product.manufacturer} - {order_item.product.category}",
-                        quantity=order_item.quantity,
-                        unit_price=order_item.unit_price_at_order,
-                        total_price=order_item.unit_price_at_order * order_item.quantity,
-                        tax_rate=Decimal('18.0')
+                        product_name=item_data['product_name'],
+                        product_description=item_data['product_description'],
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        total_price=item_data['total_price'],
+                        tax_rate=item_data['tax_rate'],
+                        tax_amount=item_data['tax_amount']
                     )
                 
                 return invoice
@@ -251,103 +272,104 @@ Terms and Conditions:
         styles = getSampleStyleSheet()
         
         story = []
-
-        # Fetch company details
         company_details = CompanyDetails.objects.first()
 
-        # Header
-        story.append(Paragraph("<b>TAX INVOICE</b>", styles['h1']))
+        # Header Table (Logo, Company Info, Invoice Title, Invoice Details)
+        header_data = [
+            [
+                Paragraph(f'<b>Infixmart Logo</b><br/><b>Infixmart</b><br/>123 Health St, Wellness City, 12345', styles['Normal']),
+                Paragraph(f'<h1>INVOICE</h1>Invoice #: {invoice.invoice_number}<br/>Invoice Date: {invoice.invoice_date.strftime("%d %b %Y")}<br/>Payment Date: {"N/A" if not invoice.payment_date else invoice.payment_date.strftime("%d %b %Y")}', styles['Normal'])
+            ]
+        ]
+        header_table = Table(header_data, colWidths=[4 * inch, 3 * inch])
+        header_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 20),
+        ]))
+        story.append(header_table)
         story.append(Spacer(1, 0.2 * inch))
 
-        # Company Details (Seller Information)
-        if company_details:
-            story.append(Paragraph("<b>From:</b>", styles['h3']))
-            story.append(Paragraph(f"<b>{company_details.name}</b>", styles['Normal']))
-            story.append(Paragraph(f"{company_details.address_line1}, {company_details.address_line2 or ''}", styles['Normal']))
-            story.append(Paragraph(f"{company_details.city}, {company_details.state} - {company_details.postal_code}", styles['Normal']))
-            story.append(Paragraph(f"Phone: {company_details.phone_number or 'N/A'}", styles['Normal']))
-            story.append(Paragraph(f"Email: {company_details.email or 'N/A'}", styles['Normal']))
-            if company_details.gstin:
-                story.append(Paragraph(f"GSTIN: {company_details.gstin}", styles['Normal']))
-            story.append(Spacer(1, 0.2 * inch))
-
-        # Invoice Details
-        story.append(Paragraph(f"<b>Invoice Number:</b> {invoice.invoice_number}", styles['Normal']))
-        story.append(Paragraph(f"<b>Invoice Date:</b> {invoice.invoice_date.strftime('%Y-%m-%d')}", styles['Normal']))
-        story.append(Paragraph(f"<b>Due Date:</b> {invoice.due_date.strftime('%Y-%m-%d')}", styles['Normal']))
-        story.append(Paragraph(f"<b>Status:</b> {invoice.status.capitalize()}", styles['Normal']))
-        story.append(Spacer(1, 0.2 * inch))
-
-        # Customer Details
-        story.append(Paragraph("<b>Bill To:</b>", styles['h3']))
-        story.append(Paragraph(f"<b>Name:</b> {invoice.order.user.get_full_name() or invoice.order.user.username}", styles['Normal']))
-        story.append(Paragraph(f"<b>Email:</b> {invoice.order.user.email}", styles['Normal']))
-        if invoice.order.delivery_address:
-            story.append(Paragraph(f"<b>Address:</b> {invoice.order.delivery_address.get('address_line1', '')}, {invoice.order.delivery_address.get('city', '')}, {invoice.order.delivery_address.get('state', '')} - {invoice.order.delivery_address.get('pincode', '')}", styles['Normal']))
-            story.append(Paragraph(f"<b>Phone:</b> {invoice.order.delivery_address.get('phone', '')}", styles['Normal']))
+        # Bill To Section
+        bill_to_data = [
+            [Paragraph('<b>Bill To:</b>', styles['Normal']), ''],
+            [Paragraph(f'{invoice.order.user.get_full_name() or invoice.order.user.email}', styles['Normal']), ''],
+            [Paragraph(f'{invoice.order.user.email}', styles['Normal']), ''],
+            [Paragraph(f'{invoice.order.user.phone_number or "N/A"}', styles['Normal']), ''],
+        ]
+        bill_to_table = Table(bill_to_data, colWidths=[3 * inch, 4 * inch])
+        bill_to_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        story.append(bill_to_table)
         story.append(Spacer(1, 0.2 * inch))
 
         # Items Table
-        data = [['Product', 'Description', 'Quantity', 'Unit Price', 'Total Price', 'Tax Rate', 'Tax Amount']]
+        item_table_data = [['Description', 'Qty', 'Unit Price', 'Total']]
         for item in invoice.items.all():
-            data.append([
-                item.product_name,
-                item.product_description,
+            item_table_data.append([
+                Paragraph(f'<b>{item.product_name}</b><br/><small>{item.product_description}</small>', styles['Normal']),
                 str(item.quantity),
-                f"₹{item.unit_price:.2f}",
-                f"₹{item.total_price:.2f}",
-                f"{item.tax_rate:.2f}%",
-                f"₹{item.tax_amount:.2f}"
+                f'₹{item.unit_price:.2f}',
+                f'₹{item.total_price:.2f}'
             ])
         
-        table_style = TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        item_table_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EEEEEE')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#EEEEEE')),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#EEEEEE')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ])
         
-        col_widths = [1.5*inch, 2*inch, 0.7*inch, 1*inch, 1*inch, 0.8*inch, 1*inch]
-        item_table = Table(data, colWidths=col_widths)
-        item_table.setStyle(table_style)
-        story.append(item_table)
+        item_col_widths = [3.5 * inch, 0.7 * inch, 1.4 * inch, 1.4 * inch]
+        items_table = Table(item_table_data, colWidths=item_col_widths)
+        items_table.setStyle(item_table_style)
+        story.append(items_table)
         story.append(Spacer(1, 0.2 * inch))
 
         # Financial Summary
-        story.append(Paragraph(f"<b>Subtotal:</b> ₹{invoice.subtotal:.2f}", styles['Normal']))
-        story.append(Paragraph(f"<b>Tax Amount:</b> ₹{invoice.tax_amount:.2f}", styles['Normal']))
-        story.append(Paragraph(f"<b>Shipping Fee:</b> ₹{invoice.shipping_fee:.2f}", styles['Normal']))
-        story.append(Paragraph(f"<b>Discount Amount:</b> ₹{invoice.discount_amount:.2f}", styles['Normal']))
-        story.append(Paragraph(f"<b>Total Amount:</b> ₹{invoice.total_amount:.2f}", styles['h2']))
+        summary_data = [
+            ['', 'Subtotal:', f'₹{invoice.subtotal:.2f}'],
+            ['', 'Tax:', f'₹{invoice.tax_amount:.2f}'],
+            ['', 'Discount:', f'-₹{invoice.discount_amount:.2f}'],
+            ['', '<b>Total Amount:</b>', f'<b>₹{invoice.total_amount:.2f}</b>'],
+        ]
+        summary_table = Table(summary_data, colWidths=[4.6 * inch, 1.2 * inch, 1.2 * inch])
+        summary_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (1, -1), (1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, -1), (2, -1), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LINEBELOW', (1, -2), (2, -2), 1, colors.HexColor('#EEEEEE')), # Line above Total Amount
+            ('LINEBELOW', (1, -1), (2, -1), 2, colors.black), # Double line below Total Amount
+        ]))
+        story.append(summary_table)
         story.append(Spacer(1, 0.2 * inch))
-
-        # Payment Details
-        story.append(Paragraph("<b>Payment Details:</b>", styles['h3']))
-        story.append(Paragraph(f"<b>Method:</b> {invoice.payment_method}", styles['Normal']))
-        if invoice.payment_date:
-            story.append(Paragraph(f"<b>Payment Date:</b> {invoice.payment_date.strftime('%Y-%m-%d %H:%M')}", styles['Normal']))
-        if invoice.razorpay_payment_id:
-            story.append(Paragraph(f"<b>Razorpay Payment ID:</b> {invoice.razorpay_payment_id}", styles['Normal']))
-        story.append(Spacer(1, 0.2 * inch))
-
-        # Bank Details (if available)
-        if company_details and company_details.bank_name and company_details.bank_account_number:
-            story.append(Paragraph("<b>Bank Details:</b>", styles['h3']))
-            story.append(Paragraph(f"Bank Name: {company_details.bank_name}", styles['Normal']))
-            story.append(Paragraph(f"Account Number: {company_details.bank_account_number}", styles['Normal']))
-            if company_details.bank_ifsc_code:
-                story.append(Paragraph(f"IFSC Code: {company_details.bank_ifsc_code}", styles['Normal']))
-            story.append(Spacer(1, 0.2 * inch))
 
         # Terms and Conditions
-        story.append(Paragraph("<b>Terms and Conditions:</b>", styles['h3']))
-        for line in invoice.terms_and_conditions.split('\n'):
-            if line.strip():
-                story.append(Paragraph(line.strip(), styles['Normal']))
+        story.append(Paragraph("<b>Terms & Conditions:</b>", styles['Normal']))
+        terms_list = invoice.terms_and_conditions.strip().split('\n')
+        for i, term in enumerate(terms_list):
+            if term.strip():
+                story.append(Paragraph(f'{i+1}. {term.strip()}', styles['Normal']))
+        story.append(Spacer(1, 0.5 * inch))
+
+        # Footer
+        story.append(Paragraph("Thank you for your business.", styles['Normal']))
+        story.append(Paragraph("This is a computer-generated invoice.", styles['Normal']))
+        story.append(Spacer(1, 0.5 * inch))
+
+        # Signature
+        story.append(Paragraph("Authorised Signature", styles['Normal']))
         story.append(Spacer(1, 0.2 * inch))
 
         try:

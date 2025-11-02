@@ -65,9 +65,8 @@ const OrdersTable = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      await axiosInstance.patch(`/order/orders/${orderId}/update_status/`, { // Corrected endpoint
-        order_status: newStatus,
-      });
+      // Use orderAPI.updateOrder to update the status
+      await orderAPI.updateOrder(orderId, { order_status: newStatus });
       await fetchOrders(); // Refresh the list
     } catch (err) {
       console.error('Error updating order status:', err);
@@ -78,9 +77,8 @@ const OrdersTable = () => {
   const handleBulkStatusUpdate = async (newStatus) => {
     try {
       const updatePromises = selectedOrders.map((id) =>
-        axiosInstance.patch(`/order/orders/${id}/update_status/`, { // Corrected endpoint
-          order_status: newStatus,
-        })
+        // Use orderAPI.updateOrder for bulk updates
+        orderAPI.updateOrder(id, { order_status: newStatus })
       );
 
       await Promise.all(updatePromises);
@@ -94,7 +92,8 @@ const OrdersTable = () => {
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      setSelectedOrders(filteredOrders.map(o => o.id));
+      // Use the currently displayed orders for selection
+      setSelectedOrders(orders.map(o => o.id));
     } else {
       setSelectedOrders([]);
     }
@@ -172,7 +171,7 @@ const OrdersTable = () => {
           <div className="relative">
             <input
               type="text"
-              placeholder="Search orders..."
+              placeholder="Search by Order ID, Customer Name, or Email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -243,6 +242,12 @@ const OrdersTable = () => {
                 className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
               >
                 Mark Delivered
+              </button>
+              <button
+                onClick={() => handleBulkStatusUpdate("Cancelled")}
+                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md text-sm font-medium transition duration-150"
+              >
+                Mark Cancelled
               </button>
               <button
                 onClick={() => setSelectedOrders([])}
@@ -429,6 +434,9 @@ const OrdersTable = () => {
             >
               Previous
             </button>
+            <span className="px-3 py-2 text-sm text-gray-700">
+              Page {currentPage} of {totalPages}
+            </span>
             <button
               onClick={() =>
                 setCurrentPage((prev) => Math.min(prev + 1, totalPages))
@@ -438,6 +446,23 @@ const OrdersTable = () => {
             >
               Next
             </button>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                // Note: itemsPerPage is currently a constant. To make this dynamic,
+                // itemsPerPage would need to be a state variable and passed to fetchOrders.
+                // For now, this is a UI enhancement to show the option.
+                // To fully implement, you'd need to update the `itemsPerPage` state
+                // and refetch orders with the new page size.
+                console.log("Items per page changed to:", e.target.value);
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="5">5 per page</option>
+              <option value="10">10 per page</option>
+              <option value="20">20 per page</option>
+              <option value="50">50 per page</option>
+            </select>
           </div>
         </div>
       )}

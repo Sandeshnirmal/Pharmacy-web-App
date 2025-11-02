@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
+from simple_history.models import HistoricalRecords # Import HistoricalRecords
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -84,8 +86,6 @@ class Product(models.Model):
 
     strength = models.CharField(max_length=50, blank=True)
     form = models.CharField(max_length=50, blank=True)
-    is_prescription_required = models.BooleanField(default=False)
-
     # price and mrp are now managed at the batch level, so they are removed from Product
     # stock_quantity is now managed at the batch level, so it's removed from Product
     min_stock_level = models.PositiveIntegerField(default=10)
@@ -95,7 +95,6 @@ class Product(models.Model):
     packaging_unit = models.CharField(max_length=50, blank=True)
 
     description = models.TextField(blank=True)
-    composition = models.TextField(blank=True, help_text="Legacy composition field")
     uses = models.TextField(blank=True)
     side_effects = models.TextField(blank=True)
     how_to_use = models.TextField(blank=True)
@@ -114,6 +113,7 @@ class Product(models.Model):
 
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
+    is_prescription_required = models.BooleanField(default=False) # Added for prescription logic
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -136,6 +136,17 @@ class Product(models.Model):
     def stock_quantity(self):
         """Calculates the total stock quantity from all active batches."""
         return self.batches.aggregate(total_quantity=models.Sum('current_quantity'))['total_quantity'] or 0
+
+    def get_default_batch(self):
+        """
+        Returns the default batch for the product based on stock > 0 and earliest expiry date.
+        """
+        from django.utils import timezone
+        today = timezone.now().date()
+        return self.batches.filter(
+            current_quantity__gt=0,
+            expiry_date__gte=today # Ensure the batch has not expired yet
+        ).order_by('expiry_date').first()
 
     def __str__(self):
         return f"{self.name} ({self.manufacturer})"
@@ -165,16 +176,51 @@ class ProductComposition(models.Model):
 class Batch(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='batches')
     batch_number = models.CharField(max_length=100)
+    history = HistoricalRecords() # Add HistoricalRecords to track changes
     manufacturing_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField()
     quantity = models.PositiveIntegerField(default=0)
     current_quantity = models.PositiveIntegerField()
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    
+    # Generic pricing fields (can be used as defaults or for single-channel scenarios)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    mrp_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    discount_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Online specific pricing
+    online_mrp_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    online_discount_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    online_selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+
+    # Offline specific pricing
+    offline_mrp_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+    offline_discount_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    offline_selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=False)
+
+    is_primary = models.BooleanField(default=False)
     mfg_license_number = models.CharField(max_length=100, blank=True, null=True)
-    is_primary = models.BooleanField(default=False, help_text="Designates this batch as the primary one for display purposes.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Calculate generic selling price
+        if self.mrp_price is not None and self.discount_percentage is not None:
+            discount_amount = self.mrp_price * (self.discount_percentage / Decimal('100'))
+            self.selling_price = self.mrp_price - discount_amount
+        
+        # Calculate online selling price
+        if self.online_mrp_price is not None and self.online_discount_percentage is not None:
+            online_discount_amount = self.online_mrp_price * (self.online_discount_percentage / Decimal('100'))
+            self.online_selling_price = self.online_mrp_price - online_discount_amount
+        
+        # Calculate offline selling price
+        if self.offline_mrp_price is not None and self.offline_discount_percentage is not None:
+            offline_discount_amount = self.offline_mrp_price * (self.offline_discount_percentage / Decimal('100'))
+            self.offline_selling_price = self.offline_mrp_price - offline_discount_amount
+            
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.product.name} - {self.batch_number}"
@@ -266,3 +312,59 @@ class ProductViewHistory(models.Model):
 
     def __str__(self):
         return f"{self.user.username} viewed {self.product.name}"
+
+
+class Discount(models.Model):
+    DISCOUNT_TARGET_TYPES = [
+        ('product', 'Product'),
+        ('category', 'Category'),
+    ]
+
+    name = models.CharField(max_length=255)
+    percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Discount percentage (0-100)"
+    )
+    description = models.TextField(blank=True)
+    target_type = models.CharField(max_length=20, choices=DISCOUNT_TARGET_TYPES)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, related_name='discounts')
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, blank=True, related_name='discounts')
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_discounts')
+
+    class Meta:
+        verbose_name = 'Discount'
+        verbose_name_plural = 'Discounts'
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['target_type']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def clean(self):
+        if self.target_type == 'product' and not self.product:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'product': 'Product must be specified for product-wise discounts.'})
+        if self.target_type == 'category' and not self.category:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'category': 'Category must be specified for category-wise discounts.'})
+        if self.target_type == 'product' and self.category:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'category': 'Cannot specify category for product-wise discounts.'})
+        if self.target_type == 'category' and self.product:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'product': 'Cannot specify product for category-wise discounts.'})
+
+    def __str__(self):
+        target = ""
+        if self.target_type == 'product' and self.product:
+            target = f" for Product: {self.product.name}"
+        elif self.target_type == 'category' and self.category:
+            target = f" for Category: {self.category.name}"
+        return f"{self.name} ({self.percentage}%) {target}"

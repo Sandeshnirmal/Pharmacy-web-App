@@ -20,16 +20,47 @@ import {
   PlusCircle,
   ZoomIn,
 } from "lucide-react";
-import { prescriptionService, prescriptionUtils } from "../api/prescriptionService";
+import { prescriptionAPI, productAPI, apiUtils } from "../api/apiService";
+import { toast } from 'react-toastify'; // Assuming a toast library is available
 
-const API_BASE_URL = "http://localhost:8000";
+// Use environment variable for API_BASE_URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+// Utility function for prescription status display (moved from prescriptionService)
+const prescriptionUtils = {
+  getStatusDisplayName: (status) => {
+    switch (status) {
+      case 'Pending_Review': return 'Pending Review';
+      case 'Verified': return 'Verified';
+      case 'Rejected': return 'Rejected';
+      case 'Uploaded': return 'Uploaded';
+      default: return status;
+    }
+  }
+};
 
 const PrescriptionReview = () => {
-  const PrescriptionStatusBadge = ({ status }) => (
-    <span className="px-3 py-1 text-xs font-semibold text-white bg-blue-600 rounded-full">
-      {prescriptionUtils.getStatusDisplayName(status)}
-    </span>
-  );
+  const PrescriptionStatusBadge = ({ status }) => {
+    let bgColor = 'bg-gray-500'; // Default
+    switch (status) {
+      case 'Pending_Review':
+        bgColor = 'bg-yellow-500';
+        break;
+      case 'Verified':
+        bgColor = 'bg-green-500';
+        break;
+      case 'Rejected':
+        bgColor = 'bg-red-500';
+        break;
+      default:
+        bgColor = 'bg-blue-600';
+    }
+    return (
+      <span className={`px-3 py-1 text-xs font-semibold text-white ${bgColor} rounded-full`}>
+        {prescriptionUtils.getStatusDisplayName(status)}
+      </span>
+    );
+  };
 
   const ConfidenceIndicator = ({ confidence }) => (
     <div className="flex items-center space-x-2">
@@ -81,21 +112,23 @@ const PrescriptionReview = () => {
     try {
       setLoading(true);
       setError(null);
-      const prescriptionRes = await prescriptionService.getPrescription(
+      const prescriptionRes = await prescriptionAPI.getPrescription(
         prescriptionId
       );
 
-      if (prescriptionRes.success) {
+      if (prescriptionRes.status >= 200 && prescriptionRes.status < 300) { // Check status for success
         setPrescription(prescriptionRes.data);
         setNotes(prescriptionRes.data.pharmacist_notes || "");
         setPrescriptionDetails(prescriptionRes.data.prescription_medicines);
         console.log("Fetched prescription details:", prescriptionRes.data.prescription_medicines);
       } else {
-        setError(prescriptionRes.error);
+        const errorInfo = apiUtils.handleError(prescriptionRes);
+        setError(errorInfo.message);
       }
     } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
       console.error("Error fetching prescription:", err);
-      setError("Failed to fetch prescription data. Please try again.");
+      setError(errorInfo.message || "Failed to fetch prescription data. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -110,15 +143,18 @@ const PrescriptionReview = () => {
   const fetchProducts = useCallback(async (term) => {
     setIsFetchingProducts(true);
     try {
-      const result = await prescriptionService.searchProducts(term);
-      if (result.success) {
-        setProducts(result.data);
+      // Use productAPI.getProducts for searching
+      const result = await productAPI.getProducts(1, 100, { search: term }); // Fetch first 100 results
+      if (result.status >= 200 && result.status < 300) {
+        setProducts(result.data.results || result.data);
       } else {
-        console.error("Error fetching products:", result.error);
+        const errorInfo = apiUtils.handleError(result);
+        console.error("Error fetching products:", errorInfo.message);
         setProducts([]);
       }
     } catch (err) {
-      console.error("Error fetching products:", err);
+      const errorInfo = apiUtils.handleError(err);
+      console.error("Error fetching products:", errorInfo.message);
     } finally {
       setIsFetchingProducts(false);
     }
@@ -143,16 +179,18 @@ const PrescriptionReview = () => {
   const handleMapProduct = async (detailId, product) => {
     console.log("handleMapProduct called with:", { detailId, product });
     if (!product) {
-      alert("Please select a product to map.");
+      // toast.error("Please select a product to map.");
+      console.error("Please select a product to map.");
       return;
     }
     try {
-      // Use the new updateMedicineSelection API
-      const result = await prescriptionService.updateMedicineSelection(
+      // Use prescriptionAPI.remapMedicine
+      const result = await prescriptionAPI.remapMedicine(
         detailId,
-        product.id
+        { product_id: product.id }
       );
-      if (result.success) {
+      if (result.status >= 200 && result.status < 300) {
+        // Update the specific prescription detail with the mapped product info
         setPrescriptionDetails((prevDetails) =>
           prevDetails.map((d) =>
             d.id === detailId
@@ -160,27 +198,33 @@ const PrescriptionReview = () => {
                   ...d,
                   mapped_product: product.id,
                   product_name: product.name,
-                  product_price: product.price,
+                  product_price: product.current_selling_price, // Use current_selling_price
                   verified_medicine_name: product.name,
                   verified_dosage: product.strength,
-                  verified_form: product.form,
+                  verified_form: product.dosage_form, // Use dosage_form for consistency
                   is_valid_for_order: true,
-                  // The suggested_products should be updated by the backend, so we don't modify it here.
-                  // The full product details will be re-fetched by fetchPrescriptionData.
+                  suggested_products: d.suggested_products
+                    ? [...d.suggested_products.filter(sp => sp.id !== product.id), product]
+                    : [product],
                 }
               : d
           )
         );
         setShowProductModal(false);
         setSelectedProduct(null);
-        alert(result.message);
-        fetchPrescriptionData(); // Re-fetch data to ensure UI is in sync with backend
+        // toast.success(result.message); // Use toast for user feedback
+        console.log("Medicine mapped successfully."); // Fallback to console log
+        // No need to fetchPrescriptionData() if state is updated directly
       } else {
-        alert(`Failed to update medicine selection: ${result.error}`);
+        const errorInfo = apiUtils.handleError(result);
+        // toast.error(`Failed to update medicine selection: ${errorInfo.message}`); // Use toast for user feedback
+        console.error(`Failed to update medicine selection: ${errorInfo.message}`); // Fallback to console log
       }
     } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
       console.error("Error updating medicine selection:", err);
-      alert("An unexpected error occurred during medicine selection update.");
+      // toast.error("An unexpected error occurred during medicine selection update."); // Use toast for user feedback
+      console.error("An unexpected error occurred during medicine selection update."); // Fallback to console log
     }
   };
 
@@ -196,57 +240,112 @@ const PrescriptionReview = () => {
     }
 
     try {
-      const result = await prescriptionService.verifyPrescription(
+      const result = await prescriptionAPI.verifyPrescription(
         prescriptionId,
-        "verified",
-        { notes: notes }
+        { verification_status: "Verified", notes: notes }
       );
 
-      if (result.success) {
-        alert(result.message);
+      if (result.status >= 200 && result.status < 300) {
+        // toast.success(result.message);
+        console.log("Prescription approved successfully.");
         navigate("/prescription");
       } else {
-        alert(`Failed to approve prescription: ${result.error}`);
+        const errorInfo = apiUtils.handleError(result);
+        // toast.error(`Failed to approve prescription: ${errorInfo.message}`);
+        console.error(`Failed to approve prescription: ${errorInfo.message}`);
       }
     } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
       console.error("Error approving prescription:", err);
-      alert("An unexpected error occurred during approval.");
+      // toast.error("An unexpected error occurred during approval.");
+      console.error("An unexpected error occurred during approval.");
+    }
+  };
+
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+
+  const handleRejectPrescription = async () => {
+    if (!prescription) {
+      // toast.error("Prescription data is not loaded.");
+      console.error("Prescription data is not loaded.");
+      return;
+    }
+    if (!rejectionReason.trim()) {
+      // toast.error("Please provide a reason for rejection.");
+      console.error("Please provide a reason for rejection.");
+      return;
+    }
+
+    try {
+      const result = await prescriptionAPI.verifyPrescription(
+        prescriptionId,
+        { verification_status: "Rejected", notes: rejectionReason }
+      );
+
+      if (result.status >= 200 && result.status < 300) {
+        // toast.success("Prescription rejected successfully.");
+        console.log("Prescription rejected successfully.");
+        navigate("/prescription");
+      } else {
+        const errorInfo = apiUtils.handleError(result);
+        // toast.error(`Failed to reject prescription: ${errorInfo.message}`);
+        console.error(`Failed to reject prescription: ${errorInfo.message}`);
+      }
+    } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
+      console.error("Error rejecting prescription:", err);
+      // toast.error("An unexpected error occurred during rejection.");
+      console.error("An unexpected error occurred during rejection.");
+    } finally {
+      setShowRejectModal(false);
+      setRejectionReason("");
     }
   };
 
   const handleAddMedicineToPrescription = async () => {
     if (!selectedMedicineToAdd) {
-      alert("Please select a medicine to add.");
+      // toast.error("Please select a medicine to add.");
+      console.error("Please select a medicine to add.");
       return;
     }
     if (medicineQuantity < 1) {
-      alert("Quantity must be at least 1.");
+      // toast.error("Quantity must be at least 1.");
+      console.error("Quantity must be at least 1.");
       return;
     }
 
     try {
-      const result = await prescriptionService.addMedicine(prescriptionId, {
-        productId: selectedMedicineToAdd.id,
+      const result = await prescriptionAPI.addMedicineToPrescrip({
+        prescription: prescriptionId,
+        product_id: selectedMedicineToAdd.id,
         quantity: medicineQuantity,
-        // You might want to add dosage, frequency, duration, instructions here if available in the modal
-        // For now, we'll use default or empty strings as per the API definition
-        dosage: selectedMedicineToAdd.strength || "", // Assuming strength can be dosage
-        instructions: "As directed by pharmacist", // Default instruction
+        dosage: selectedMedicineToAdd.strength || "",
+        instructions: "As directed by pharmacist",
+        form: selectedMedicineToAdd.dosage_form || "",
       });
 
-      if (result.success) {
-        alert(result.message);
-        // After successfully adding, refetch prescription data to update the list
-        fetchPrescriptionData();
+      if (result.status >= 200 && result.status < 300) {
+        // toast.success("Medicine added to prescription successfully.");
+        console.log("Medicine added to prescription successfully.");
+        // Directly update state with the new medicine detail from the response
+        setPrescriptionDetails((prevDetails) => [
+          ...prevDetails,
+          result.data,
+        ]);
         setShowAddMedicineModal(false);
         setSelectedMedicineToAdd(null);
         setMedicineQuantity(1);
       } else {
-        alert(`Failed to add medicine: ${result.error}`);
+        const errorInfo = apiUtils.handleError(result);
+        // toast.error(`Failed to add medicine: ${errorInfo.message}`);
+        console.error(`Failed to add medicine: ${errorInfo.message}`);
       }
     } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
       console.error("Error adding medicine to prescription:", err);
-      alert("An unexpected error occurred while adding medicine.");
+      // toast.error("An unexpected error occurred while adding medicine.");
+      console.error("An unexpected error occurred while adding medicine.");
     }
   };
 
@@ -263,15 +362,24 @@ const PrescriptionReview = () => {
           <button onClick={() => navigate("/Prescription")}>
             <ArrowLeft className="text-gray-600" />
           </button>
-          <h1 className="text-xl font-bold text-gray-800">
-            Review Prescription
-          </h1>
-        </div>
-        <div>
-          <PrescriptionStatusBadge
-            status={prescription?.verification_status || "Loading..."}
-          />
-        </div>
+            <h1 className="text-xl font-bold text-gray-800">
+              Review Prescription
+            </h1>
+          </div>
+          <div className="flex items-center space-x-4">
+            <PrescriptionStatusBadge
+              status={prescription?.verification_status || "Loading..."}
+            />
+            {prescription?.verification_status === 'Pending_Review' && (
+              <button
+                onClick={() => setShowRejectModal(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center space-x-2"
+              >
+                <XCircle size={20} />
+                <span>Reject</span>
+              </button>
+            )}
+          </div>
       </header>
 
       <main className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -354,126 +462,122 @@ const PrescriptionReview = () => {
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-sm text-gray-500">
-                      AI Extracted: "
-                      {detail.ai_extracted_medicine_name ||
-                        detail.verified_medicine_name ||
-                        "N/A"}
+                      AI Extracted Name: "
+                      <span className="font-semibold text-gray-800">
+                        {detail.extracted_medicine_name || "N/A"}
+                      </span>
                       "
                     </p>
-                    <p className="text-lg font-bold text-gray-800">
-                      {detail.product_name ||
-                        detail.verified_medicine_name ||
-                        "Unknown Medicine"}
-                    </p>
                     <p className="text-sm text-gray-600 mt-1">
-                      {detail.extracted_dosage ||
-                        detail.verified_dosage ||
-                        "N/A"}
+                      Dosage:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_dosage || "N/A"}
+                      </span>
+                      , Form:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_form || "N/A"}
+                      </span>
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Frequency:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_frequency || "N/A"}
+                      </span>
+                      , Quantity:{" "}
+                      <span className="font-semibold">
+                        {detail.extracted_quantity || "N/A"}
+                      </span>
                     </p>
                   </div>
                   <ConfidenceIndicator
-                    confidence={detail.ai_confidence_score}
+                    confidence={detail.ai_confidence_score * 100}
                   />
                 </div>
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <p className="text-xs font-semibold text-yellow-800">
-                    AI Instructions:
-                  </p>
-                  <p className="text-sm text-yellow-900">
-                    {detail.ai_extracted_instructions}
-                  </p>
-                </div>
+                {detail.extracted_instructions && (
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <p className="text-xs font-semibold text-yellow-800">
+                      AI Instructions:
+                    </p>
+                    <p className="text-sm text-yellow-900">
+                      {detail.extracted_instructions}
+                    </p>
+                  </div>
+                )}
 
                 {detail.mapped_product ? (
-                  <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500 flex justify-between items-center">
-                    <div>
+                  <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500">
+                    <div className="flex justify-between items-center mb-2">
                       <p className="text-sm font-semibold text-green-800">
-                        Mapped to: {detail.product_name}
+                        Mapped to: {detail.product_name || "N/A"}
                       </p>
-                      {/* Find the full product details from suggested_products */}
-                      {detail.mapped_product && detail.suggested_products && (
-                        (() => {
-                          const mappedProductObject = detail.suggested_products.find(
-                            (p) => p.id === detail.mapped_product
+                      <button
+                        onClick={() => {
+                          setCurrentDetailId(detail.id);
+                          setSearchTerm(
+                            detail.product_name || detail.extracted_medicine_name
                           );
-                          return mappedProductObject ? (
-                            <div className="text-xs text-green-700 mt-1 space-y-0.5">
-                              <p>
-                                Strength: {mappedProductObject.strength || "N/A"},{" "}
-                                Form: {mappedProductObject.form || "N/A"}
-                              </p>
-                              <p>
-                                Manufacturer: {mappedProductObject.manufacturer || "N/A"}
-                              </p>
-                              <p>
-                                Price: ₹{mappedProductObject.price || "0.00"} (MRP: ₹{mappedProductObject.mrp || "0.00"})
-                              </p>
-                              <p>
-                                Stock: {mappedProductObject.stock_quantity > 0 ? `${mappedProductObject.stock_quantity} in stock` : "Out of stock"}
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-green-700">Details not available</p>
-                          );
-                        })()
-                      )}
+                          setShowProductModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
+                      >
+                        Change
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setCurrentDetailId(detail.id);
-                        setSearchTerm(
-                          detail.product_name ||
-                            detail.ai_extracted_medicine_name
-                        );
-                        setShowProductModal(true);
-                        console.log(
-                          "Change button clicked for detailId:",
-                          detail.id
-                        );
-                      }}
-                      className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
-                    >
-                      Change
-                    </button>
+                    {detail.suggested_products && detail.suggested_products.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold text-green-700 mb-1">
+                          Available Options:
+                        </p>
+                        <ul className="list-disc list-inside text-xs text-green-700 space-y-0.5">
+                          {detail.suggested_products.map((s_product) => (
+                            <li key={s_product.id}>
+                              {s_product.name} ({s_product.strength || "N/A"}) - ₹
+                              {s_product.current_selling_price || "0.00"} (Stock: {s_product.total_stock > 0 ? s_product.total_stock : "Out of stock"})
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 flex justify-between items-center">
-                    <div className="flex items-center">
-                      <AlertCircle className="text-red-500 mr-2" size={20} />
-                      <p className="text-sm font-semibold text-red-800">
-                        Needs Mapping
-                      </p>
+                  <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500">
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center">
+                        <AlertCircle className="text-red-500 mr-2" size={20} />
+                        <p className="text-sm font-semibold text-red-800">
+                          Needs Mapping
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentDetailId(detail.id);
+                          setSearchTerm(detail.extracted_medicine_name);
+                          setShowProductModal(true);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
+                      >
+                        <span>Find Product</span>
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setCurrentDetailId(detail.id);
-                        setSearchTerm(detail.ai_extracted_medicine_name);
-                        setShowProductModal(true);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
-                    >
-                      <span>Find Product</span>
-                      <ChevronRight size={16} />
-                    </button>
+                    {detail.suggested_products && detail.suggested_products.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold text-red-700 mb-1">
+                          Suggested Options:
+                        </p>
+                        <ul className="list-disc list-inside text-xs text-red-700 space-y-0.5">
+                          {detail.suggested_products.map((s_product) => (
+                            <li key={s_product.id}>
+                              {s_product.name} ({s_product.strength || "N/A"}) - ₹
+                              {s_product.current_selling_price || "0.00"} (Stock: {s_product.total_stock > 0 ? s_product.total_stock : "Out of stock"})
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-              {detail.suggested_products &&
-                detail.suggested_products.length > 0 && (
-                  <div className="mt-4 p-4 bg-blue-50 border-l-4 border-blue-500">
-                    <p className="text-sm font-semibold text-blue-800 mb-2">
-                      Suggested Alternatives:
-                    </p>
-                    <ul className="list-disc list-inside text-sm text-blue-700">
-                      {detail.suggested_products.map((s_product) => (
-                        <li key={s_product.id}>
-                          {s_product.name} ({s_product.strength}) - ₹
-                          {s_product.price}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
             </div>
           ))}
         </div>
@@ -484,7 +588,7 @@ const PrescriptionReview = () => {
         <div className="max-w-7xl mx-auto flex justify-end">
           <button
             onClick={handleProceedToApproval}
-            disabled={!allItemsMapped}
+            disabled={!allItemsMapped || prescription?.verification_status !== 'Pending_Review'}
             className="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-lg hover:bg-blue-700 transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none flex items-center space-x-2 transform hover:scale-105 disabled:transform-none"
           >
             <span>Proceed to Approval</span>
@@ -569,12 +673,12 @@ const PrescriptionReview = () => {
                       onClick={() => {
                         setSelectedProduct(product);
                         console.log("Selected product for remapping:", product);
-                        console.log("Selected product details (strength, form):", product.strength, product.form);
+                        console.log("Selected product details (strength, form):", product.strength, product.dosage_form); // Use dosage_form
                       }}
                     >
                       <p className="font-semibold">{product.name}</p>
                       <p className="text-sm text-gray-500">
-                        {product.generic_name.name}
+                        {product.generic_name?.name || "N/A"}
                       </p>
                     </div>
                   ))
@@ -649,7 +753,7 @@ const PrescriptionReview = () => {
                     >
                       <p className="font-semibold">{product.name}</p>
                       <p className="text-sm text-gray-500">
-                        {product.generic_name.name}
+                        {product.generic_name?.name || "N/A"}
                       </p>
                     </div>
                   ))
@@ -662,7 +766,7 @@ const PrescriptionReview = () => {
                   </h3>
                   <p className="text-sm text-gray-600">
                     Strength: {selectedMedicineToAdd.strength}, Form:{" "}
-                    {selectedMedicineToAdd.form}
+                    {selectedMedicineToAdd.dosage_form || "N/A"}
                   </p>
                   <div className="mt-3 flex items-center space-x-2">
                     <label htmlFor="quantity" className="text-sm font-medium">
@@ -697,6 +801,39 @@ const PrescriptionReview = () => {
                 className="px-5 py-2.5 bg-green-600 text-white font-semibold rounded-lg disabled:bg-gray-400"
               >
                 Add Medicine to Prescription
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Prescription Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-bold mb-4">Reject Prescription</h2>
+            <p className="text-gray-700 mb-4">
+              Please provide a reason for rejecting this prescription.
+            </p>
+            <textarea
+              className="w-full p-3 border rounded-md h-32 focus:ring-2 focus:ring-red-500"
+              placeholder="Reason for rejection..."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+            ></textarea>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="px-5 py-2.5 bg-gray-200 text-gray-800 font-medium rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRejectPrescription(rejectionReason)}
+                disabled={!rejectionReason.trim()}
+                className="px-5 py-2.5 bg-red-600 text-white font-semibold rounded-lg disabled:bg-gray-400"
+              >
+                Confirm Rejection
               </button>
             </div>
           </div>

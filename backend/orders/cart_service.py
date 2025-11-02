@@ -132,10 +132,6 @@ class CartService:
                         unit_price_at_order=item_data['unit_price']
                     )
                     
-                    # Update stock
-                    product = item_data['product']
-                    product.stock_quantity -= item_data['quantity']
-                    product.save()
                 
                 # Handle prescription upload if provided
                 if prescription_file and prescription_required:
@@ -219,11 +215,30 @@ class CartService:
                         order.prescription.rejection_reason = verification_notes
                         order.prescription.save()
                     
-                    # Restore stock
+                    # Restore stock to batches
                     for item in order.items.all():
                         product = item.product
-                        product.stock_quantity += item.quantity
-                        product.save()
+                        quantity_to_restore = item.quantity
+                        
+                        # Find an appropriate batch to restore stock to.
+                        # For simplicity, we'll try to find an existing batch for the product.
+                        # In a more complex scenario, you might track which batch the item was sold from.
+                        batch = product.batches.filter(expiry_date__gte=timezone.now().date()).order_by('-created_at').first()
+                        
+                        if batch:
+                            batch.current_quantity += quantity_to_restore
+                            batch.save()
+                            StockMovement.objects.create(
+                                product=product,
+                                batch=batch,
+                                movement_type='ADJUSTMENT', # Or a new type like 'ORDER_REJECTION_REVERSAL'
+                                quantity=quantity_to_restore,
+                                reference_number=f"ORDER-REJ-REV-{order.id}",
+                                notes=f"Restored {quantity_to_restore} units of {product.name} to batch {batch.batch_number} due to order rejection.",
+                                created_by=admin_user # Admin user is performing the verification
+                            )
+                        else:
+                            logger.warning(f"No active batch found for product {product.name} to restore stock during order rejection. Stock not restored for this item.")
                     
                     courier_result = {'success': True, 'message': 'No courier needed for rejected order'}
                     message = 'Prescription rejected'

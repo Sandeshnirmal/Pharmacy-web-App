@@ -50,6 +50,7 @@ urlpatterns = [
 
     # Explicitly define remap_medicine URL for PrescriptionMedicineViewSet
     path('medicines/<uuid:pk>/remap_medicine/', PrescriptionMedicineViewSet.as_view({'post': 'remap_medicine'}), name='prescription-medicine-remap'),
+    path('enhanced-prescriptions/<uuid:pk>/verify_prescription/', EnhancedPrescriptionViewSet.as_view({'post': 'verify'}), name='enhanced-prescription-verify-prescription'),
 
     # Test endpoints removed - use mobile API for all prescription processing
 ]

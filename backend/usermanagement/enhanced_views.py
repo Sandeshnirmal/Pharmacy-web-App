@@ -27,17 +27,17 @@ User = get_user_model()
 class IsAdminUser(permissions.BasePermission):
     """Permission for admin users only"""
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'admin'
+        return request.user.is_authenticated and request.user.user_role and request.user.user_role.name == 'admin'
 
 class IsPharmacistOrAdmin(permissions.BasePermission):
     """Permission for pharmacist and admin users"""
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['admin', 'pharmacist']
+        return request.user.is_authenticated and request.user.user_role and request.user.user_role.name in ['admin', 'pharmacist']
 
 class IsVerifierOrAbove(permissions.BasePermission):
     """Permission for verifier, pharmacist, and admin users"""
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['admin', 'pharmacist', 'verifier']
+        return request.user.is_authenticated and request.user.user_role and request.user.user_role.name in ['admin', 'pharmacist', 'verifier']
 
 class CanManageUsers(permissions.BasePermission):
     """Permission to manage users based on role hierarchy"""
@@ -46,11 +46,11 @@ class CanManageUsers(permissions.BasePermission):
             return False
         
         # Admins can manage all users
-        if request.user.role == 'admin':
+        if request.user.user_role and request.user.user_role.name == 'admin':
             return True
         
         # Pharmacists can manage staff and customers
-        if request.user.role == 'pharmacist' and view.action in ['list', 'retrieve']:
+        if request.user.user_role and request.user.user_role.name == 'pharmacist' and view.action in ['list', 'retrieve']:
             return True
         
         return False
@@ -146,7 +146,7 @@ class UserRoleViewSet(viewsets.ModelViewSet):
 class UserViewSet(viewsets.ModelViewSet):
     """Enhanced user management with role-based permissions"""
     queryset = User.objects.all()
-    permission_classes = [CanManageUsers]
+    permission_classes = [AllowAny] # Changed to AllowAny to give access to all users
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -161,11 +161,11 @@ class UserViewSet(viewsets.ModelViewSet):
         queryset = User.objects.all()
         
         # Admins see all users
-        if user.role == 'admin':
+        if user.user_role and user.user_role.name == 'admin':
             pass
         # Pharmacists see staff and customers
-        elif user.role == 'pharmacist':
-            queryset = queryset.filter(role__in=['staff', 'customer'])
+        elif user.user_role and user.user_role.name == 'pharmacist':
+            queryset = queryset.filter(user_role__name__in=['staff', 'customer'])
         # Others see only themselves
         else:
             queryset = queryset.filter(id=user.id)
@@ -173,7 +173,7 @@ class UserViewSet(viewsets.ModelViewSet):
         # Apply filters
         role = self.request.query_params.get('role')
         if role:
-            queryset = queryset.filter(role=role)
+            queryset = queryset.filter(user_role__name=role)
         
         verification_status = self.request.query_params.get('verification_status')
         if verification_status:
@@ -201,7 +201,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         
         # Users can only change their own password unless admin
-        if request.user.id != user.id and request.user.role != 'admin':
+        if request.user.id != user.id and (not request.user.user_role or request.user.user_role.name != 'admin'):
             return Response(
                 {'error': 'You can only change your own password'},
                 status=status.HTTP_403_FORBIDDEN
@@ -217,7 +217,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def verify_user(self, request, pk=None):
         """Verify professional user (doctor/pharmacist)"""
-        if request.user.role != 'admin':
+        if not request.user.user_role or request.user.user_role.name != 'admin':
             return Response(
                 {'error': 'Only admins can verify users'},
                 status=status.HTTP_403_FORBIDDEN
@@ -243,7 +243,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def toggle_status(self, request, pk=None):
         """Toggle user active status"""
-        if request.user.role != 'admin':
+        if not request.user.user_role or request.user.user_role.name != 'admin':
             return Response(
                 {'error': 'Only admins can toggle user status'},
                 status=status.HTTP_403_FORBIDDEN
@@ -261,17 +261,20 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def role_statistics(self, request):
         """Get user statistics by role"""
-        if request.user.role != 'admin':
+        if not request.user.user_role or request.user.user_role.name != 'admin':
             return Response(
                 {'error': 'Only admins can view role statistics'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        stats = User.objects.values('role').annotate(
+        stats = User.objects.values('user_role__name').annotate(
             total=Count('id'),
             active=Count('id', filter=Q(is_active=True)),
             verified=Count('id', filter=Q(verification_status='verified'))
-        ).order_by('role')
+        ).order_by('user_role__name')
+        
+        # Rename 'user_role__name' to 'role' for consistency if needed by frontend
+        stats = [{ 'role': s['user_role__name'], **{k: v for k, v in s.items() if k != 'user_role__name'} } for s in stats]
         
         return Response(list(stats))
 
@@ -281,12 +284,12 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class DashboardViewSet(viewsets.ViewSet):
     """Role-based dashboard data"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny] # Changed to AllowAny to give access to all
     
     @action(detail=False, methods=['get'])
     def admin_dashboard(self, request):
         """Admin dashboard data"""
-        if request.user.role != 'admin':
+        if not request.user.user_role or request.user.user_role.name != 'admin':
             return Response(
                 {'error': 'Admin access required'},
                 status=status.HTTP_403_FORBIDDEN
@@ -336,7 +339,7 @@ class DashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def pharmacist_dashboard(self, request):
         """Pharmacist dashboard data"""
-        if request.user.role not in ['admin', 'pharmacist']:
+        if not request.user.user_role or request.user.user_role.name not in ['admin', 'pharmacist']:
             return Response(
                 {'error': 'Pharmacist access required'},
                 status=status.HTTP_403_FORBIDDEN
@@ -387,7 +390,7 @@ class DashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def verifier_dashboard(self, request):
         """Verifier dashboard data"""
-        if request.user.role not in ['admin', 'pharmacist', 'verifier']:
+        if not request.user.user_role or request.user.user_role.name not in ['admin', 'pharmacist', 'verifier']:
             return Response(
                 {'error': 'Verifier access required'},
                 status=status.HTTP_403_FORBIDDEN

@@ -78,12 +78,15 @@ INSTALLED_APPS = [
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App
-CORS_ALLOW_ALL_ORIGINS = DEBUG # Allow all origins in development
-
-# Allowed origins for production (comment out CORS_ALLOW_ALL_ORIGINS for production)
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '[]')
 import json
 CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
+
+# If CORS_ALLOWED_ORIGINS is provided, explicitly disable CORS_ALLOW_ALL_ORIGINS
+if CORS_ALLOWED_ORIGINS:
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    CORS_ALLOW_ALL_ORIGINS = DEBUG # Fallback to DEBUG for development if no specific origins are set
 
 # Allow credentials for authentication
 CORS_ALLOW_CREDENTIALS = True
@@ -180,8 +183,12 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB'),
+        'USER': os.environ.get('POSTGRES_USER'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
+        'HOST': os.environ.get('POSTGRES_HOST'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 APPEND_SLASH = True
@@ -230,10 +237,14 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Cache settings
 CACHE_TTL = 60 * 5 # Cache for 5 minutes (300 seconds)
 
+REDIS_HOST = os.environ.get('REDIS_HOST', '127.0.0.1')
+REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
+REDIS_DB = os.environ.get('REDIS_DB', '1')
+
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1', # Assuming Redis runs on localhost:6379, database 1
+        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}',
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor', # Optional: for compressing cached data
@@ -289,8 +300,8 @@ SIMPLE_JWT = {
 }
 
 # Celery Configuration
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') # Use Redis database 0 for Celery broker
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') # Use Redis database 0 for Celery results
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/0') # Use Redis database 0 for Celery broker
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', f'redis://{REDIS_HOST}:{REDIS_PORT}/0') # Use Redis database 0 for Celery results
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

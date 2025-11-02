@@ -24,7 +24,7 @@ cryptography==43.0.3
 cssselect2==0.8.0
 defer==1.0.4
 distro==1.9.0
-Django==5.2.1
+Django==4.2.13
 django-cors-headers==4.3.1
 django-filter==25.1
 python-dotenv
@@ -112,3 +112,5 @@ wcwidth==0.2.14
 webencodings==0.5.1
 wheel==0.42.0
 xhtml2pdf==0.2.17
+gunicorn==22.0.0
+psycopg2-binary==2.9.9
