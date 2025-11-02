@@ -78,14 +78,12 @@ INSTALLED_APPS = [
 ]
 
 # CORS Configuration for Admin Dashboard and Mobile App
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '[]')
-import json
-CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
-
-# If CORS_ALLOWED_ORIGINS is provided, explicitly disable CORS_ALLOW_ALL_ORIGINS
-if CORS_ALLOWED_ORIGINS:
+CORS_ALLOWED_ORIGINS_STR = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if CORS_ALLOWED_ORIGINS_STR:
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_STR.split(',') if origin.strip()]
     CORS_ALLOW_ALL_ORIGINS = False
 else:
+    CORS_ALLOWED_ORIGINS = []
     CORS_ALLOW_ALL_ORIGINS = DEBUG # Fallback to DEBUG for development if no specific origins are set
 
 # Allow credentials for authentication
@@ -134,8 +132,11 @@ CORS_ALLOW_PRIVATE_NETWORK = True
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 
 # CSRF settings for mobile app compatibility
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '[]')
-CSRF_TRUSTED_ORIGINS = json.loads(CSRF_TRUSTED_ORIGINS)
+CSRF_TRUSTED_ORIGINS_STR = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if CSRF_TRUSTED_ORIGINS_STR:
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS_STR.split(',') if origin.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = []
 
 # Disable CSRF for API endpoints (since we disabled the middleware)
 CSRF_COOKIE_SECURE = False
