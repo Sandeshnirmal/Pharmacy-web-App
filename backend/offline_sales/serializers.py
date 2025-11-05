@@ -3,7 +3,7 @@ from .models import OfflineSale, OfflineSaleItem, BillReturn, BillReturnItem, Of
 from product.serializers import ProductSerializer, BatchSerializer # Assuming these exist
 from decimal import Decimal # Import Decimal for precise calculations
 from django.utils import timezone # Import timezone
-from product.models import Discount, Product,Batch # Import Product and Discount
+from product.models import Discount, Product, Batch, ProductUnit # Import Product, Batch, ProductUnit
 
 class OfflineCustomerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -130,20 +130,32 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             total_amount += item_data['subtotal']
             
             # Stock reduction logic
-            if batch.quantity < quantity:
-                raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.quantity}, Requested: {quantity}")
-            batch.quantity -= quantity
-            batch.save()
+            # Convert quantity from product_unit to base_unit
+            product_unit_id = item_data.get('product_unit') # Assuming product_unit is passed in item_data
+            if product_unit_id:
+                try:
+                    product_unit = ProductUnit.objects.get(id=product_unit_id)
+                    quantity_in_base_units = quantity * product_unit.conversion_factor
+                except ProductUnit.DoesNotExist:
+                    raise serializers.ValidationError(f"ProductUnit with ID {product_unit_id} not found.")
+            else:
+                quantity_in_base_units = quantity # Assume already in base units
 
-            # Create StockMovement record for OUT
+            if batch.current_quantity < quantity_in_base_units:
+                raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity_in_base_units} base units.")
+            batch.current_quantity -= quantity_in_base_units
+            batch.save(update_fields=['current_quantity'])
+
+            # Create StockMovement record for OUT (quantity in base units)
             from inventory.models import StockMovement
             StockMovement.objects.create(
                 product=product,
                 batch=batch,
                 movement_type='OUT',
-                quantity=quantity,
+                quantity=quantity_in_base_units,
+                product_unit=product.product_unit, # Use product's default base unit for stock movement
                 reference_number=f"OFFLINE-SALE-{offline_sale.id}",
-                notes=f"Sold {quantity} units for Offline Sale #{offline_sale.id} from batch {batch.batch_number}",
+                notes=f"Sold {quantity_in_base_units} base units for Offline Sale #{offline_sale.id} from batch {batch.batch_number}",
                 created_by=self.context.get('request').user if self.context.get('request') else None
             )
 
@@ -181,18 +193,26 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
         if new_status == 'CANCELLED' and instance.status != 'CANCELLED':
             # If status changes to CANCELLED, reverse stock for all items
             from inventory.models import StockMovement
-            for item in instance.items.all():
-                batch = item.batch
+            for old_item in instance.items.all():
+                batch = old_item.batch
                 if batch:
-                    batch.current_quantity += item.quantity
-                    batch.save()
+                    # Convert old_item quantity to base units for reversal
+                    product_unit = old_item.product_unit
+                    if product_unit:
+                        quantity_in_base_units = old_item.quantity * product_unit.conversion_factor
+                    else:
+                        quantity_in_base_units = old_item.quantity # Assume already in base units
+
+                    batch.current_quantity += quantity_in_base_units
+                    batch.save(update_fields=['current_quantity'])
                     StockMovement.objects.create(
-                        product=item.product,
+                        product=old_item.product,
                         batch=batch,
                         movement_type='IN',
-                        quantity=item.quantity,
+                        quantity=quantity_in_base_units,
+                        product_unit=old_item.product.product_unit, # Use product's default base unit for stock movement
                         reference_number=f"OFFLINE-SALE-CANCEL-{instance.id}",
-                        notes=f"Cancelled Sale #{instance.id}: Returned {item.quantity} units of {item.product.name} to batch {batch.batch_no}",
+                        notes=f"Cancelled Sale #{instance.id}: Returned {quantity_in_base_units} base units of {old_item.product.name} to batch {batch.batch_number}",
                         created_by=self.context.get('request').user if self.context.get('request') else None
                     )
             instance.status = 'CANCELLED'
@@ -220,15 +240,23 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             for old_item in instance.items.all():
                 batch = old_item.batch
                 if batch:
-                    batch.quantity += old_item.quantity # Return old quantity to stock
-                    batch.save()
+                    # Convert old_item quantity to base units for reversal
+                    product_unit = old_item.product_unit
+                    if product_unit:
+                        quantity_in_base_units = old_item.quantity * product_unit.conversion_factor
+                    else:
+                        quantity_in_base_units = old_item.quantity # Assume already in base units
+
+                    batch.current_quantity += quantity_in_base_units # Return old quantity to stock
+                    batch.save(update_fields=['current_quantity'])
                     StockMovement.objects.create(
                         product=old_item.product,
                         batch=batch,
                         movement_type='IN',
-                        quantity=old_item.quantity,
+                        quantity=quantity_in_base_units,
+                        product_unit=old_item.product.product_unit, # Use product's default base unit for stock movement
                         reference_number=f"OFFLINE-SALE-UPDATE-REVERT-{instance.id}",
-                        notes=f"Reverted {old_item.quantity} units of {old_item.product.name} for Sale Update #{instance.id}",
+                        notes=f"Reverted {quantity_in_base_units} base units of {old_item.product.name} for Sale Update #{instance.id}",
                         created_by=self.context.get('request').user if self.context.get('request') else None
                     )
             instance.items.all().delete() # Clear existing items
@@ -241,18 +269,30 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 subtotal = quantity * price_per_unit
                 
                 batch = item_data['batch']
-                if batch.quantity < quantity:
-                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_no}. Available: {batch.quantity}, Requested: {quantity}")
-                batch.quantity -= quantity
-                batch.save()
+                # Convert quantity from product_unit to base_unit
+                product_unit_id = item_data.get('product_unit') # Assuming product_unit is passed in item_data
+                if product_unit_id:
+                    try:
+                        product_unit = ProductUnit.objects.get(id=product_unit_id)
+                        quantity_in_base_units = quantity * product_unit.conversion_factor
+                    except ProductUnit.DoesNotExist:
+                        raise serializers.ValidationError(f"ProductUnit with ID {product_unit_id} not found.")
+                else:
+                    quantity_in_base_units = quantity # Assume already in base units
+
+                if batch.current_quantity < quantity_in_base_units:
+                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity_in_base_units} base units.")
+                batch.current_quantity -= quantity_in_base_units
+                batch.save(update_fields=['current_quantity'])
 
                 StockMovement.objects.create(
                     product=product,
                     batch=batch,
                     movement_type='OUT',
-                    quantity=quantity,
+                    quantity=quantity_in_base_units,
+                    product_unit=product.product_unit, # Use product's default base unit for stock movement
                     reference_number=f"OFFLINE-SALE-UPDATE-{instance.id}",
-                    notes=f"Sold {quantity} units for Offline Sale Update #{instance.id} from batch {batch.batch_no}",
+                    notes=f"Sold {quantity_in_base_units} base units for Offline Sale Update #{instance.id} from batch {batch.batch_number}",
                     created_by=self.context.get('request').user if self.context.get('request') else None
                 )
                 OfflineSaleItem.objects.create(sale=instance, subtotal=subtotal, **item_data)
@@ -307,18 +347,26 @@ class BillReturnSerializer(serializers.ModelSerializer):
 
             # Stock increment logic for returned items
             batch = offline_sale_item.batch
-            batch.quantity += returned_quantity
-            batch.save()
+            # Convert returned_quantity from its original unit to base units
+            product_unit = offline_sale_item.product_unit
+            if product_unit:
+                returned_quantity_in_base_units = returned_quantity * product_unit.conversion_factor
+            else:
+                returned_quantity_in_base_units = returned_quantity # Assume already in base units
 
-            # Create StockMovement record for IN
+            batch.current_quantity += returned_quantity_in_base_units
+            batch.save(update_fields=['current_quantity'])
+
+            # Create StockMovement record for IN (quantity in base units)
             from inventory.models import StockMovement
             StockMovement.objects.create(
                 product=offline_sale_item.product,
                 batch=batch,
                 movement_type='IN',
-                quantity=returned_quantity,
+                quantity=returned_quantity_in_base_units,
+                product_unit=offline_sale_item.product.product_unit, # Use product's default base unit for stock movement
                 reference_number=f"OFFLINE-RETURN-{bill_return.id}",
-                notes=f"Returned {returned_quantity} units for Offline Sale Return #{bill_return.id} to batch {batch.batch_number}",
+                notes=f"Returned {returned_quantity_in_base_units} base units for Offline Sale Return #{bill_return.id} to batch {batch.batch_number}",
                 created_by=self.context.get('request').user if self.context.get('request') else None
             )
         

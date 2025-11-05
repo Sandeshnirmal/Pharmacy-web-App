@@ -39,6 +39,40 @@ class Composition(models.Model):
         return self.name
 
 
+class ProductUnit(models.Model):
+    """
+    Defines the primary unit, base unit, and conversion factor for a product.
+    This model encapsulates unit, baseunit, and conversion in one table.
+    """
+    unit_name = models.CharField(max_length=50, help_text="e.g., 'Tablet', 'Bottle', 'Strip'")
+    unit_abbreviation = models.CharField(max_length=10, blank=True, null=True, help_text="e.g., 'tab', 'btl', 'strip'")
+    base_unit_name = models.CharField(max_length=50, help_text="e.g., 'Milligram', 'Milliliter', 'Piece'")
+    base_unit_abbreviation = models.CharField(max_length=10, blank=True, null=True, help_text="e.g., 'mg', 'mL', 'pc'")
+    conversion_factor = models.DecimalField(
+        max_digits=20,
+        decimal_places=10,
+        help_text="Factor to multiply 'unit' quantity to get 'base_unit' quantity. E.g., if 1 strip = 10 tablets, factor is 10."
+    )
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_units'
+        verbose_name = 'Product Unit'
+        verbose_name_plural = 'Product Units'
+        unique_together = ['unit_name', 'base_unit_name']
+        indexes = [
+            models.Index(fields=['unit_name']),
+            models.Index(fields=['base_unit_name']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.unit_name} ({self.unit_abbreviation or ''}) to {self.base_unit_name} ({self.base_unit_abbreviation or ''}) - Factor: {self.conversion_factor}"
+
+
 class GenericName(models.Model):
     name = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True)
@@ -84,15 +118,21 @@ class Product(models.Model):
     ]
     prescription_type = models.CharField(max_length=20, choices=PRESCRIPTION_TYPES, default='otc')
 
-    strength = models.CharField(max_length=50, blank=True)
     form = models.CharField(max_length=50, blank=True)
-    # price and mrp are now managed at the batch level, so they are removed from Product
-    # stock_quantity is now managed at the batch level, so it's removed from Product
     min_stock_level = models.PositiveIntegerField(default=10)
 
     dosage_form = models.CharField(max_length=100, blank=True)
-    pack_size = models.CharField(max_length=50, blank=True)
-    packaging_unit = models.CharField(max_length=50, blank=True)
+    pack_size = models.PositiveIntegerField(default=1, help_text="Number of units in one package (e.g., 10 tablets in a strip)")
+    
+    # Link to the new ProductUnit model
+    product_unit = models.ForeignKey(
+        ProductUnit,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='products',
+        help_text="Defines the primary unit, base unit, and conversion for this product."
+    )
 
     description = models.TextField(blank=True)
     uses = models.TextField(blank=True)
@@ -113,7 +153,6 @@ class Product(models.Model):
 
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
-    is_prescription_required = models.BooleanField(default=False) # Added for prescription logic
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -145,7 +184,7 @@ class Product(models.Model):
         today = timezone.now().date()
         return self.batches.filter(
             current_quantity__gt=0,
-            expiry_date__gte=today # Ensure the batch has not expired yet
+            expiry_date__gte=today
         ).order_by('expiry_date').first()
 
     def __str__(self):
@@ -155,12 +194,13 @@ class Product(models.Model):
 class ProductComposition(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='product_compositions')
     composition = models.ForeignKey(Composition, on_delete=models.CASCADE, related_name='composition_products')
-    strength = models.CharField(max_length=100)
-    unit = models.CharField(max_length=20, default='mg')
-    percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # Percentage in combination
-    is_primary = models.BooleanField(default=False)  # Primary active ingredient
+    strength = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True, help_text="Strength value (e.g., 500 for 500mg)")
+    # Keeping unit as CharField for simplicity in ProductComposition
+    strength_unit = models.CharField(max_length=50, blank=True, help_text="Unit of strength (e.g., 'mg', 'ml')")
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    is_primary = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    notes = models.TextField(blank=True)  # Additional notes about this composition in the product
+    notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -170,7 +210,7 @@ class ProductComposition(models.Model):
         unique_together = ['product', 'composition']
 
     def __str__(self):
-        return f"{self.product.name} - {self.composition.name} ({self.strength}{self.unit})"
+        return f"{self.product.name} - {self.composition.name} ({self.strength}{self.strength_unit})"
 
 
 class Batch(models.Model):
@@ -179,8 +219,8 @@ class Batch(models.Model):
     history = HistoricalRecords() # Add HistoricalRecords to track changes
     manufacturing_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField()
-    quantity = models.PositiveIntegerField(default=0)
-    current_quantity = models.PositiveIntegerField()
+    quantity = models.DecimalField(max_digits=20, decimal_places=10, default=0)
+    current_quantity = models.DecimalField(max_digits=20, decimal_places=10)
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
     

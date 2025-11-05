@@ -42,6 +42,8 @@ urlpatterns = [
 
     # Courier Endpoints (Professional courier integration)
     path('api/courier/', include('courier.urls')),
+    path('api/company-details/', include('company_details.urls')), # Include company details URLs
+    path('api/reports/', include('reports.urls')), # Include reports URLs
 
     # JWT Authentication Endpoints (for web dashboard)
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

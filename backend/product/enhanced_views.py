@@ -13,6 +13,7 @@ from datetime import timedelta
 from django.db.models.functions import Coalesce
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
+from decimal import Decimal # Import Decimal
 # from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
@@ -136,7 +137,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 to_attr='active_product_compositions'
             )
         ).annotate(
-            total_stock=Coalesce(Sum('batches__current_quantity'), 0),
+            total_stock=Coalesce(Sum('batches__current_quantity'), Decimal('0.00'), output_field=DecimalField()),
             # Annotate current_selling_price to avoid N+1 in serializer
             current_selling_price_annotated=Coalesce(
                 Subquery(
@@ -148,7 +149,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                         ('offline_selling_price' if self.request.query_params.get('channel') == 'offline' else 'selling_price')
                     )[:1]
                 ),
-                0.0, # Default to 0.0 if no available batch
+                Decimal('0.00'), # Default to 0.00 if no available batch
                 output_field=DecimalField()
             )
         )

@@ -158,7 +158,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(brand_name__icontains=search) |
                 Q(generic_name__name__icontains=search) |
                 Q(manufacturer__icontains=search) |
-                Q(usage_instructions__icontains=search) |
                 Q(active_product_compositions__composition__name__icontains=search)
             )
 
@@ -254,7 +253,7 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
     serializer_class = EnhancedProductSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description', 'usage_instructions', 'compositions__name'] # Add usage_instructions to search
+    search_fields = ['name', 'generic_name__name', 'manufacturer', 'description', 'compositions__name'] # Removed 'usage_instructions'
     ordering_fields = ['current_selling_price_annotated', 'created_at', 'name'] # Use annotated price
     ordering = ['-created_at']
 

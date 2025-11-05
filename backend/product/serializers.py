@@ -7,11 +7,33 @@ from datetime import date, timedelta
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductTagAssignment, ProductViewHistory, Composition, Discount
+    ProductTagAssignment, ProductViewHistory, Composition, Discount,
+    ProductUnit, ProductComposition # Import ProductUnit and ProductComposition
 )
 from .utils import calculate_current_selling_price, calculate_current_cost_price, calculate_effective_discount_percentage
 
 User = get_user_model()
+
+
+# ----------------------------
+# ProductUnit Serializer
+# ----------------------------
+class ProductUnitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductUnit
+        fields = '__all__'
+
+
+# ----------------------------
+# ProductComposition Serializer
+# ----------------------------
+class ProductCompositionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductComposition
+        fields = ['id', 'composition', 'strength', 'strength_unit', 'percentage', 'is_primary', 'is_active', 'notes']
+        extra_kwargs = {
+            'composition': {'required': False}, # Allow composition to be set by ID
+        }
 
 
 # ----------------------------
@@ -281,21 +303,31 @@ class ProductSerializer(serializers.ModelSerializer):
     online_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
+    product_unit = ProductUnitSerializer(read_only=True)
+    product_unit_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
+    )
+    compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
+    composition_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
+    )
+
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
-            'medicine_type', 'prescription_type', 'strength', 'form',
-            'is_prescription_required', 'min_stock_level', 'dosage_form',
-            'pack_size', 'packaging_unit', 'description', 'uses',
-            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions',
+            'medicine_type', 'prescription_type', 'form',
+            'min_stock_level', 'dosage_form',
+            'pack_size', 'description', 'uses',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'composition_ids',
             'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'current_selling_price', 'current_cost_price',
             'stock_quantity', 'stock_status', 'total_batches',
             'current_batch', # Include current_batch in fields
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
-            'online_mrp_price', 'online_discount_percentage', 'online_selling_price'
+            'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
+            'product_unit', 'product_unit_id'
         ]
 
     def get_current_selling_price(self, obj):
@@ -325,9 +357,6 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_total_batches(self, obj):
         return obj.batches.count()
 
-    def get_is_prescription_required(self, obj):
-        """Determine if a prescription is required based on prescription_type"""
-        return obj.prescription_type in ['prescription', 'controlled']
 
     def get_current_batch(self, obj):
         """
@@ -372,14 +401,23 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     online_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
+    product_unit = ProductUnitSerializer(read_only=True)
+    product_unit_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
+    )
+    compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
+    composition_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
+    )
+
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
-            'medicine_type', 'prescription_type', 'strength', 'form',
-            'is_prescription_required', 'min_stock_level', 'dosage_form',
-            'pack_size', 'packaging_unit', 'description', 'composition', 'uses',
-            'side_effects', 'how_to_use', 'precautions', 'storage',
+            'medicine_type', 'prescription_type', 'form',
+            'min_stock_level', 'dosage_form',
+            'pack_size', 'description', 'composition', 'uses',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'composition_ids',
             'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'images', 'reviews', 'tags', 'average_rating',
@@ -388,7 +426,8 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'stock_quantity', 'stock_status',
             'current_batch', # Include current_batch in fields
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
-            'online_mrp_price', 'online_discount_percentage', 'online_selling_price'
+            'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
+            'product_unit', 'product_unit_id'
         ]
 
     def get_discount_percentage(self, obj):
@@ -492,25 +531,31 @@ class BulkProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     generic_name_str = serializers.CharField(write_only=True, required=False, allow_blank=True)
     created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    product_unit_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
+    )
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'manufacturer', 'medicine_type',
-            'prescription_type', 'strength', 'form', 'is_prescription_required',
-            'min_stock_level', 'dosage_form', 'pack_size', 'packaging_unit',
+            'prescription_type', 'form',
+            'min_stock_level', 'dosage_form', 'pack_size',
             'description', 'composition', 'uses', 'side_effects', 'how_to_use',
             'precautions', 'storage', 'image_url', 'hsn_code',
-            'is_active', 'is_featured', 'category_name', 'generic_name_str', 'created_by'
+            'is_active', 'is_featured', 'category_name', 'generic_name_str', 'created_by',
+            'product_unit_id'
         ]
         extra_kwargs = {
             'generic_name': {'required': False},
             'category': {'required': False},
+            'product_unit': {'required': False, 'allow_null': True},
         }
 
     def create(self, validated_data):
         category_name = validated_data.pop('category_name', None)
         generic_name_str = validated_data.pop('generic_name_str', None)
+        product_unit_id = validated_data.pop('product_unit_id', None)
         
         if category_name:
             category, created = Category.objects.get_or_create(name=category_name)
@@ -519,12 +564,16 @@ class BulkProductSerializer(serializers.ModelSerializer):
         if generic_name_str:
             generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
             validated_data['generic_name'] = generic_name
+
+        if product_unit_id:
+            validated_data['product_unit'] = product_unit_id
         
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         category_name = validated_data.pop('category_name', None)
         generic_name_str = validated_data.pop('generic_name_str', None)
+        product_unit_id = validated_data.pop('product_unit_id', None)
 
         if category_name:
             category, created = Category.objects.get_or_create(name=category_name)
@@ -533,6 +582,9 @@ class BulkProductSerializer(serializers.ModelSerializer):
         if generic_name_str:
             generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
             validated_data['generic_name'] = generic_name
+
+        if product_unit_id:
+            validated_data['product_unit'] = product_unit_id
 
         return super().update(instance, validated_data)
 
@@ -566,18 +618,19 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'manufacturer', 'strength',
+            'id', 'name', 'manufacturer',
             'category_name', 'average_rating', 'total_reviews',
             'discount_percentage', 'primary_image',
             'batches',
             'current_selling_price',
-            'current_cost_price',
-            'is_prescription_required'
+            'current_cost_price'
         ]
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
-        channel = request.query_params.get('channel', 'online')
+        channel = 'online'
+        if request:
+            channel = request.query_params.get('channel', 'online')
         return calculate_current_selling_price(obj, channel)
 
     def get_current_cost_price(self, obj):
@@ -600,7 +653,3 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         elif obj.images.exists():
             return obj.images.first().image_url
         return obj.image_url
-
-    def get_is_prescription_required(self, obj):
-        """Determine if a prescription is required based on prescription_type"""
-        return obj.prescription_type in ['prescription', 'controlled']

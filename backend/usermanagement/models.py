@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin # PermissionsMixin is important for is_superuser/is_staff
 from django.utils import timezone
 import uuid
+from django.apps import apps # Import apps to get models dynamically
 
 # ============================================================================
 # USER ROLE MANAGEMENT SYSTEM
@@ -43,6 +44,16 @@ class CustomUserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
+        
+        # Assign default role if not provided
+        if not user.user_role_id: # Check if user_role is already set
+            UserRole = apps.get_model('usermanagement', 'UserRole')
+            try:
+                default_role = UserRole.objects.get(name='customer')
+                user.user_role = default_role
+            except UserRole.DoesNotExist:
+                print("Warning: 'customer' role not found. Please create it.")
+
         user.save(using=self._db)
         return user
 
@@ -50,6 +61,15 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_active', True) # Often forgotten for superusers
+
+        # Assign 'admin' role to superuser
+        UserRole = apps.get_model('usermanagement', 'UserRole')
+        try:
+            admin_role = UserRole.objects.get(name='admin')
+            extra_fields.setdefault('user_role', admin_role)
+        except UserRole.DoesNotExist:
+            print("Warning: 'admin' role not found. Please create it.")
+            
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')

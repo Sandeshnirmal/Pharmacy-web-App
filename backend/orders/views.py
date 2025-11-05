@@ -8,7 +8,7 @@ from django.db.models import Q, Count, Sum
 from django.utils import timezone
 from rest_framework_simplejwt.authentication import JWTAuthentication # Import JWTAuthentication
 from django.db import transaction # New import
-from product.models import Product, Batch # Moved import, added Batch
+from product.models import Product, Batch, ProductUnit # Moved import, added Batch, ProductUnit
 from inventory.models import StockMovement # Import StockMovement
 from .models import Order, OrderItem, OrderTracking, OrderStatusHistory
 from .serializers import OrderSerializer, OrderItemSerializer
@@ -493,14 +493,24 @@ def create_paid_order_for_prescription(request):
             if product.is_prescription_required:
                 is_prescription_order = True
 
-            # Use product's current price if price_at_order is not provided or invalid
-            unit_price = float(price_at_order) if price_at_order is not None else float(product.price)
+            # Use product's current price from the default batch if price_at_order is not provided or invalid
+            default_batch = product.get_default_batch()
+            if not default_batch:
+                return Response({
+                    'success': False,
+                    'error': f"No active batch found for product {product.name}."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            unit_price = float(price_at_order) if price_at_order is not None else float(default_batch.selling_price)
             total_amount_calculated += unit_price * quantity
+
+            product_unit_id = item.get('product_unit_id') # Get product_unit_id from request
 
             validated_items.append({
                 'product': product,
                 'quantity': int(quantity),
                 'unit_price': unit_price,
+                'product_unit_id': product_unit_id, # Include product_unit_id
             })
 
         if total_amount_calculated <= 0:
@@ -587,6 +597,7 @@ def create_paid_order_for_prescription(request):
                         order=order,
                         product=item_data['product'],
                         quantity=item_data['quantity'],
+                        product_unit_id=item_data['product_unit_id'], # Add product_unit_id
                         unit_price_at_order=item_data['unit_price'],
                     )
                 
@@ -596,14 +607,7 @@ def create_paid_order_for_prescription(request):
                         order=order,
                         product=item_data['product'],
                         quantity_to_deduct=item_data['quantity'],
-                        user=request.user
-                    )
-                # Deduct inventory for each item
-                for item_data in validated_items:
-                    deduct_inventory_from_batches(
-                        order=order,
-                        product=item_data['product'],
-                        quantity_to_deduct=item_data['quantity'],
+                        product_unit_id=item_data['product_unit_id'], # Pass product_unit_id
                         user=request.user
                     )
 
@@ -645,6 +649,7 @@ def create_paid_order_for_prescription(request):
                         order=order,
                         product=item_data['product'],
                         quantity=item_data['quantity'],
+                        product_unit_id=item_data['product_unit_id'], # Add product_unit_id
                         unit_price_at_order=item_data['unit_price'],
                     )
                 
@@ -653,6 +658,7 @@ def create_paid_order_for_prescription(request):
                     deduct_inventory_from_batches(
                         product=item_data['product'],
                         quantity_to_deduct=item_data['quantity'],
+                        product_unit_id=item_data['product_unit_id'], # Pass product_unit_id
                         user=request.user
                     )
 
@@ -996,13 +1002,13 @@ def create_pending_order(request):
             ], key=lambda x: x['product_id'])
 
             current_cart_items = sorted([
-                {'product_id': int(item['product_id']), 'quantity': int(item['quantity'])}
+                {'product_id': int(item['product_id']), 'quantity': int(item['quantity']), 'product_unit_id': item.get('product_unit_id')}
                 for item in items_data
             ], key=lambda x: x['product_id'])
 
             # Ensure product_id and quantity are integers for existing_order_items as well
             existing_order_items_cleaned = sorted([
-                {'product_id': int(item.product.id), 'quantity': int(item.quantity)}
+                {'product_id': int(item.product.id), 'quantity': int(item.quantity), 'product_unit_id': item.product_unit.id if item.product_unit else None}
                 for item in existing_pending_order.items.all()
             ], key=lambda x: x['product_id'])
 
@@ -1071,6 +1077,7 @@ def create_pending_order(request):
                 product_id = item.get('product_id')
                 quantity = item.get('quantity')
                 price = item.get('price')
+                product_unit_id = item.get('product_unit_id') # Get product_unit_id from request
 
                 if not product_id or not quantity:
                     logger.error(f"create_pending_order: Invalid item data - product_id or quantity missing for item: {item}")
@@ -1088,11 +1095,16 @@ def create_pending_order(request):
                     }, status=status.HTTP_400_BAD_REQUEST)
 
                 try:
+                    default_batch = product.get_default_batch()
+                    if not default_batch:
+                        raise ValueError(f"No active batch found for product {product.name}.")
+
                     OrderItem.objects.create(
                         order=order,
                         product=product,
                         quantity=quantity,
-                        unit_price_at_order=price if price is not None else product.price,
+                        product_unit_id=product_unit_id, # Add product_unit_id
+                        unit_price_at_order=price if price is not None else default_batch.selling_price,
                     )
                     logger.debug(f"OrderItem created for product {product_id} (Order {order.id})")
                 except Exception as e:
@@ -1170,7 +1182,7 @@ def confirm_prescription_order(request, order_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-def deduct_inventory_from_batches(order, product, quantity_to_deduct, user):
+def deduct_inventory_from_batches(order, product, quantity_to_deduct, product_unit_id, user):
     """
     Deducts the specified quantity of a product from batches,
     prioritizing those with the earliest expiry dates.
@@ -1185,7 +1197,27 @@ def deduct_inventory_from_batches(order, product, quantity_to_deduct, user):
         expiry_date__gte=timezone.now().date() # Only consider non-expired batches
     ).order_by('expiry_date') # Prioritize earliest expiry
 
-    remaining_to_deduct = quantity_to_deduct
+    # Convert quantity_to_deduct from its original unit to base units
+    if product_unit_id:
+        try:
+            product_unit = ProductUnit.objects.get(id=product_unit_id)
+            quantity_in_base_units = quantity_to_deduct * product_unit.conversion_factor
+        except ProductUnit.DoesNotExist:
+            raise ValueError(f"ProductUnit with ID {product_unit_id} not found for product {product.name}.")
+    else:
+        # If no product_unit is specified, assume quantity is already in base units
+        quantity_in_base_units = quantity_to_deduct
+
+    if quantity_in_base_units <= 0:
+        return
+
+    batches = Batch.objects.filter(
+        product=product,
+        current_quantity__gt=0,
+        expiry_date__gte=timezone.now().date() # Only consider non-expired batches
+    ).order_by('expiry_date') # Prioritize earliest expiry
+
+    remaining_to_deduct = quantity_in_base_units
     deducted_batches_info = []
 
     for batch in batches:
@@ -1196,14 +1228,15 @@ def deduct_inventory_from_batches(order, product, quantity_to_deduct, user):
         batch.current_quantity -= deduct_from_batch
         batch.save(update_fields=['current_quantity'])
 
-        # Record stock movement
+        # Record stock movement (quantity in base units)
         StockMovement.objects.create(
             product=product,
             batch=batch,
             movement_type='OUT',
             quantity=deduct_from_batch,
+            product_unit=product.product_unit, # Use product's default base unit for stock movement
             reference_number=f"ORDER_{order.id}_PRODUCT_{product.id}",
-            notes=f"Deducted for order {order.id} (Product: {product.name}, Batch: {batch.batch_number})",
+            notes=f"Deducted {deduct_from_batch} base units for order {order.id} (Product: {product.name}, Batch: {batch.batch_number})",
             created_by=user
         )
         deducted_batches_info.append({
@@ -1214,6 +1247,6 @@ def deduct_inventory_from_batches(order, product, quantity_to_deduct, user):
         remaining_to_deduct -= deduct_from_batch
     
     if remaining_to_deduct > 0:
-        raise ValueError(f"Insufficient stock for product {product.name}. Needed {quantity_to_deduct}, but could only deduct {quantity_to_deduct - remaining_to_deduct}.")
+        raise ValueError(f"Insufficient stock for product {product.name}. Needed {quantity_in_base_units} base units, but could only deduct {quantity_in_base_units - remaining_to_deduct} base units.")
     
     return deducted_batches_info

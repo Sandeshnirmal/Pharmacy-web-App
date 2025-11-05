@@ -69,6 +69,7 @@ const UserManagement = () => {
 
       const response = await axiosInstance.get(`user/users/?${params}`);
       setUsers(response.data.results || response.data);
+      console.log(response.data)
       setError(null);
     } catch (err) {
       setError('Failed to fetch users');
@@ -153,12 +154,14 @@ const UserManagement = () => {
     }
   };
 
-  const getRoleBadge = (role) => {
+    const getRoleBadge = (role) => {
     const roleConfig = {
       'admin': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Admin' },
       'pharmacist': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Pharmacist' },
       'customer': { bg: 'bg-green-100', text: 'text-green-800', label: 'Customer' },
-      'staff': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Staff' }
+      'staff': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Staff' },
+      'verifier': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Verifier' },
+      'doctor': { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'Doctor' }
     };
 
     const config = roleConfig[role] || { bg: 'bg-gray-100', text: 'text-gray-800', label: role };
@@ -176,7 +179,7 @@ const UserManagement = () => {
       user.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesRole = roleFilter === 'all' || user.user_role_name === roleFilter;
     
     return matchesSearch && matchesRole;
   });
@@ -303,6 +306,8 @@ const UserManagement = () => {
                 <option value="pharmacist">Pharmacist</option>
                 <option value="customer">Customer</option>
                 <option value="staff">Staff</option>
+                <option value="verifier">Verifier</option>
+                <option value="doctor">Doctor</option>
               </select>
             </div>
 
@@ -379,7 +384,7 @@ const UserManagement = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {getRoleBadge(user.role)}
+                    {getRoleBadge(user.user_role_name)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs rounded-full ${
@@ -398,20 +403,25 @@ const UserManagement = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
-                      onClick={() => setSelectedUser(user)}
-                      className="text-blue-600 hover:text-blue-900 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-md transition duration-150"
+                      onClick={() => {
+                        setSelectedUser({ ...user, role: user.user_role_name || 'customer' });
+                        setShowEditModal(true);
+                      }}
+                      className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-900 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-md transition duration-150"
                     >
-                      Edit
+                      <Edit size={16} />
+                      <span>Edit</span>
                     </button>
                     <button
                       onClick={() => handleToggleUserStatus(user.id, user.is_active)}
-                      className={`px-3 py-1 rounded-md transition duration-150 ${
+                      className={`inline-flex items-center space-x-1 px-3 py-1 rounded-md transition duration-150 ${
                         user.is_active
                           ? 'text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200'
                           : 'text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200'
                       }`}
                     >
-                      {user.is_active ? 'Deactivate' : 'Activate'}
+                      {user.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
+                      <span>{user.is_active ? 'Deactivate' : 'Activate'}</span>
                     </button>
                   </td>
                 </tr>
@@ -487,7 +497,7 @@ const UserManagement = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Role</label>
                   <select
-                    value={newUser.role}
+                    value={newUser.user_role_name}
                     onChange={(e) => setNewUser({...newUser, role: e.target.value})}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
@@ -495,6 +505,8 @@ const UserManagement = () => {
                     <option value="staff">Staff</option>
                     <option value="pharmacist">Pharmacist</option>
                     <option value="admin">Admin</option>
+                    <option value="verifier">Verifier</option>
+                    <option value="doctor">Doctor</option>
                   </select>
                 </div>
 
@@ -511,6 +523,110 @@ const UserManagement = () => {
                     className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
                   >
                     Create User
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && selectedUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Edit User</h3>
+              
+              <form onSubmit={handleEditUser} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">First Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={selectedUser.first_name}
+                      onChange={(e) => setSelectedUser({...selectedUser, first_name: e.target.value})}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={selectedUser.last_name}
+                      onChange={(e) => setSelectedUser({...selectedUser, last_name: e.target.value})}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={selectedUser.email}
+                    onChange={(e) => setSelectedUser({...selectedUser, email: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={selectedUser.phone_number}
+                    onChange={(e) => setSelectedUser({...selectedUser, phone_number: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Role</label>
+                  <select
+                    value={selectedUser.role}
+                    onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="customer">Customer</option>
+                    <option value="staff">Staff</option>
+                    <option value="pharmacist">Pharmacist</option>
+                    <option value="admin">Admin</option>
+                    <option value="verifier">Verifier</option>
+                    <option value="doctor">Doctor</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Status</label>
+                  <select
+                    value={selectedUser.is_active}
+                    onChange={(e) => setSelectedUser({...selectedUser, is_active: e.target.value === 'true'})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={true}>Active</option>
+                    <option value={false}>Inactive</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setSelectedUser(null);
+                    }}
+                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                  >
+                    Save Changes
                   </button>
                 </div>
               </form>
