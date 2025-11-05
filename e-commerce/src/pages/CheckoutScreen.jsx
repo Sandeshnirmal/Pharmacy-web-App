@@ -33,7 +33,7 @@ const CheckoutScreen = () => {
   const [isCheckingPincode, setIsCheckingPincode] = useState(false);
 
   const paymentMethods = [
-    { id: 'COD', name: 'Cash on Delivery', description: 'Pay when your order is delivered' },
+    
     { id: 'RAZORPAY', name: 'UPI / Online Payment', description: 'Pay using UPI apps or other online methods' },
   ];
 
@@ -204,7 +204,7 @@ const CheckoutScreen = () => {
         key: razorpayKeyId, // Key ID from backend response
         amount: razorpayOrderResponse.data.amount, // Amount from backend response (in paise)
         currency: razorpayOrderResponse.data.currency,
-        name: 'Pharmacy App',
+        name: 'infxMart',
         description: `Order #${orderId}`,
         order_id: razorpayOrderId, // Razorpay's order ID
         handler: (response) => handlePaymentSuccess(response, orderId), // Pass orderId directly

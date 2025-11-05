@@ -83,11 +83,11 @@ function HealthConcernCard({ concern }) {
         alt={concern.name}
         className="w-full h-80 object-cover"
       /> */}
-      <div className="p-4 bg-amber-300">
-        <h3 className="font-semibold text-lg text-gray-900 mb-1">
+      <div className="p-4 bg-blue-300">
+        <h3 className="font-bold text-lg text-gray-700 mb-1">
           {concern.name}
         </h3>
-        <p className="text-gray-600 text-sm">{concern.description}</p>
+        <p className="text-gray-700 text-sm">{concern.description}</p>
       </div>
     </div>
   );
@@ -162,7 +162,7 @@ function Hero() {
               Your Trusted Online Pharmacy
             </span>
             <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tighter leading-tight">
-              Your Health,
+              Your Need,
               <br />
               <span className="text-green-500">Delivered Fast.</span>
             </h1>
