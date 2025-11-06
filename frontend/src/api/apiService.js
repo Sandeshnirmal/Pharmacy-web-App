@@ -117,8 +117,13 @@ export const productAPI = {
   // Legacy endpoints for backward compatibility
   getLegacyProducts: (params = {}) => axiosInstance.get('/api/products/legacy/products/', { params }),
   getCategories: () => axiosInstance.get('/api/products/legacy/categories/'),
+  createCategory: (data) => axiosInstance.post('/api/products/legacy/categories/', data),
+  updateCategory: (id, data) => axiosInstance.patch(`/api/products/legacy/categories/${id}/`, data),
+  deleteCategory: (id) => axiosInstance.delete(`/api/products/legacy/categories/${id}/`),
   getGenericNames: () => axiosInstance.get('/api/products/legacy/generic-names/'),
   createGenericName: (data) => axiosInstance.post('/api/products/legacy/generic-names/', data),
+  updateGenericName: (id, data) => axiosInstance.patch(`/api/products/legacy/generic-names/${id}/`, data),
+  deleteGenericName: (id) => axiosInstance.delete(`/api/products/legacy/generic-names/${id}/`),
 };
 
 // ============================================================================

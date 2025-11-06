@@ -42,6 +42,8 @@ const TPCCourierManagementPage = lazy(() => import('../pages/TPCCourierManagemen
 // Reports - Lazy loaded
 const ReportsAnalytics = lazy(() => import('../pages/ReportsAnalytics'));
 
+//SETTINGS page
+const SettingsPage = lazy(() => import('../components/Settings.jsx'));
 // Route configuration
 export const routes = [
   // Public routes
@@ -211,6 +213,13 @@ export const routes = [
     icon: "Percent", // Placeholder icon
     lazy: true,
   },
+  {
+    path: "/settings",
+    element: SettingsPage,
+    title: "Settings",
+    icon: "Settings",
+    lazy: true,
+  }
 ];
 
 // Get navigation routes (exclude hidden routes)
