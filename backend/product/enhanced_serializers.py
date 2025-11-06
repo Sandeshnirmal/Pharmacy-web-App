@@ -149,12 +149,12 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     composition_summary = serializers.SerializerMethodField()
     
     # Stock status
-    total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True) # Use annotated field
+    total_stock_quantity = serializers.DecimalField(max_digits=20, decimal_places=10, source='total_stock', read_only=True) # Use annotated field
     stock_status = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     
     # Pricing
-    current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True) # Use annotated field
+    current_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, source='current_selling_price_annotated', read_only=True) # Use annotated field
 
     # Batches
     batches = BatchSerializer(many=True, read_only=True)
@@ -264,8 +264,8 @@ class ProductSearchSerializer(serializers.ModelSerializer):
     composition_summary = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
     is_prescription_required = serializers.SerializerMethodField()
-    total_stock_quantity = serializers.IntegerField(source='total_stock', read_only=True) # Use annotated field
-    current_selling_price = serializers.FloatField(source='current_selling_price_annotated', read_only=True) # Use annotated field
+    total_stock_quantity = serializers.DecimalField(max_digits=20, decimal_places=10, source='total_stock', read_only=True) # Use annotated field
+    current_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, source='current_selling_price_annotated', read_only=True) # Use annotated field
     
     class Meta:
         model = Product

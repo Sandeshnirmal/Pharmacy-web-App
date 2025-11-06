@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
-from product.models import Batch, Product
+from product.models import Batch, Product, ProductUnit # Import ProductUnit
 from product.serializers import ProductSerializer, BatchSerializer, ProductSearchSerializer # Import ProductSearchSerializer
 from decimal import Decimal # Import Decimal for precise calculations
 
@@ -373,8 +373,20 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                     'offline_selling_price': unit_price,
                 }
             )
-            batch.quantity += quantity
-            batch.current_quantity += quantity
+            # Convert quantity from product_unit to base_unit
+            product_unit_id = item_data.get('product_unit') # Assuming product_unit is passed in item_data
+            if product_unit_id:
+                try:
+                    product_unit = ProductUnit.objects.get(id=product_unit_id)
+                    quantity_in_base_units = quantity * product_unit.conversion_factor
+                except ProductUnit.DoesNotExist:
+                    raise serializers.ValidationError(f"ProductUnit with ID {product_unit_id} not found.")
+            else:
+                # If no product_unit is specified, assume quantity is already in base units
+                quantity_in_base_units = quantity
+
+            batch.quantity += quantity_in_base_units
+            batch.current_quantity += quantity_in_base_units
             batch.cost_price = unit_price
             batch.tax_percentage = tax_percentage_item
             
@@ -426,18 +438,27 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 for old_item in instance.items.all():
                     product = old_item.product
                     quantity = old_item.quantity
+                    product_unit = old_item.product_unit # Get product_unit from old_item
+                    
+                    # Convert old_item quantity to base units for reversal
+                    if product_unit:
+                        quantity_in_base_units = quantity * product_unit.conversion_factor
+                    else:
+                        quantity_in_base_units = quantity # Assume already in base units
+
                     batch = Batch.objects.filter(product=product, batch_number=old_item.batch_number, expiry_date=old_item.expiry_date).first()
                     if batch:
-                        batch.quantity -= quantity
-                        batch.current_quantity -= quantity
-                        batch.save()
+                        batch.quantity -= quantity_in_base_units
+                        batch.current_quantity -= quantity_in_base_units
+                        batch.save(update_fields=['quantity', 'current_quantity'])
                         StockMovement.objects.create(
                             product=product,
                             batch=batch,
                             movement_type='OUT', # Reverse movement
-                            quantity=quantity,
+                            quantity=quantity_in_base_units,
+                            product_unit=product.product_unit, # Use product's default unit for stock movement
                             reference_number=f"PO-UPDATE-REV-{instance.id}",
-                            notes=f"Reversed {quantity} units for Purchase Order #{instance.id} due to update from RECEIVED status.",
+                            notes=f"Reversed {quantity_in_base_units} base units for Purchase Order #{instance.id} due to update from RECEIVED status.",
                             created_by=self.context.get('request').user if self.context.get('request') else None
                         )
                     else:
@@ -484,13 +505,24 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
                 # If the new status is RECEIVED, update stock and create stock movement
                 if new_status == 'RECEIVED':
+                    # Convert quantity from product_unit to base_unit
+                    product_unit_id = item_data.get('product_unit') # Assuming product_unit is passed in item_data
+                    if product_unit_id:
+                        try:
+                            product_unit = ProductUnit.objects.get(id=product_unit_id)
+                            quantity_in_base_units = quantity * product_unit.conversion_factor
+                        except ProductUnit.DoesNotExist:
+                            raise serializers.ValidationError(f"ProductUnit with ID {product_unit_id} not found.")
+                    else:
+                        quantity_in_base_units = quantity # Assume already in base units
+
                     batch, created = Batch.objects.get_or_create(
                         product=product,
                         batch_number=batch_number,
                         expiry_date=expiry_date,
                         defaults={
-                            'quantity': 0,
-                            'current_quantity': 0,
+                            'quantity': Decimal('0.00'), # Use Decimal for default
+                            'current_quantity': Decimal('0.00'), # Use Decimal for default
                             'cost_price': unit_price,
                             'tax_percentage': tax_percentage_item,
                             'online_mrp_price': unit_price,
@@ -499,8 +531,8 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                             'offline_selling_price': unit_price,
                         }
                     )
-                    batch.quantity += quantity
-                    batch.current_quantity += quantity
+                    batch.quantity += quantity_in_base_units
+                    batch.current_quantity += quantity_in_base_units
                     batch.cost_price = unit_price
                     batch.tax_percentage = tax_percentage_item
 

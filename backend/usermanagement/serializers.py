@@ -36,12 +36,13 @@ class LoginSerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     addresses = AddressSerializer(many=True, read_only=True)
     full_name = serializers.CharField(source='get_full_name', read_only=True)
+    user_role_name = serializers.CharField(source='user_role.name', read_only=True)
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'gender', 'user_role', 'date_joined', 'registration_date',
+            'gender', 'user_role', 'user_role_name', 'date_joined', 'registration_date',
              'is_active', 'is_staff', 'is_superuser', # Use profile_picture_url
             'last_login', 'addresses'
         ]
@@ -92,6 +93,7 @@ class EnhancedUserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     preferences = UserPreferencesSerializer(read_only=True)
     full_name = serializers.CharField(source='get_full_name', read_only=True)
+    user_role_name = serializers.CharField(source='user_role.name', read_only=True)
     total_orders = serializers.SerializerMethodField()
     total_reviews = serializers.SerializerMethodField()
     wishlist_count = serializers.SerializerMethodField()
@@ -100,7 +102,7 @@ class EnhancedUserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'gender', 'user_role', 'date_joined', 'registration_date',
+            'gender', 'user_role', 'user_role_name', 'date_joined', 'registration_date',
              'is_active', 'last_login', 'addresses', # Use profile_picture_url
             'profile', 'preferences', 'total_orders', 'total_reviews', 'wishlist_count'
         ]

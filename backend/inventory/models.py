@@ -17,13 +17,22 @@ class StockMovement(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='stock_movements')
     movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPES)
     quantity = models.IntegerField()  # Positive for IN, negative for OUT
+    # Add a ForeignKey to ProductUnit to specify the unit for this stock movement
+    product_unit = models.ForeignKey(
+        'product.ProductUnit',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="The unit of the product for this stock movement (e.g., 'strip', 'bottle')."
+    )
     reference_number = models.CharField(max_length=100, blank=True, null=True)
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.product.name} - {self.movement_type} - {self.quantity}"
+        unit_display = self.product_unit.unit_abbreviation if self.product_unit and self.product_unit.unit_abbreviation else (self.product_unit.unit_name if self.product_unit else 'units')
+        return f"{self.product.name} - {self.movement_type} - {self.quantity} {unit_display}"
 
 class StockAlert(models.Model):
     ALERT_TYPES = [
@@ -84,6 +93,14 @@ class PurchaseOrderItem(models.Model):
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.IntegerField()
+    # Add a ForeignKey to ProductUnit to specify the unit for this purchase order item
+    product_unit = models.ForeignKey(
+        'product.ProductUnit',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="The unit of the product for this purchase order item (e.g., 'strip', 'bottle')."
+    )
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # Added discount_percentage
     tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # Added tax_percentage
@@ -94,7 +111,8 @@ class PurchaseOrderItem(models.Model):
     expiry_date = models.DateField(blank=True, null=True) # To store expiry date from supplier
 
     def __str__(self):
-        return f"{self.product.name} ({self.quantity}) in PO #{self.purchase_order.id}"
+        unit_display = self.product_unit.unit_abbreviation if self.product_unit and self.product_unit.unit_abbreviation else (self.product_unit.unit_name if self.product_unit else 'units')
+        return f"{self.product.name} ({self.quantity} {unit_display}) in PO #{self.purchase_order.id}"
 
 class PurchaseReturn(models.Model):
     STATUS_CHOICES = [
