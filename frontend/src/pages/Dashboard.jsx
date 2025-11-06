@@ -2,8 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import ModernStatsCard from '../components/ModernStatsCard';
 import useRealTimeData from '../hooks/useRealTimeData';
-import APITestPanel from '../components/APITestPanel'; // Keep if APITestPanel is used elsewhere or intended for future use
 import { orderAPI, prescriptionAPI, userAPI, productAPI, apiUtils } from '../api/apiService';
+import { Line, Bar, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend);
 
 function DashboardMainContent() {
   const [dashboardData, setDashboardData] = useState({
@@ -22,6 +25,20 @@ function DashboardMainContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [chartData, setChartData] = useState({
+    salesOverTime: {
+      labels: [],
+      datasets: []
+    },
+    productCategories: {
+      labels: [],
+      datasets: []
+    },
+    orderStatusDistribution: {
+      labels: [],
+      datasets: []
+    }
+  });
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -61,6 +78,84 @@ function DashboardMainContent() {
       };
       setDashboardData(newDashboardData);
       setLastUpdated(new Date());
+
+      // Process data for charts
+      const salesByMonth = orders.reduce((acc, order) => {
+        const month = new Date(order.order_date).toLocaleString('default', { month: 'short', year: 'numeric' });
+        acc[month] = (acc[month] || 0) + parseFloat(order.total_amount || 0);
+        return acc;
+      }, {});
+
+      const productCategoryCounts = products.reduce((acc, product) => {
+        const categoryName = product.category?.name || 'Uncategorized';
+        acc[categoryName] = (acc[categoryName] || 0) + 1;
+        return acc;
+      }, {});
+
+      const orderStatusCounts = orders.reduce((acc, order) => {
+        acc[order.order_status] = (acc[order.order_status] || 0) + 1;
+        return acc;
+      }, {});
+
+      setChartData({
+        salesOverTime: {
+          labels: Object.keys(salesByMonth),
+          datasets: [{
+            label: 'Sales Revenue',
+            data: Object.values(salesByMonth),
+            fill: false,
+            borderColor: 'rgb(75, 192, 192)',
+            tension: 0.1
+          }]
+        },
+        productCategories: {
+          labels: Object.keys(productCategoryCounts),
+          datasets: [{
+            label: 'Product Categories',
+            data: Object.values(productCategoryCounts),
+            backgroundColor: [
+              'rgba(255, 99, 132, 0.6)',
+              'rgba(54, 162, 235, 0.6)',
+              'rgba(255, 206, 86, 0.6)',
+              'rgba(75, 192, 192, 0.6)',
+              'rgba(153, 102, 255, 0.6)',
+              'rgba(255, 159, 64, 0.6)'
+            ],
+            borderColor: [
+              'rgba(255, 99, 132, 1)',
+              'rgba(54, 162, 235, 1)',
+              'rgba(255, 206, 86, 1)',
+              'rgba(75, 192, 192, 1)',
+              'rgba(153, 102, 255, 1)',
+              'rgba(255, 159, 64, 1)'
+            ],
+            borderWidth: 1
+          }]
+        },
+        orderStatusDistribution: {
+          labels: Object.keys(orderStatusCounts),
+          datasets: [{
+            label: 'Order Status',
+            data: Object.values(orderStatusCounts),
+            backgroundColor: [
+              'rgba(75, 192, 192, 0.6)', // Delivered
+              'rgba(54, 162, 235, 0.6)', // Shipped
+              'rgba(255, 206, 86, 0.6)', // Processing
+              'rgba(255, 99, 132, 0.6)', // Cancelled
+              'rgba(153, 102, 255, 0.6)' // Default/Other
+            ],
+            borderColor: [
+              'rgba(75, 192, 192, 1)',
+              'rgba(54, 162, 235, 1)',
+              'rgba(255, 206, 86, 1)',
+              'rgba(255, 99, 132, 1)',
+              'rgba(153, 102, 255, 1)'
+            ],
+            borderWidth: 1
+          }]
+        }
+      });
+
       return { data: newDashboardData }; // Return the data in the expected format
     } catch (err) {
       const errorInfo = apiUtils.handleError(err);
@@ -271,6 +366,22 @@ function DashboardMainContent() {
             loading={loading}
           />
         ))}
+      </div>
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Sales Revenue Over Time</h2>
+          <Line data={chartData.salesOverTime} />
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Product Categories Distribution</h2>
+          <Pie data={chartData.productCategories} />
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-md lg:col-span-2">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Order Status Distribution</h2>
+          <Bar data={chartData.orderStatusDistribution} />
+        </div>
       </div>
 
       {/* E-Commerce Quick Actions */}
