@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
@@ -70,7 +70,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all().order_by('name')
     pagination_class = CustomPageNumberPagination
     serializer_class = SupplierSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = super().get_queryset()

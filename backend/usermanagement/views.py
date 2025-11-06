@@ -278,7 +278,7 @@ class EnhancedProfileView(APIView):
         serializer = EnhancedUserSerializer(request.user, context={'request': request})
         return Response(serializer.data)
 
-    def put(self, request):
+    def patch(self, request):
         """Update user profile"""
         from .serializers import UserUpdateSerializer
         serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
