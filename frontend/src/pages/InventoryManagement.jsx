@@ -1,59 +1,58 @@
 import React, { useState, useEffect } from "react";
 import axiosInstance from '../api/axiosInstance'
 import { apiUtils, productAPI } from "../api/apiService";
-// --- Sample Data ---
-// In a real app, this would come from an API.
-
-
-
-
-
-
 
 const InventoryManagement = () => {
   const [products, setProducts] = useState([]);
   const [batches, setBatches] = useState([]);
   const [categories, setCategories] = useState([]);
   const [genericNames, setGenericNames] = useState([]);
-  const [compositions, setCompositions] = useState([]); // New state for compositions
+  const [compositions, setCompositions] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
 
-  // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10); // Default page size
+  const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
-  const [showBatchModal, setShowBatchModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [showGenericNameModal, setShowGenericNameModal] = useState(false);
-  const [showCompositionModal, setShowCompositionModal] = useState(false); // New state for composition modal
   const [showViewBatchModal, setShowViewBatchModal] = useState(false);
-  const [showAddBatchForm, setShowAddBatchForm] = useState(false); // New state for add batch form visibility
-  const [editingBatch, setEditingBatch] = useState(null); // New state for batch being edited
+  const [showAddBatchForm, setShowAddBatchForm] = useState(false);
+  const [editingBatch, setEditingBatch] = useState(null);
+
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editingGenericName, setEditingGenericName] = useState(null);
+  const [editingComposition, setEditingComposition] = useState(null);
+  const [viewingCategory, setViewingCategory] = useState(null);
+  const [viewingGenericName, setViewingGenericName] = useState(null);
+  const [viewingComposition, setViewingComposition] = useState(null);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedProductBatches, setSelectedProductBatches] = useState([]);
-  const [successMessage, setSuccessMessage] = useState(null); // New state for success messages
+  const [successMessage, setSuccessMessage] = useState(null);
 
-  // Function to fetch all initial data
+  const [currentView, setCurrentView] = useState('main'); // 'main', 'categories', 'generic-names', 'compositions'
+
   const fetchAllInitialData = async (page, size) => {
     setLoading(true);
     setError(null);
     try {
-      const [productsResponse, categoriesResponse, genericNamesResponse, compositionsResponse] = await Promise.all([
+      const [
+        productsResponse,
+        categoriesResponse,
+        genericNamesResponse,
+        compositionsResponse,
+      ] = await Promise.all([
         productAPI.getProducts(page, size),
         productAPI.getCategories(),
         productAPI.getGenericNames(),
         productAPI.getCompositions(),
       ]);
 
-      // Process products
       const productsData = productsResponse.data;
       let productsToSet = [];
       if (Array.isArray(productsData)) {
@@ -67,7 +66,6 @@ const InventoryManagement = () => {
       const allBatches = productsToSet.flatMap(product => product.batches || []);
       setBatches(allBatches);
 
-      // Process categories
       const categoriesData = categoriesResponse.data;
       if (Array.isArray(categoriesData)) {
         setCategories(categoriesData);
@@ -78,7 +76,6 @@ const InventoryManagement = () => {
         setCategories([]);
       }
 
-      // Process generic names
       const genericNamesData = genericNamesResponse.data;
       if (Array.isArray(genericNamesData)) {
         setGenericNames(genericNamesData);
@@ -89,7 +86,6 @@ const InventoryManagement = () => {
         setGenericNames([]);
       }
 
-      // Process compositions
       const compositionsData = compositionsResponse.data;
       if (Array.isArray(compositionsData)) {
         setCompositions(compositionsData);
@@ -111,18 +107,13 @@ const InventoryManagement = () => {
 
   useEffect(() => {
     fetchAllInitialData(currentPage, pageSize);
-    fetchCategory();
-    fetchCompositions();
-    fetchGenericNames();
-    fetchMedicines();
   }, [currentPage, pageSize]);
 
-  // Clear success message after a few seconds
   useEffect(() => {
     if (successMessage) {
       const timer = setTimeout(() => {
         setSuccessMessage(null);
-      }, 3000); // Message disappears after 3 seconds
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
@@ -133,8 +124,8 @@ const InventoryManagement = () => {
     quantity: "",
     expiry_date: "",
     cost_price: "",
-    mrp_price: "", // Add mrp_price
-    discount_percentage: "", // Add discount_percentage
+    mrp_price: "",
+    discount_percentage: "",
     selling_price: "",
   });
 
@@ -149,16 +140,15 @@ const InventoryManagement = () => {
     hsn_code: "30041000",
     packaging_unit: "",
     pack_size: "",
-    // Batch details
     batch_number: "",
     quantity: "",
     expiry_date: "",
     cost_price: "",
-    mrp_price: "", // Add mrp_price for initial batch
-    discount_percentage: "", // Add discount_percentage for initial batch
+    mrp_price: "",
+    discount_percentage: "",
     selling_price: "",
-    min_stock_level: "10", // Keep min_stock_level for product
-    selectedCompositions: [], // Array of { composition_id, strength, unit, is_primary }
+    min_stock_level: "10",
+    selectedCompositions: [],
   });
 
   const [newCategory, setNewCategory] = useState({ name: "", description: "" });
@@ -175,13 +165,12 @@ const InventoryManagement = () => {
     contraindications: "",
   });
 
-
-
   const getCategoryName = (id) =>
     categories.find((c) => c.id === id)?.name || "N/A";
   const getGenericName = (id) =>
     genericNames.find((g) => g.id === id)?.name || "N/A";
-const fetchCompositions = async () => {
+
+  const fetchCompositions = async () => {
     try {
       const response = await productAPI.getCompositions();
       const data = response.data;
@@ -215,7 +204,7 @@ const fetchCompositions = async () => {
     }
   };
 
-const fetchMedicines = async () => {
+  const fetchMedicines = async () => {
     try {
       const response = await productAPI.getProducts(currentPage, pageSize);
       const data = response.data;
@@ -249,11 +238,11 @@ const fetchMedicines = async () => {
       console.error("Error fetching generic names:", error);
     }
   };
+
   const handleAddComposition = async (e) => {
     e.preventDefault();
     try {
       await productAPI.createComposition(newComposition);
-      setShowCompositionModal(false);
       setNewComposition({
         name: "",
         scientific_name: "",
@@ -262,7 +251,7 @@ const fetchMedicines = async () => {
         side_effects: "",
         contraindications: "",
       });
-      fetchCompositions(); // Refetch compositions
+      fetchCompositions();
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -271,7 +260,6 @@ const fetchMedicines = async () => {
   };
 
   const EditBatchForm = ({ batch, onSave, onCancel }) => {
-    // Ensure mrp_price and discount_percentage are numbers, defaulting to 0 if null/undefined
     const initialMrpPrice = Number(batch.mrp_price || 0);
     const initialDiscountPercentage = Number(batch.discount_percentage || 0);
 
@@ -284,17 +272,15 @@ const fetchMedicines = async () => {
 
     const handleEditSubmit = (e) => {
       e.preventDefault();
-      // Basic validation for discount percentage only
       if (discountPercentage < 0 || discountPercentage > 100) {
         alert('Discount percentage must be between 0 and 100.');
         return;
       }
-      // Pass only the editable field and necessary read-only fields for calculation
-      onSave(batch.id, { 
+      onSave(batch.id, {
         discount_percentage: discountPercentage,
-        mrp_price: initialMrpPrice, // Use the ensured numeric value
-        batch_number: batch.batch_number, // Include batch_number for backend lookup
-        quantity: batch.current_quantity, // Include other fields to ensure partial update works correctly
+        mrp_price: initialMrpPrice,
+        batch_number: batch.batch_number,
+        quantity: batch.current_quantity,
         expiry_date: batch.expiry_date,
         cost_price: batch.cost_price,
       });
@@ -373,11 +359,11 @@ const fetchMedicines = async () => {
 
       const batchData = {
         ...newBatch,
-        product: selectedProduct.id, // Ensure the product ID is set
-        selling_price: calculatedSellingPrice, // Use the calculated selling price
+        product: selectedProduct.id,
+        selling_price: calculatedSellingPrice,
       };
-      await productAPI.addBatch(batchData); // Use addBatch for adding new batches
-      setShowAddBatchForm(false); // Hide the form
+      await productAPI.addBatch(batchData);
+      setShowAddBatchForm(false);
       setNewBatch({
         product: "",
         batch_number: "",
@@ -387,10 +373,8 @@ const fetchMedicines = async () => {
         mrp_price: "",
         discount_percentage: "",
         selling_price: "",
-        // is_primary: false, // Reset is_primary
       });
-      fetchMedicines(); // Refetch medicines to update stock
-      // Re-fetch batches for the selected product to update the modal
+      fetchMedicines();
       const updatedProductBatches = batches.filter(
         (batch) => batch.product === selectedProduct.id
       );
@@ -415,19 +399,17 @@ const fetchMedicines = async () => {
         category: newProduct.category_id,
         generic_name: newProduct.generic_name,
         dosage_form: newProduct.dosage_form,
-        brand_name: newProduct.name, // Defaulting brand_name to name
-        medicine_type: 'tablet', // Default
+        brand_name: newProduct.name,
+        medicine_type: 'tablet',
         prescription_type: newProduct.is_prescription_required ? 'prescription' : 'otc',
         hsn_code: newProduct.hsn_code,
-        // The product price and mrp will be derived from the initial batch's selling_price
         price: newProduct.selling_price,
         mrp: newProduct.selling_price,
       };
 
       const productResponse = await productAPI.createProduct(productData);
-      const productId = productResponse.data.id; // Assuming the API returns the created product with an ID
+      const productId = productResponse.data.id;
 
-      // Link compositions if any were selected
       if (newProduct.selectedCompositions.length > 0) {
         const compositionsToLink = newProduct.selectedCompositions.map(comp => ({
           composition_id: comp.composition_id,
@@ -444,13 +426,13 @@ const fetchMedicines = async () => {
         quantity: newProduct.quantity,
         expiry_date: newProduct.expiry_date,
         cost_price: newProduct.cost_price,
-        mrp_price: newProduct.mrp_price, // Pass mrp_price
-        discount_percentage: newProduct.discount_percentage, // Pass discount_percentage
+        mrp_price: newProduct.mrp_price,
+        discount_percentage: newProduct.discount_percentage,
         selling_price: parseFloat((newProduct.mrp_price - (newProduct.mrp_price * newProduct.discount_percentage / 100)).toFixed(2)),
       };
 
-      await productAPI.addBatch(batchData); // Using addBatch for adding initial batch
-      
+      await productAPI.addBatch(batchData);
+
       setShowProductModal(false);
       setNewProduct({
         name: "",
@@ -463,7 +445,6 @@ const fetchMedicines = async () => {
         hsn_code: "30041000",
         pack_size: "",
         min_stock_level: "10",
-        // Reset batch details
         batch_number: "",
         quantity: "",
         expiry_date: "",
@@ -471,9 +452,9 @@ const fetchMedicines = async () => {
         mrp_price: "",
         discount_percentage: "",
         selling_price: "",
-        selectedCompositions: [], // Reset selected compositions
+        selectedCompositions: [],
       });
-      fetchMedicines(); // Refetch products
+      fetchMedicines();
       setSuccessMessage("Product and associated compositions added successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
@@ -486,9 +467,8 @@ const fetchMedicines = async () => {
     e.preventDefault();
     try {
       await productAPI.createCategory(newCategory);
-      setShowCategoryModal(false);
       setNewCategory({ name: "", description: "" });
-      fetchCategory(); // Refetch categories
+      fetchCategory();
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -496,13 +476,28 @@ const fetchMedicines = async () => {
     }
   };
 
+  const handleUpdateCategory = async (e) => {
+    e.preventDefault();
+    try {
+      await productAPI.updateCategory(editingCategory.id, newCategory);
+      setEditingCategory(null);
+      setNewCategory({ ...newCategory });
+      console.log(editingCategory.id, newCategory);
+      fetchCategory();
+      console.log("Category updated successfully");
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error updating category:", error);
+    }
+  };
+
   const handleAddGenericName = async (e) => {
     e.preventDefault();
     try {
       await productAPI.createGenericName(newGenericName);
-      setShowGenericNameModal(false);
       setNewGenericName({ name: "", description: "" });
-      fetchGenericNames(); // Refetch generic names
+      fetchGenericNames();
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -510,8 +505,42 @@ const fetchMedicines = async () => {
     }
   };
 
+  const handleUpdateGenericName = async (e) => {
+    e.preventDefault();
+    try {
+      await productAPI.updateGenericName(editingGenericName.id, newGenericName);
+      setEditingGenericName(null);
+      setNewGenericName({ name: "", description: "" });
+      fetchGenericNames();
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error updating generic name:", error);
+    }
+  };
+
+  const handleUpdateComposition = async (e) => {
+    e.preventDefault();
+    try {
+      await productAPI.updateComposition(editingComposition.id, newComposition);
+      setEditingComposition(null);
+      setNewComposition({
+        name: "",
+        scientific_name: "",
+        description: "",
+        category: "",
+        side_effects: "",
+        contraindications: "",
+      });
+      fetchCompositions();
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error updating composition:", error);
+    }
+  };
+
   const getStockStatus = (product) => {
-    // Use the total_stock_quantity provided by the backend serializer for consistency
     const totalStock = product.total_stock_quantity || 0;
     if (totalStock === 0)
       return { status: "Out of Stock", color: "bg-red-100 text-red-800" };
@@ -542,16 +571,14 @@ const fetchMedicines = async () => {
 
   const handleViewBatches = (product) => {
     setSelectedProduct(product);
-    // Filter batches directly from the product's nested batches
     setSelectedProductBatches(product.batches || []);
-    console.log("Batches for selected product:", product.batches); // Debug log
     setShowViewBatchModal(true);
   };
 
   const openAddBatchModal = (product) => {
     setSelectedProduct(product);
-    setShowViewBatchModal(true); // Open the view batches modal
-    setShowAddBatchForm(true); // Show the add batch form within it
+    setShowViewBatchModal(true);
+    setShowAddBatchForm(true);
   };
 
   const handleUpdateBatch = async (batchId, updatedData) => {
@@ -560,12 +587,9 @@ const fetchMedicines = async () => {
       return;
     }
     try {
-      // The updatedData already contains mrp_price and discount_percentage
-      // The backend's Batch model save method will recalculate selling_price
       await productAPI.updateBatch(batchId, updatedData);
-      setEditingBatch(null); // Close edit form
-      fetchMedicines(); // Refetch all medicines to update UI
-      // Re-fetch batches for the selected product to update the modal
+      setEditingBatch(null);
+      fetchMedicines();
       const updatedProductResponse = await productAPI.getProduct(selectedProduct.id);
       setSelectedProduct(updatedProductResponse.data);
       setSelectedProductBatches(updatedProductResponse.data.batches || []);
@@ -581,13 +605,11 @@ const fetchMedicines = async () => {
       return null;
     }
     const today = new Date();
-    // Filter for non-expired batches with quantity > 0
     const availableBatches = batches.filter(batch => {
       const expiry = new Date(batch.expiry_date);
       return expiry > today && batch.current_quantity > 0 && batch.selling_price > 0;
     });
 
-    // Sort by expiry date (earliest first) to get the "first available" in a logical sense
     availableBatches.sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
 
     return availableBatches.length > 0 ? availableBatches[0] : null;
@@ -619,6 +641,654 @@ const fetchMedicines = async () => {
     expired: batches.filter((b) => new Date(b.expiry_date) < new Date()).length,
   };
 
+  const CategoriesPage = () => {
+    if (viewingCategory) {
+      return (
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">View Category</h1>
+            <button
+                onClick={() => setViewingCategory(null)}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+                Back to Categories
+            </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <p><strong>Name:</strong> {viewingCategory.name}</p>
+            <p><strong>Description:</strong> {viewingCategory.description}</p>
+          </div>
+        </div>
+      )
+    }
+
+    if (editingCategory) {
+      return (
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">Edit Category</h1>
+            <button
+                onClick={() => setEditingCategory(null)}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+                Cancel
+            </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <form onSubmit={handleUpdateCategory} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Category Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newCategory.name}
+                  onChange={(e) =>
+                    setNewCategory({ ...newCategory, name: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  value={newCategory.description}
+                  onChange={(e) =>
+                    setNewCategory({
+                      ...newCategory,
+                      description: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Update Category
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+              <h1 className="text-3xl font-bold text-gray-800">Manage Categories</h1>
+              <button
+                  onClick={() => setCurrentView('main')}
+                  className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                  Back to Inventory
+              </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Category</h2>
+              <form onSubmit={handleAddCategory} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Category Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCategory.name}
+                    onChange={(e) =>
+                      setNewCategory({ ...newCategory, name: e.target.value })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Description
+                  </label>
+                  <textarea
+                    value={newCategory.description}
+                    onChange={(e) =>
+                      setNewCategory({
+                        ...newCategory,
+                        description: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  ></textarea>
+                </div>
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Add Category
+                  </button>
+                </div>
+              </form>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Existing Categories</h2>
+              <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-gray-600">
+                      <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                          <tr>
+                              <th scope="col" className="px-6 py-3">Name</th>
+                              <th scope="col" className="px-6 py-3">Description</th>
+                              <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {categories.map((category) => (
+                              <tr key={category.id} className="bg-white border-b hover:bg-gray-50">
+                                  <td className="px-6 py-4 font-medium text-gray-900">{category.name}</td>
+                                  <td className="px-6 py-4">{category.description}</td>
+                                  <td className="px-6 py-4 text-center">
+                                      <button
+                                          onClick={() => {
+                                            setEditingCategory(category);
+                                            setNewCategory({ name: category.name, description: category.description });
+                                          }}
+                                          className="font-medium text-indigo-600 hover:underline mr-2"
+                                      >
+                                          Edit
+                                      </button>
+                                      <button
+                                          onClick={() => setViewingCategory(category)}
+                                          className="font-medium text-blue-600 hover:underline"
+                                      >
+                                          View
+                                      </button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      </div>
+    );
+  }
+
+  const GenericNamesPage = () => {
+    if (viewingGenericName) {
+      return (
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">View Generic Name</h1>
+            <button
+                onClick={() => setViewingGenericName(null)}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+                Back to Generic Names
+            </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <p><strong>Name:</strong> {viewingGenericName.name}</p>
+            <p><strong>Description:</strong> {viewingGenericName.description}</p>
+          </div>
+        </div>
+      )
+    }
+
+    if (editingGenericName) {
+      return (
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">Edit Generic Name</h1>
+            <button
+                onClick={() => setEditingGenericName(null)}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+                Cancel
+            </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <form onSubmit={handleUpdateGenericName} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Generic Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newGenericName.name}
+                  onChange={(e) =>
+                    setNewGenericName({ ...newGenericName, name: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  value={newGenericName.description}
+                  onChange={(e) =>
+                    setNewGenericName({
+                      ...newGenericName,
+                      description: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Update Generic Name
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+              <h1 className="text-3xl font-bold text-gray-800">Manage Generic Names</h1>
+              <button
+                  onClick={() => setCurrentView('main')}
+                  className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                  Back to Inventory
+              </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Generic Name</h2>
+              <form onSubmit={handleAddGenericName} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Generic Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newGenericName.name}
+                    onChange={(e) =>
+                      setNewGenericName({
+                        ...newGenericName,
+                        name: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Description
+                  </label>
+                  <textarea
+                    value={newGenericName.description}
+                    onChange={(e) =>
+                      setNewGenericName({
+                        ...newGenericName,
+                        description: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  ></textarea>
+                </div>
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Add Generic Name
+                  </button>
+                </div>
+              </form>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Existing Generic Names</h2>
+              <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-gray-600">
+                      <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                          <tr>
+                              <th scope="col" className="px-6 py-3">Name</th>
+                              <th scope="col" className="px-6 py-3">Description</th>
+                              <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {genericNames.map((gn) => (
+                              <tr key={gn.id} className="bg-white border-b hover:bg-gray-50">
+                                  <td className="px-6 py-4 font-medium text-gray-900">{gn.name}</td>
+                                  <td className="px-6 py-4">{gn.description}</td>
+                                  <td className="px-6 py-4 text-center">
+                                      <button
+                                          onClick={() => {
+                                            setEditingGenericName(gn);
+                                            setNewGenericName({ name: gn.name, description: gn.description });
+                                          }}
+                                          className="font-medium text-indigo-600 hover:underline mr-2"
+                                      >
+                                          Edit
+                                      </button>
+                                      <button
+                                          onClick={() => setViewingGenericName(gn)}
+                                          className="font-medium text-blue-600 hover:underline"
+                                      >
+                                          View
+                                      </button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      </div>
+    );
+  }
+
+  const CompositionsPage = () => {
+    if (viewingComposition) {
+      return (
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">View Composition</h1>
+            <button
+                onClick={() => setViewingComposition(null)}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+                Back to Compositions
+            </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <p><strong>Name:</strong> {viewingComposition.name}</p>
+            <p><strong>Scientific Name:</strong> {viewingComposition.scientific_name}</p>
+            <p><strong>Description:</strong> {viewingComposition.description}</p>
+            <p><strong>Category:</strong> {viewingComposition.category}</p>
+            <p><strong>Side Effects:</strong> {viewingComposition.side_effects}</p>
+            <p><strong>Contraindications:</strong> {viewingComposition.contraindications}</p>
+          </div>
+        </div>
+      )
+    }
+
+    if (editingComposition) {
+      return (
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-800">Edit Composition</h1>
+            <button
+                onClick={() => setEditingComposition(null)}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+                Cancel
+            </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <form onSubmit={handleUpdateComposition} className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Composition Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newComposition.name}
+                  onChange={(e) =>
+                    setNewComposition({ ...newComposition, name: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Scientific Name
+                </label>
+                <input
+                  type="text"
+                  value={newComposition.scientific_name}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      scientific_name: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  value={newComposition.description}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      description: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={newComposition.category}
+                  onChange={(e) =>
+                    setNewComposition({ ...newComposition, category: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Side Effects
+                </label>
+                <textarea
+                  value={newComposition.side_effects}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      side_effects: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Contraindications
+                </label>
+                <textarea
+                  value={newComposition.contraindications}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      contraindications: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Update Composition
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
+          <div className="flex justify-between items-center mb-4">
+              <h1 className="text-3xl font-bold text-gray-800">Manage Compositions</h1>
+              <button
+                  onClick={() => setCurrentView('main')}
+                  className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                  Back to Inventory
+              </button>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Composition</h2>
+              <form onSubmit={handleAddComposition} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Composition Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newComposition.name}
+                  onChange={(e) =>
+                    setNewComposition({ ...newComposition, name: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Scientific Name
+                </label>
+                <input
+                  type="text"
+                  value={newComposition.scientific_name}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      scientific_name: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  value={newComposition.description}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      description: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={newComposition.category}
+                  onChange={(e) =>
+                    setNewComposition({ ...newComposition, category: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Side Effects
+                </label>
+                <textarea
+                  value={newComposition.side_effects}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      side_effects: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Contraindications
+                </label>
+                <textarea
+                  value={newComposition.contraindications}
+                  onChange={(e) =>
+                    setNewComposition({
+                      ...newComposition,
+                      contraindications: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                ></textarea>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Add Composition
+                </button>
+              </div>
+            </form>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Existing Compositions</h2>
+              <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left text-gray-600">
+                      <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                          <tr>
+                              <th scope="col" className="px-6 py-3">Name</th>
+                              <th scope="col" className="px-6 py-3">Description</th>
+                              <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {compositions.map((c) => (
+                              <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
+                                  <td className="px-6 py-4 font-medium text-gray-900">{c.name}</td>
+                                  <td className="px-6 py-4">{c.description}</td>
+                                  <td className="px-6 py-4 text-center">
+                                      <button
+                                          onClick={() => {
+                                            setEditingComposition(c);
+                                            setNewComposition(c);
+                                          }}
+                                          className="font-medium text-indigo-600 hover:underline mr-2"
+                                      >
+                                          Edit
+                                      </button>
+                                      <button
+                                          onClick={() => setViewingComposition(c)}
+                                          className="font-medium text-blue-600 hover:underline"
+                                      >
+                                          View
+                                      </button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      </div>
+    );
+  }
+
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-gray-50">
@@ -627,9 +1297,20 @@ const fetchMedicines = async () => {
     );
   }
 
+  if (currentView === 'categories') {
+    return <CategoriesPage />;
+  }
+
+  if (currentView === 'generic-names') {
+    return <GenericNamesPage />;
+  }
+
+  if (currentView === 'compositions') {
+    return <CompositionsPage />;
+  }
+
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex flex-wrap justify-between items-center gap-4">
           <div>
@@ -648,29 +1329,23 @@ const fetchMedicines = async () => {
               Add Medicine
             </button>
             <button
-              onClick={() => setShowCategoryModal(true)}
+              onClick={() => setCurrentView('categories')}
               className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              Add Category
+              Manage Categories
             </button>
             <button
-              onClick={() => setShowGenericNameModal(true)}
+              onClick={() => setCurrentView('generic-names')}
               className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              Add Generic Name
+              Manage Generic Names
             </button>
             <button
-              onClick={() => setShowCompositionModal(true)}
+              onClick={() => setCurrentView('compositions')}
               className="bg-gray-200 text-gray-800 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              Add Composition
+              Manage Compositions
             </button>
-            {/* <a
-              href="/purchase-returns/new"
-              className="bg-purple-600 text-white hover:bg-purple-700 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
-            >
-              Create Purchase Return
-            </a> */}
           </div>
         </div>
       </div>
@@ -693,7 +1368,6 @@ const fetchMedicines = async () => {
         </div>
       )}
 
-      {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
           <h3 className="text-gray-500">Total Stock Quantity</h3>
@@ -721,7 +1395,6 @@ const fetchMedicines = async () => {
         </div>
       </div>
 
-      {/* Filters and Table */}
       <div className="bg-white p-6 rounded-lg shadow-md">
         <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
           <input
@@ -772,9 +1445,6 @@ const fetchMedicines = async () => {
                 <th scope="col" className="px-6 py-3 text-center">
                   Stock Status
                 </th>
-                {/* <th scope="col" className="px-6 py-3 text-center">
-                  Actions
-                </th> */}
               </tr>
             </thead>
             <tbody>
@@ -819,20 +1489,6 @@ const fetchMedicines = async () => {
                         {status}
                       </span>
                     </td>
-                    {/* <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => openAddBatchModal(product)}
-                        className="font-medium text-green-600 hover:underline mr-4"
-                      >
-                        Add Stock
-                      </button>
-                      <button
-                        onClick={() => handleViewBatches(product)}
-                        className="font-medium text-blue-600 hover:underline"
-                      >
-                        View Batches
-                      </button>
-                    </td> */}
                   </tr>
                 );
               })}
@@ -845,7 +1501,6 @@ const fetchMedicines = async () => {
           )}
         </div>
 
-        {/* Pagination Controls */}
         {totalPages > 1 && (
           <div className="flex justify-center items-center space-x-4 mt-6">
             <button
@@ -869,7 +1524,7 @@ const fetchMedicines = async () => {
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
-                setCurrentPage(1); // Reset to first page when page size changes
+                setCurrentPage(1);
               }}
               className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -882,10 +1537,6 @@ const fetchMedicines = async () => {
         )}
       </div>
 
-      {/* --- Modals --- */}
-
-
-      {/* Add Product Modal */}
       {showProductModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
@@ -939,7 +1590,7 @@ const fetchMedicines = async () => {
                     <option value="">Select Category</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                      
+
                         {c.name}
                       </option>
                     ))}
@@ -1029,7 +1680,6 @@ const fetchMedicines = async () => {
                 </div>
               </div>
 
-              {/* Compositions Section */}
               <h4 className="text-lg font-medium text-gray-900 mb-2 mt-4">
                 Compositions
               </h4>
@@ -1098,7 +1748,7 @@ const fetchMedicines = async () => {
                           onChange={(e) => {
                             const updatedCompositions = newProduct.selectedCompositions.map((item, i) => ({
                               ...item,
-                              is_primary: i === index ? e.target.checked : false, // Only one can be primary
+                              is_primary: i === index ? e.target.checked : false,
                             }));
                             setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
                           }}
@@ -1282,240 +1932,6 @@ const fetchMedicines = async () => {
         </div>
       )}
 
-      {/* Add Category Modal */}
-      {showCategoryModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Add New Category
-            </h3>
-            <form onSubmit={handleAddCategory} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Category Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCategory.name}
-                  onChange={(e) =>
-                    setNewCategory({ ...newCategory, name: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
-                <textarea
-                  value={newCategory.description}
-                  onChange={(e) =>
-                    setNewCategory({
-                      ...newCategory,
-                      description: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                ></textarea>
-              </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCategoryModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Add Category
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Generic Name Modal */}
-      {showGenericNameModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Add New Generic Name
-            </h3>
-            <form onSubmit={handleAddGenericName} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Generic Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newGenericName.name}
-                  onChange={(e) =>
-                    setNewGenericName({
-                      ...newGenericName,
-                      name: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
-                <textarea
-                  value={newGenericName.description}
-                  onChange={(e) =>
-                    setNewGenericName({
-                      ...newGenericName,
-                      description: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                ></textarea>
-              </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowGenericNameModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Add Generic Name
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Composition Modal */}
-      {showCompositionModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Add New Composition
-            </h3>
-            <form onSubmit={handleAddComposition} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Composition Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newComposition.name}
-                  onChange={(e) =>
-                    setNewComposition({ ...newComposition, name: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Scientific Name
-                </label>
-                <input
-                  type="text"
-                  value={newComposition.scientific_name}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      scientific_name: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
-                <textarea
-                  value={newComposition.description}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      description: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                ></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Category
-                </label>
-                <input
-                  type="text"
-                  value={newComposition.category}
-                  onChange={(e) =>
-                    setNewComposition({ ...newComposition, category: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Side Effects
-                </label>
-                <textarea
-                  value={newComposition.side_effects}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      side_effects: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                ></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Contraindications
-                </label>
-                <textarea
-                  value={newComposition.contraindications}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      contraindications: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                ></textarea>
-              </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCompositionModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Add Composition
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* View Batches Modal */}
       {showViewBatchModal && selectedProduct && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
@@ -1576,7 +1992,6 @@ const fetchMedicines = async () => {
                             {batch.discount_percentage }%
                           </td>
                           <td className="px-6 py-4">
-                            {/* Display expiry date */}
                             {new Date(batch.expiry_date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4">
@@ -1741,7 +2156,7 @@ const fetchMedicines = async () => {
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
                       />
                     </div>
-                   
+
                   </div>
                   <div className="flex justify-end space-x-3 pt-4">
                     <button

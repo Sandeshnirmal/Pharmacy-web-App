@@ -7,7 +7,8 @@ import {
   Info, 
   Clock,
   Eye,
-  ArrowRight
+  ArrowRight,
+  Settings
 } from 'lucide-react';
 
 const NotificationSystem = () => {
@@ -124,7 +125,10 @@ const NotificationSystem = () => {
   };
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center">
+        <a href="/settings" className="p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg mr-2">
+            <Settings size={24} />
+        </a>
       {/* Notification Bell */}
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -140,7 +144,7 @@ const NotificationSystem = () => {
 
       {/* Notification Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+        <div className="absolute right-0 top-12 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>

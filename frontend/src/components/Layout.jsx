@@ -3,6 +3,7 @@ import React from 'react';
 import Sidebar from './Sidebar';
 import { Outlet } from 'react-router-dom';
 import NotificationSystem from './prescription/NotificationSystem';
+import Settings from './Settings';
 
 const Layout = () => {
   return (

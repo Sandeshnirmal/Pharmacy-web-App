@@ -42,8 +42,7 @@ class CompositionViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            # permission_classes = [IsPharmacistOrAdmin]
-            permission_classes = [AllowAny]
+            permission_classes = [IsPharmacistOrAdmin]
 
         else:
             permission_classes = [AllowAny]
