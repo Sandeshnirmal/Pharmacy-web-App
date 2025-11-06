@@ -481,8 +481,10 @@ const InventoryManagement = () => {
     try {
       await productAPI.updateCategory(editingCategory.id, newCategory);
       setEditingCategory(null);
-      setNewCategory({ name: "", description: "" });
+      setNewCategory({ ...newCategory });
+      console.log(editingCategory.id, newCategory);
       fetchCategory();
+      console.log("Category updated successfully");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);

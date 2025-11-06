@@ -34,7 +34,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         products_count=Count('product', filter=Q(product__is_active=True))
     ).all().order_by('name')
     serializer_class = CategorySerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
 class BulkCategoryCreateAPIView(ListCreateAPIView):
     queryset = Category.objects.all()
