@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axiosInstance from '../api/axiosInstance';
 
 // --- Icon Components (Inline SVGs) ---
 
@@ -327,41 +328,376 @@ const ProfileSettingsForm = () => {
   );
 };
 
-const StoreSettingsForm = () => {
-  const [storeName, setStoreName] = useState("My E-Commerce Store");
-  const [address, setAddress] = useState(
-    "123 Market St, San Francisco, CA 94103"
-  );
+const StoreDetailsForm = ({ initialData, onSave, onCancel }) => {
+  const [companyDetails, setCompanyDetails] = useState(initialData || {
+    name: "",
+    address_line1: "",
+    address_line2: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    country: "India",
+    phone_number: "",
+    email: "",
+    gstin: "",
+    bank_name: "",
+    bank_account_number: "",
+    bank_ifsc_code: "",
+  });
+
+  const handleChange = (e) => {
+    const { id, value } = e.target;
+    setCompanyDetails((prevDetails) => ({
+      ...prevDetails,
+      [id]: value,
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(companyDetails);
+  };
 
   return (
-    <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-      <InputField
-        label="Store Name"
-        id="storeName"
-        value={storeName}
-        onChange={(e) => setStoreName(e.target.value)}
-      />
-      <div>
-        <label
-          htmlFor="address"
-          className="block text-sm font-medium text-gray-700 mb-1"
-        >
-          Store Address
-        </label>
-        <textarea
-          id="address"
-          rows="3"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        ></textarea>
+    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="p-5 border-b border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+          {initialData ? "Edit Store Details" : "Add New Store"}
+        </h3>
       </div>
-      <div className="text-right">
-        <SaveButton />
-      </div>
-    </form>
+      <form className="p-5 space-y-4" onSubmit={handleSubmit}>
+        <InputField
+          label="Company Name"
+          id="name"
+          value={companyDetails.name}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Address Line 1"
+          id="address_line1"
+          value={companyDetails.address_line1}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Address Line 2"
+          id="address_line2"
+          value={companyDetails.address_line2 || ''}
+          onChange={handleChange}
+        />
+        <InputField
+          label="City"
+          id="city"
+          value={companyDetails.city}
+          onChange={handleChange}
+        />
+        <InputField
+          label="State"
+          id="state"
+          value={companyDetails.state}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Postal Code"
+          id="postal_code"
+          value={companyDetails.postal_code}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Country"
+          id="country"
+          value={companyDetails.country}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Phone Number"
+          id="phone_number"
+          value={companyDetails.phone_number}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Email"
+          id="email"
+          type="email"
+          value={companyDetails.email}
+          onChange={handleChange}
+        />
+        <InputField
+          label="GSTIN"
+          id="gstin"
+          value={companyDetails.gstin}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Bank Name"
+          id="bank_name"
+          value={companyDetails.bank_name || ''}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Bank Account Number"
+          id="bank_account_number"
+          value={companyDetails.bank_account_number || ''}
+          onChange={handleChange}
+        />
+        <InputField
+          label="Bank IFSC Code"
+          id="bank_ifsc_code"
+          value={companyDetails.bank_ifsc_code || ''}
+          onChange={handleChange}
+        />
+        <div className="text-right flex justify-end space-x-3 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex justify-center items-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Cancel
+          </button>
+          <SaveButton>{initialData ? "Save Changes" : "Save Store"}</SaveButton>
+        </div>
+      </form>
+    </div>
   );
 };
+
+const StoreDetailsList = ({ stores, onAddClick, onViewClick, onEditClick }) => (
+  <div className="bg-white rounded-lg shadow-md overflow-hidden">
+    <div className="p-5 border-b border-gray-200 sm:flex sm:justify-between sm:items-center">
+      <h3 className="text-lg font-semibold text-gray-800 flex items-center mb-3 sm:mb-0">
+        <StoreIcon className="w-5 h-5 mr-3 text-gray-500" />
+        Store Details
+      </h3>
+      <button
+        onClick={onAddClick}
+        className="inline-flex justify-center items-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+      >
+        Add New Store
+      </button>
+    </div>
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Name
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Contact
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              GSTIN
+            </th>
+            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {stores.length === 0 && (
+            <tr>
+              <td
+                colSpan="4"
+                className="px-6 py-4 text-center text-sm text-gray-500"
+              >
+                No stores found.
+              </td>
+            </tr>
+          )}
+          {stores.map((store) => (
+            <tr key={store.id}>
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                {store.name}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {store.email || store.phone_number}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {store.gstin}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                <button
+                  onClick={() => onViewClick(store)}
+                  className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                >
+                  <ViewIcon className="w-4 h-4 mr-1" />
+                  View
+                </button>
+                <button
+                  onClick={() => onEditClick(store)}
+                  className="text-indigo-600 hover:text-indigo-900 inline-flex items-center"
+                >
+                  <EditIcon className="w-4 h-4 mr-1" />
+                  Edit
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const StoreDetails = ({ store, onClose }) => {
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="p-5 border-b border-gray-200 sm:flex sm:justify-between sm:items-center">
+        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+          {store.name}
+        </h3>
+        <button
+          onClick={onClose}
+          className="inline-flex justify-center items-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 mt-3 sm:mt-0"
+        >
+          Back to List
+        </button>
+      </div>
+      <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Address</span>
+          <span className="text-md text-gray-900 whitespace-pre-line">
+            {`${store.address_line1}${store.address_line2 ? `\n${store.address_line2}` : ''}\n${store.city}, ${store.state} ${store.postal_code}\n${store.country}`}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Email</span>
+          <span className="text-md text-gray-900">
+            {store.email || "N/A"}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Phone</span>
+          <span className="text-md text-gray-900">
+            {store.phone_number || "N/A"}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">GSTIN</span>
+          <span className="text-md text-gray-900">{store.gstin || "N/A"}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Bank Name</span>
+          <span className="text-md text-gray-900">{store.bank_name || "N/A"}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Bank Account Number</span>
+          <span className="text-md text-gray-900">{store.bank_account_number || "N/A"}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Bank IFSC Code</span>
+          <span className="text-md text-gray-900">{store.bank_ifsc_code || "N/A"}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StoreSettingsPage = ({ navigate }) => {
+  const [view, setView] = useState("list"); // 'list', 'add', 'view', 'edit'
+  const [stores, setStores] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchStores();
+  }, []);
+
+  const fetchStores = async () => {
+    setLoading(true);
+    try {
+      const response = await axiosInstance.get('/api/company-details/');
+      setStores(response.data);
+    } catch (err) {
+      setError("Failed to fetch store details.");
+      console.error("Error fetching store details:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (storeData) => {
+    try {
+      if (storeData.id) {
+        await axiosInstance.patch(`/api/company-details/${storeData.id}/`, storeData);
+      } else {
+        await axiosInstance.post('/api/company-details/', storeData);
+      }
+      fetchStores(); // Refresh the list
+      setView("list");
+    } catch (err) {
+      setError("Failed to save store details.");
+      console.error("Error saving store details:", err);
+    }
+  };
+
+  const showViewPage = (store) => {
+    setSelectedStore(store);
+    setView("view");
+  };
+
+  const showEditPage = (store) => {
+    setSelectedStore(store);
+    setView("edit");
+  };
+
+  const showAddPage = () => {
+    setSelectedStore(null);
+    setView("add");
+  };
+
+  return (
+    <div>
+      <button
+        onClick={() => navigate("main")}
+        className="mb-4 inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800"
+      >
+        <ArrowLeftIcon className="w-4 h-4 mr-1" />
+        Back to Settings
+      </button>
+
+      {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
+
+      {loading ? (
+        <div>Loading...</div>
+      ) : (
+        <>
+          {view === "list" && (
+            <StoreDetailsList
+              stores={stores}
+              onAddClick={showAddPage}
+              onViewClick={showViewPage}
+              onEditClick={showEditPage}
+            />
+          )}
+
+          {view === "add" && (
+            <StoreDetailsForm
+              onSave={handleSave}
+              onCancel={() => setView("list")}
+            />
+          )}
+
+          {view === "edit" && selectedStore && (
+            <StoreDetailsForm
+              initialData={selectedStore}
+              onSave={handleSave}
+              onCancel={() => setView("list")}
+            />
+          )}
+
+          {view === "view" && selectedStore && (
+            <StoreDetails
+              store={selectedStore}
+              onClose={() => setView("list")}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 
 const NotificationSettingsContent = () => {
   const [newOrders, setNewOrders] = useState(true);
@@ -419,25 +755,6 @@ const UnitConversionForm = () => {
 
 // --- NEW SUPPLIER COMPONENTS ---
 
-const mockSuppliers = [
-  {
-    id: 1,
-    name: "Acme Widgets",
-    email: "contact@acme.com",
-    phone: "123-456-7890",
-    address: "123 Industrial Rd",
-    gst: "GSTIN12345",
-  },
-  {
-    id: 2,
-    name: "Global Textiles",
-    email: "sales@global.com",
-    phone: "987-654-3210",
-    address: "456 Fabric Way",
-    gst: "GSTIN67890",
-  },
-];
-
 const SupplierList = ({ suppliers, onAddClick, onViewClick, onEditClick }) => (
   <div className="bg-white rounded-lg shadow-md overflow-hidden">
     <div className="p-5 border-b border-gray-200 sm:flex sm:justify-between sm:items-center">
@@ -447,7 +764,7 @@ const SupplierList = ({ suppliers, onAddClick, onViewClick, onEditClick }) => (
       </h3>
       <button
         onClick={onAddClick}
-        className="inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+        className="inline-flex justify-center items-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
       >
         Add New Supplier
       </button>
@@ -471,7 +788,7 @@ const SupplierList = ({ suppliers, onAddClick, onViewClick, onEditClick }) => (
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {suppliers.length === 0 && (
+          {Array.isArray(suppliers) && suppliers.length === 0 && (
             <tr>
               <td
                 colSpan="4"
@@ -481,7 +798,7 @@ const SupplierList = ({ suppliers, onAddClick, onViewClick, onEditClick }) => (
               </td>
             </tr>
           )}
-          {suppliers.map((supplier) => (
+          {Array.isArray(suppliers) && suppliers.map((supplier) => (
             <tr key={supplier.id}>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 {supplier.name}
@@ -490,7 +807,7 @@ const SupplierList = ({ suppliers, onAddClick, onViewClick, onEditClick }) => (
                 {supplier.email || supplier.phone}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {supplier.gst}
+                {supplier.gst_number}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
                 <button
@@ -517,19 +834,31 @@ const SupplierList = ({ suppliers, onAddClick, onViewClick, onEditClick }) => (
 );
 
 const AddSupplierForm = ({ onSave, onCancel }) => {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [gst, setGst] = useState("");
+  const [supplierData, setSupplierData] = useState({
+    name: "",
+    contact_person: "",
+    email: "",
+    phone: "",
+    address: "",
+    gst_number: "",
+    is_active: true,
+  });
+
+  const handleChange = (e) => {
+    const { id, value } = e.target;
+    setSupplierData((prev) => ({ ...prev, [id]: value }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name) {
-      alert("Please fill out at least Supplier Name."); // Simple validation
+    const requiredFields = ['name', 'contact_person', 'email', 'phone', 'address'];
+    const missingFields = requiredFields.filter(field => !supplierData[field]);
+
+    if (missingFields.length > 0) {
+      alert(`Please fill out the following required fields: ${missingFields.map(field => field.replace('_', ' ')).join(', ')}`);
       return;
     }
-    onSave({ name, email, phone, address, gst });
+    onSave(supplierData);
   };
 
   return (
@@ -543,52 +872,67 @@ const AddSupplierForm = ({ onSave, onCancel }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputField
             label="Supplier Name*"
-            id="supplierName"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            id="name"
+            value={supplierData.name}
+            onChange={handleChange}
             placeholder="e.g., Acme Widgets"
           />
           <InputField
-            label="GST Number"
-            id="gstNumber"
-            value={gst}
-            onChange={(e) => setGst(e.target.value)}
-            placeholder="e.g., GSTIN12345"
+            label="Contact Person*"
+            id="contact_person"
+            value={supplierData.contact_person}
+            onChange={handleChange}
+            placeholder="e.g., John Doe"
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputField
-            label="Contact Email"
-            id="supplierEmail"
+            label="Contact Email*"
+            id="email"
             type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={supplierData.email}
+            onChange={handleChange}
             placeholder="e.g., contact@acme.com"
           />
           <InputField
-            label="Contact Phone"
-            id="supplierPhone"
+            label="Contact Phone*"
+            id="phone"
             type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            value={supplierData.phone}
+            onChange={handleChange}
             placeholder="e.g., (123) 456-7890"
           />
         </div>
         <div>
           <label
-            htmlFor="supplierAddress"
+            htmlFor="address"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Address
+            Address*
           </label>
           <textarea
-            id="supplierAddress"
+            id="address"
             rows="3"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
+            value={supplierData.address}
+            onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="123 Industrial Rd, Suite 500..."
           ></textarea>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InputField
+                label="GST Number"
+                id="gst_number"
+                value={supplierData.gst_number}
+                onChange={handleChange}
+                placeholder="e.g., GSTIN12345"
+            />
+            <ToggleSwitch
+                id="is_active"
+                label="Is Active"
+                enabled={supplierData.is_active}
+                setEnabled={(value) => setSupplierData((prev) => ({ ...prev, is_active: value }))}
+            />
         </div>
         <div className="text-right flex justify-end space-x-3 pt-2">
           <button
@@ -606,19 +950,23 @@ const AddSupplierForm = ({ onSave, onCancel }) => {
 };
 
 const EditSupplierForm = ({ supplier, onSave, onCancel }) => {
-  const [name, setName] = useState(supplier.name);
-  const [email, setEmail] = useState(supplier.email);
-  const [phone, setPhone] = useState(supplier.phone);
-  const [address, setAddress] = useState(supplier.address);
-  const [gst, setGst] = useState(supplier.gst);
+  const [supplierData, setSupplierData] = useState(supplier);
+
+  const handleChange = (e) => {
+    const { id, value } = e.target;
+    setSupplierData((prev) => ({ ...prev, [id]: value }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name) {
-      alert("Please fill out at least Supplier Name."); // Simple validation
+    const requiredFields = ['name', 'contact_person', 'email', 'phone', 'address'];
+    const missingFields = requiredFields.filter(field => !supplierData[field]);
+
+    if (missingFields.length > 0) {
+      alert(`Please fill out the following required fields: ${missingFields.map(field => field.replace('_', ' ')).join(', ')}`);
       return;
     }
-    onSave({ ...supplier, name, email, phone, address, gst });
+    onSave(supplierData);
   };
 
   return (
@@ -632,52 +980,67 @@ const EditSupplierForm = ({ supplier, onSave, onCancel }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputField
             label="Supplier Name*"
-            id="supplierName"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            id="name"
+            value={supplierData.name}
+            onChange={handleChange}
             placeholder="e.g., Acme Widgets"
           />
           <InputField
-            label="GST Number"
-            id="gstNumber"
-            value={gst}
-            onChange={(e) => setGst(e.target.value)}
-            placeholder="e.g., GSTIN12345"
+            label="Contact Person*"
+            id="contact_person"
+            value={supplierData.contact_person}
+            onChange={handleChange}
+            placeholder="e.g., John Doe"
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputField
-            label="Contact Email"
-            id="supplierEmail"
+            label="Contact Email*"
+            id="email"
             type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={supplierData.email}
+            onChange={handleChange}
             placeholder="e.g., contact@acme.com"
           />
           <InputField
-            label="Contact Phone"
-            id="supplierPhone"
+            label="Contact Phone*"
+            id="phone"
             type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            value={supplierData.phone}
+            onChange={handleChange}
             placeholder="e.g., (123) 456-7890"
           />
         </div>
         <div>
           <label
-            htmlFor="supplierAddress"
+            htmlFor="address"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Address
+            Address*
           </label>
           <textarea
-            id="supplierAddress"
+            id="address"
             rows="3"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
+            value={supplierData.address}
+            onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="123 Industrial Rd, Suite 500..."
           ></textarea>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InputField
+                label="GST Number"
+                id="gst_number"
+                value={supplierData.gst_number}
+                onChange={handleChange}
+                placeholder="e.g., GSTIN12345"
+            />
+            <ToggleSwitch
+                id="is_active"
+                label="Is Active"
+                enabled={supplierData.is_active}
+                setEnabled={(value) => setSupplierData((prev) => ({ ...prev, is_active: value }))}
+            />
         </div>
         <div className="text-right flex justify-end space-x-3 pt-2">
           <button
@@ -703,12 +1066,18 @@ const SupplierDetails = ({ supplier, onClose }) => {
         </h3>
         <button
           onClick={onClose}
-          className="inline-flex items-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 mt-3 sm:mt-0"
+          className="inline-flex justify-center items-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 mt-3 sm:mt-0"
         >
           Back to List
         </button>
       </div>
       <div className="p-5 space-y-4">
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Contact Person</span>
+          <span className="text-md text-gray-900">
+            {supplier.contact_person || "N/A"}
+          </span>
+        </div>
         <div className="flex flex-col">
           <span className="text-sm font-medium text-gray-500">Email</span>
           <span className="text-md text-gray-900">
@@ -723,12 +1092,18 @@ const SupplierDetails = ({ supplier, onClose }) => {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-medium text-gray-500">GST Number</span>
-          <span className="text-md text-gray-900">{supplier.gst || "N/A"}</span>
+          <span className="text-md text-gray-900">{supplier.gst_number || "N/A"}</span>
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-medium text-gray-500">Address</span>
           <span className="text-md text-gray-900 whitespace-pre-line">
             {supplier.address || "N/A"}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-500">Status</span>
+          <span className="text-md text-gray-900">
+            {supplier.is_active ? "Active" : "Inactive"}
           </span>
         </div>
       </div>
@@ -738,22 +1113,45 @@ const SupplierDetails = ({ supplier, onClose }) => {
 
 const SuppliersPage = ({ navigate }) => {
   const [view, setView] = useState("list"); // 'list', 'add', 'view', 'edit'
-  const [suppliers, setSuppliers] = useState(mockSuppliers);
+  const [suppliers, setSuppliers] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const handleAddSupplier = (newSupplier) => {
-    setSuppliers([
-      ...suppliers,
-      { ...newSupplier, id: suppliers.length + 1 + Math.random() },
-    ]);
-    setView("list");
+  useEffect(() => {
+    fetchSuppliers();
+  }, []);
+
+  const fetchSuppliers = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axiosInstance.get('/api/inventory/suppliers/');
+      setSuppliers(response.data.results || []);
+    } catch (err) {
+      setError("Failed to fetch suppliers. Please try again later.");
+      console.error("Error fetching suppliers:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdateSupplier = (updatedSupplier) => {
-    setSuppliers(
-      suppliers.map((s) => (s.id === updatedSupplier.id ? updatedSupplier : s))
-    );
-    setView("list");
+  const handleSaveSupplier = async (supplierData) => {
+    try {
+      if (supplierData.id) {
+        // Update existing supplier
+        await axiosInstance.patch(`/api/inventory/suppliers/${supplierData.id}/`, supplierData);
+      } else {
+        // Create new supplier
+        await axiosInstance.post('/api/inventory/suppliers/', supplierData);
+      }
+      fetchSuppliers(); // Refresh the list
+      setView("list");
+    } catch (err) {
+      console.error("Error saving supplier:", err);
+      const errorMessage = err.response?.data ? JSON.stringify(err.response.data) : "An unexpected error occurred.";
+      alert(`Failed to save supplier: ${errorMessage}`);
+    }
   };
 
   const showViewPage = (supplier) => {
@@ -766,6 +1164,11 @@ const SuppliersPage = ({ navigate }) => {
     setView("edit");
   };
 
+  const showAddPage = () => {
+    setSelectedSupplier(null);
+    setView("add");
+  };
+
   return (
     <div>
       <button
@@ -776,35 +1179,43 @@ const SuppliersPage = ({ navigate }) => {
         Back to Settings
       </button>
 
-      {view === "list" && (
-        <SupplierList
-          suppliers={suppliers}
-          onAddClick={() => setView("add")}
-          onViewClick={showViewPage}
-          onEditClick={showEditPage}
-        />
-      )}
+      {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
 
-      {view === "add" && (
-        <AddSupplierForm
-          onSave={handleAddSupplier}
-          onCancel={() => setView("list")}
-        />
-      )}
+      {loading ? (
+        <div>Loading suppliers...</div>
+      ) : (
+        <>
+          {view === "list" && (
+            <SupplierList
+              suppliers={suppliers}
+              onAddClick={showAddPage}
+              onViewClick={showViewPage}
+              onEditClick={showEditPage}
+            />
+          )}
 
-      {view === "edit" && selectedSupplier && (
-        <EditSupplierForm
-          supplier={selectedSupplier}
-          onSave={handleUpdateSupplier}
-          onCancel={() => setView("list")}
-        />
-      )}
+          {view === "add" && (
+            <AddSupplierForm
+              onSave={handleSaveSupplier}
+              onCancel={() => setView("list")}
+            />
+          )}
 
-      {view === "view" && selectedSupplier && (
-        <SupplierDetails
-          supplier={selectedSupplier}
-          onClose={() => setView("list")}
-        />
+          {view === "edit" && selectedSupplier && (
+            <EditSupplierForm
+              supplier={selectedSupplier}
+              onSave={handleSaveSupplier}
+              onCancel={() => setView("list")}
+            />
+          )}
+
+          {view === "view" && selectedSupplier && (
+            <SupplierDetails
+              supplier={selectedSupplier}
+              onClose={() => setView("list")}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -863,13 +1274,7 @@ export default function App() {
         );
       case "store":
         return (
-          <SettingsPageWrapper
-            title="Store Details"
-            icon={<StoreIcon />}
-            navigate={setCurrentPage}
-          >
-            <StoreSettingsForm />
-          </SettingsPageWrapper>
+          <StoreSettingsPage navigate={setCurrentPage} />
         );
       case "notifications":
         return (
