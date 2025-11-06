@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { productAPI, apiUtils } from "../api/apiService";
 
 // --- Icon Components (Inline SVGs) ---
 
@@ -397,23 +398,369 @@ const NotificationSettingsContent = () => {
   );
 };
 
-const UnitConversionForm = () => {
+const UnitManagementPage = ({ navigate }) => {
+  const [productUnits, setProductUnits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+
+  const [newUnit, setNewUnit] = useState({
+    unit_name: "",
+    unit_abbreviation: "",
+    base_unit_name: "",
+    base_unit_abbreviation: "",
+    conversion_factor: "",
+  });
+  const [editingUnit, setEditingUnit] = useState(null);
+  const [editUnitData, setEditUnitData] = useState({
+    unit_name: "",
+    unit_abbreviation: "",
+    base_unit_name: "",
+    base_unit_abbreviation: "",
+    conversion_factor: "",
+  });
+
+  useEffect(() => {
+    fetchProductUnits();
+  }, []);
+
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  const fetchProductUnits = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await productAPI.getProductUnits();
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setProductUnits(data);
+        console.log(data)
+      } else if (data && Array.isArray(data.results)) {
+        setProductUnits(data.results);
+      } else {
+        console.warn("Unexpected API response format for product units.");
+        setProductUnits([]);
+      }
+    } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message);
+      console.error("Error fetching product units:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddUnit = async (e) => {
+    e.preventDefault();
+    try {
+      await productAPI.createProductUnit(newUnit);
+      setSuccessMessage("Product unit added successfully!");
+      setNewUnit({
+        unit_name: "",
+        unit_abbreviation: "",
+        base_unit_name: "",
+        base_unit_abbreviation: "",
+        conversion_factor: "",
+      });
+      fetchProductUnits();
+    } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message);
+      console.error("Error adding product unit:", err);
+    }
+  };
+
+  const handleEditClick = (unit) => {
+    setEditingUnit(unit);
+    setEditUnitData({
+      unit_name: unit.unit_name,
+      unit_abbreviation: unit.unit_abbreviation,
+      base_unit_name: unit.base_unit_name,
+      base_unit_abbreviation: unit.base_unit_abbreviation,
+      conversion_factor: unit.conversion_factor,
+    });
+  };
+
+  const handleUpdateUnit = async (e) => {
+    e.preventDefault();
+    try {
+      await productAPI.updateProductUnit(editingUnit.id, editUnitData);
+      setSuccessMessage("Product unit updated successfully!");
+      setEditingUnit(null);
+      setEditUnitData({
+        unit_name: "",
+        unit_abbreviation: "",
+        base_unit_name: "",
+        base_unit_abbreviation: "",
+        conversion_factor: "",
+      });
+      fetchProductUnits();
+    } catch (err) {
+      const errorInfo = apiUtils.handleError(err);
+      setError(errorInfo.message);
+      console.error("Error updating product unit:", err);
+    }
+  };
+
+  const handleDeleteUnit = async (unitId) => {
+    if (
+      window.confirm(
+        "Are you sure you want to delete this product unit? This action cannot be undone."
+      )
+    ) {
+      try {
+        await productAPI.deleteProductUnit(unitId);
+        setSuccessMessage("Product unit deleted successfully!");
+        fetchProductUnits();
+      } catch (err) {
+        const errorInfo = apiUtils.handleError(err);
+        setError(errorInfo.message);
+        console.error("Error deleting product unit:", err);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
   return (
-    <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <InputField label="From Unit" id="fromUnit" placeholder="e.g., kg" />
-        <InputField label="To Unit" id="toUnit" placeholder="e.g., g" />
-        <InputField
-          label="Conversion Factor"
-          id="factor"
-          type="number"
-          placeholder="e.g., 1000"
-        />
+    <div>
+      <button
+        onClick={() => navigate("main")}
+        className="mb-4 inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800"
+      >
+        <ArrowLeftIcon className="w-4 h-4 mr-1" />
+        Back to Settings
+      </button>
+
+      {error && (
+        <div
+          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
+      {successMessage && (
+        <div
+          className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4"
+          role="alert"
+        >
+          {successMessage}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+        <div className="p-5 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+            <ScaleIcon className="w-5 h-5 mr-3 text-gray-500" />
+            {editingUnit ? "Edit Product Unit" : "Add New Product Unit"}
+          </h3>
+        </div>
+        <form
+          className="p-5 space-y-4"
+          onSubmit={editingUnit ? handleUpdateUnit : handleAddUnit}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InputField
+              label="Unit Name"
+              id="unitName"
+              value={editingUnit ? editUnitData.unit_name : newUnit.unit_name}
+              onChange={(e) =>
+                editingUnit
+                  ? setEditUnitData({ ...editUnitData, unit_name: e.target.value })
+                  : setNewUnit({ ...newUnit, unit_name: e.target.value })
+              }
+              placeholder="e.g., Strip"
+              required
+            />
+            <InputField
+              label="Unit Abbreviation"
+              id="unitAbbreviation"
+              value={
+                editingUnit
+                  ? editUnitData.unit_abbreviation
+                  : newUnit.unit_abbreviation
+              }
+              onChange={(e) =>
+                editingUnit
+                  ? setEditUnitData({
+                      ...editUnitData,
+                      unit_abbreviation: e.target.value,
+                    })
+                  : setNewUnit({ ...newUnit, unit_abbreviation: e.target.value })
+              }
+              placeholder="e.g., strip"
+            />
+            <InputField
+              label="Base Unit Name"
+              id="baseUnitName"
+              value={
+                editingUnit
+                  ? editUnitData.base_unit_name
+                  : newUnit.base_unit_name
+              }
+              onChange={(e) =>
+                editingUnit
+                  ? setEditUnitData({
+                      ...editUnitData,
+                      base_unit_name: e.target.value,
+                    })
+                  : setNewUnit({ ...newUnit, base_unit_name: e.target.value })
+              }
+              placeholder="e.g., Tablet"
+              required
+            />
+            <InputField
+              label="Base Unit Abbreviation"
+              id="baseUnitAbbreviation"
+              value={
+                editingUnit
+                  ? editUnitData.base_unit_abbreviation
+                  : newUnit.base_unit_abbreviation
+              }
+              onChange={(e) =>
+                editingUnit
+                  ? setEditUnitData({
+                      ...editUnitData,
+                      base_unit_abbreviation: e.target.value,
+                    })
+                  : setNewUnit({
+                      ...newUnit,
+                      base_unit_abbreviation: e.target.value,
+                    })
+              }
+              placeholder="e.g., tab"
+            />
+            <InputField
+              label="Conversion Factor"
+              id="conversionFactor"
+              type="number"
+              value={
+                editingUnit
+                  ? editUnitData.conversion_factor
+                  : newUnit.conversion_factor
+              }
+              onChange={(e) =>
+                editingUnit
+                  ? setEditUnitData({
+                      ...editUnitData,
+                      conversion_factor: e.target.value,
+                    })
+                  : setNewUnit({ ...newUnit, conversion_factor: e.target.value })
+              }
+              placeholder="e.g., 10 (for 1 strip = 10 tablets)"
+              required
+            />
+          </div>
+          <div className="text-right flex justify-end space-x-3 pt-2">
+            {editingUnit && (
+              <button
+                type="button"
+                onClick={() => setEditingUnit(null)}
+                className="inline-flex justify-center items-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel Edit
+              </button>
+            )}
+            <SaveButton>{editingUnit ? "Update Unit" : "Add Unit"}</SaveButton>
+          </div>
+        </form>
       </div>
-      <div className="text-right">
-        <SaveButton>Save Conversion</SaveButton>
+
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="p-5 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+            Existing Product Units
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Unit Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Abbreviation
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Base Unit Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Base Unit Abbreviation
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Conversion Factor
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {productUnits.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="6"
+                    className="px-6 py-4 text-center text-sm text-gray-500"
+                  >
+                    No product units found.
+                  </td>
+                </tr>
+              )}
+              {productUnits.map((unit) => (
+                <tr key={unit.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {unit.unit_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {unit.unit_abbreviation}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {unit.base_unit_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {unit.base_unit_abbreviation}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {unit.conversion_factor}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                    <button
+                      onClick={() => handleEditClick(unit)}
+                      className="text-indigo-600 hover:text-indigo-900 inline-flex items-center"
+                    >
+                      <EditIcon className="w-4 h-4 mr-1" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteUnit(unit.id)}
+                      className="text-red-600 hover:text-red-900 inline-flex items-center"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </form>
+    </div>
   );
 };
 
@@ -830,7 +1177,7 @@ const SettingsMenu = ({ navigate }) => {
         onClick={() => navigate("notifications")}
       />
       <SettingsMenuButton
-        title="Unit Conversions"
+        title="Product Units"
         icon={<ScaleIcon />}
         onClick={() => navigate("units")}
       />
@@ -883,13 +1230,7 @@ export default function App() {
         );
       case "units":
         return (
-          <SettingsPageWrapper
-            title="Unit Conversions"
-            icon={<ScaleIcon />}
-            navigate={setCurrentPage}
-          >
-            <UnitConversionForm />
-          </SettingsPageWrapper>
+          <UnitManagementPage navigate={setCurrentPage} />
         );
       case "suppliers":
         return (

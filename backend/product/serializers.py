@@ -294,7 +294,6 @@ class ProductSerializer(serializers.ModelSerializer):
     batches = BatchSerializer(many=True, read_only=True)
     current_selling_price = serializers.SerializerMethodField()
     current_cost_price = serializers.SerializerMethodField()
-    is_prescription_required = serializers.SerializerMethodField()
     current_batch = serializers.SerializerMethodField()
     offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     offline_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
@@ -308,6 +307,10 @@ class ProductSerializer(serializers.ModelSerializer):
         queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
     )
     compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
+    # Field to accept detailed composition data for create/update
+    product_compositions_data = ProductCompositionSerializer(
+        many=True, write_only=True, required=False, source='product_compositions'
+    )
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
     )
@@ -316,11 +319,11 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
-            'medicine_type', 'prescription_type', 'form',
-            'min_stock_level', 'dosage_form',
-            'pack_size', 'description', 'uses',
-            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'composition_ids',
-            'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
+            'medicine_type', 'prescription_type',
+            'min_stock_level',
+            'description', 'uses',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'product_compositions_data', 'composition_ids',
+            'image', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'current_selling_price', 'current_cost_price',
             'stock_quantity', 'stock_status', 'total_batches',
@@ -329,6 +332,9 @@ class ProductSerializer(serializers.ModelSerializer):
             'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
             'product_unit', 'product_unit_id'
         ]
+        extra_kwargs = {
+            'image': {'required': False, 'allow_null': True}
+        }
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
@@ -357,6 +363,31 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_total_batches(self, obj):
         return obj.batches.count()
 
+    def create(self, validated_data):
+        product_compositions_data = validated_data.pop('product_compositions', [])
+        product = super().create(validated_data)
+        for comp_data in product_compositions_data:
+            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
+            if composition_id:
+                ProductComposition.objects.create(product=product, composition_id=composition_id, **comp_data)
+        return product
+
+    def update(self, instance, validated_data):
+        product_compositions_data = validated_data.pop('product_compositions', [])
+
+        # Update basic product fields
+        instance = super().update(instance, validated_data)
+
+        # Handle product compositions
+        # Clear existing compositions
+        instance.product_compositions.all().delete()
+        # Add new compositions
+        for comp_data in product_compositions_data:
+            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
+            if composition_id:
+                ProductComposition.objects.create(product=instance, composition_id=composition_id, **comp_data)
+        
+        return instance
 
     def get_current_batch(self, obj):
         """
@@ -406,6 +437,10 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
     )
     compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
+    # Field to accept detailed composition data for create/update
+    product_compositions_data = ProductCompositionSerializer(
+        many=True, write_only=True, required=False, source='product_compositions'
+    )
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
     )
@@ -414,11 +449,11 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_id', 'manufacturer',
-            'medicine_type', 'prescription_type', 'form',
-            'min_stock_level', 'dosage_form',
-            'pack_size', 'description', 'composition', 'uses',
-            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'composition_ids',
-            'image_url', 'hsn_code', 'category', 'category_id', 'is_active',
+            'medicine_type', 'prescription_type',
+            'min_stock_level',
+            'description', 'uses',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'product_compositions_data', 'composition_ids',
+            'image', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'images', 'reviews', 'tags', 'average_rating',
             'total_reviews', 'discount_percentage', 'is_in_wishlist',
@@ -429,9 +464,38 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
             'product_unit', 'product_unit_id'
         ]
+        extra_kwargs = {
+            'image': {'required': False, 'allow_null': True}
+        }
 
     def get_discount_percentage(self, obj):
         return calculate_effective_discount_percentage(obj)
+
+    def create(self, validated_data):
+        product_compositions_data = validated_data.pop('product_compositions', [])
+        product = super().create(validated_data)
+        for comp_data in product_compositions_data:
+            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
+            if composition_id:
+                ProductComposition.objects.create(product=product, composition_id=composition_id, **comp_data)
+        return product
+
+    def update(self, instance, validated_data):
+        product_compositions_data = validated_data.pop('product_compositions', [])
+
+        # Update basic product fields
+        instance = super().update(instance, validated_data)
+
+        # Handle product compositions
+        # Clear existing compositions
+        instance.product_compositions.all().delete()
+        # Add new compositions
+        for comp_data in product_compositions_data:
+            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
+            if composition_id:
+                ProductComposition.objects.create(product=instance, composition_id=composition_id, **comp_data)
+        
+        return instance
 
     def get_average_rating(self, obj):
         avg = obj.reviews.aggregate(avg_rating=Avg('rating'))['avg_rating']
@@ -539,10 +603,10 @@ class BulkProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'brand_name', 'manufacturer', 'medicine_type',
-            'prescription_type', 'form',
-            'min_stock_level', 'dosage_form', 'pack_size',
-            'description', 'composition', 'uses', 'side_effects', 'how_to_use',
-            'precautions', 'storage', 'image_url', 'hsn_code',
+            'prescription_type',
+            'min_stock_level',
+            'description', 'uses', 'side_effects', 'how_to_use',
+            'precautions', 'storage', 'image', 'hsn_code',
             'is_active', 'is_featured', 'category_name', 'generic_name_str', 'created_by',
             'product_unit_id'
         ]
@@ -647,9 +711,11 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         return calculate_effective_discount_percentage(obj)
 
     def get_primary_image(self, obj):
+        if obj.image and hasattr(obj.image, 'url'):
+            return obj.image.url
         primary_image = obj.images.filter(is_primary=True).first()
         if primary_image:
             return primary_image.image_url
         elif obj.images.exists():
             return obj.images.first().image_url
-        return obj.image_url
+        return None
