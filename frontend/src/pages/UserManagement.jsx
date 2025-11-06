@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   UserPlus,
@@ -8,7 +8,7 @@ import {
   Edit,
   Trash2,
   Shield,
-  ShieldOff,
+  ShieldOff, 
   Eye,
   RefreshCw,
   Download,
@@ -28,7 +28,9 @@ const UserManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [editPassword, setEditPassword] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [availableRoles, setAvailableRoles] = useState([]); // New state for dynamic roles
   const [stats, setStats] = useState({
     total_users: 0,
     active_users: 0,
@@ -41,14 +43,30 @@ const UserManagement = () => {
     email: '',
     phone_number: '',
     password: '',
-    role: 'customer',
+    user_role: '', // Initialize as empty, will be set to a default or first available role
     is_active: true
   });
+
+  // Fetch available roles
+  const fetchAvailableRoles = useCallback(async () => {
+    try {
+      const response = await axiosInstance.get('user/roles/');
+      setAvailableRoles(response.data);
+      // Set a default role for new user if not already set
+      if (response.data.length > 0 && !newUser.user_role) {
+        setNewUser(prev => ({ ...prev, user_role: response.data[0].id })); // Use ID as default
+      }
+    } catch (err) {
+      console.error('Error fetching available roles:', err);
+      setError('Failed to fetch available roles.');
+    }
+  }, [newUser.user_role]);
 
   useEffect(() => {
     fetchUsers();
     fetchStats();
-  }, [roleFilter, statusFilter]);
+    fetchAvailableRoles(); // Fetch roles on component mount
+  }, [roleFilter, statusFilter, fetchAvailableRoles]);
 
   const fetchUsers = async () => {
     try {
@@ -90,7 +108,7 @@ const UserManagement = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchUsers(), fetchStats()]);
+    await Promise.all([fetchUsers(), fetchStats(), fetchAvailableRoles()]);
     setRefreshing(false);
   };
 
@@ -105,7 +123,7 @@ const UserManagement = () => {
         email: '',
         phone_number: '',
         password: '',
-        role: 'customer',
+        user_role: availableRoles.length > 0 ? availableRoles[0].id : '', // Reset to first available role ID
         is_active: true
       });
       await Promise.all([fetchUsers(), fetchStats()]);
@@ -130,9 +148,20 @@ const UserManagement = () => {
   const handleEditUser = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.patch(`user/users/${selectedUser.id}/`, selectedUser);
+      const dataToUpdate = { ...selectedUser };
+      if (editPassword) {
+        dataToUpdate.password = editPassword;
+      }
+      // Ensure user_role is sent as ID, not name
+      dataToUpdate.user_role = selectedUser.user_role; // This should already be the ID from setSelectedUser
+      
+      // Remove user_role_name as it's read-only on backend
+      delete dataToUpdate.user_role_name;
+
+      await axiosInstance.patch(`user/users/${selectedUser.id}/`, dataToUpdate);
       setShowEditModal(false);
       setSelectedUser(null);
+      setEditPassword(''); // Clear password field after successful edit
       await Promise.all([fetchUsers(), fetchStats()]);
       setError(null);
     } catch (err) {
@@ -154,7 +183,7 @@ const UserManagement = () => {
     }
   };
 
-    const getRoleBadge = (role) => {
+    const getRoleBadge = (roleName) => { // Changed parameter name to roleName for clarity
     const roleConfig = {
       'admin': { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Admin' },
       'pharmacist': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Pharmacist' },
@@ -164,7 +193,7 @@ const UserManagement = () => {
       'doctor': { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'Doctor' }
     };
 
-    const config = roleConfig[role] || { bg: 'bg-gray-100', text: 'text-gray-800', label: role };
+    const config = roleConfig[roleName] || { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Unknown Role' };
     
     return (
       <span className={`px-2 py-1 text-xs rounded-full ${config.bg} ${config.text}`}>
@@ -302,12 +331,9 @@ const UserManagement = () => {
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="all">All Roles</option>
-                <option value="admin">Admin</option>
-                <option value="pharmacist">Pharmacist</option>
-                <option value="customer">Customer</option>
-                <option value="staff">Staff</option>
-                <option value="verifier">Verifier</option>
-                <option value="doctor">Doctor</option>
+                {availableRoles.map(role => (
+                  <option key={role.id} value={role.name}>{role.display_name}</option>
+                ))}
               </select>
             </div>
 
@@ -404,7 +430,8 @@ const UserManagement = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
                       onClick={() => {
-                        setSelectedUser({ ...user, role: user.user_role_name || 'customer' });
+                        setSelectedUser({ ...user, user_role: user.user_role }); // Use user.user_role (ID)
+                        setEditPassword(''); // Reset password field when opening modal
                         setShowEditModal(true);
                       }}
                       className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-900 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-md transition duration-150"
@@ -413,7 +440,7 @@ const UserManagement = () => {
                       <span>Edit</span>
                     </button>
                     <button
-                      onClick={() => handleToggleUserStatus(user.id, user.is_active)}
+                      onClick={() => handleToggleUserStatus(user.id)}
                       className={`inline-flex items-center space-x-1 px-3 py-1 rounded-md transition duration-150 ${
                         user.is_active
                           ? 'text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200'
@@ -493,20 +520,28 @@ const UserManagement = () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Role</label>
                   <select
-                    value={newUser.user_role_name}
-                    onChange={(e) => setNewUser({...newUser, role: e.target.value})}
+                    value={newUser.user_role} // Changed 'role' to 'user_role'
+                    onChange={(e) => setNewUser({...newUser, user_role: e.target.value})} // Changed 'role' to 'user_role'
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="customer">Customer</option>
-                    <option value="staff">Staff</option>
-                    <option value="pharmacist">Pharmacist</option>
-                    <option value="admin">Admin</option>
-                    <option value="verifier">Verifier</option>
-                    <option value="doctor">Doctor</option>
+                    {availableRoles.map(role => (
+                      <option key={role.id} value={role.id}>{role.display_name}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -582,20 +617,28 @@ const UserManagement = () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Password (leave blank to keep current)</label>
+                  <input
+                    type="password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="********"
+                  />
+                </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Role</label>
                   <select
-                    value={selectedUser.role}
-                    onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
+                    value={selectedUser.user_role} // Use user_role (ID)
+                    onChange={(e) => setSelectedUser({...selectedUser, user_role: e.target.value})} // Update user_role (ID)
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="customer">Customer</option>
-                    <option value="staff">Staff</option>
-                    <option value="pharmacist">Pharmacist</option>
-                    <option value="admin">Admin</option>
-                    <option value="verifier">Verifier</option>
-                    <option value="doctor">Doctor</option>
+                    {availableRoles.map(role => (
+                      <option key={role.id} value={role.id}>{role.display_name}</option>
+                    ))}
                   </select>
                 </div>
 

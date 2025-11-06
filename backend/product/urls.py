@@ -4,7 +4,7 @@ from .views import (
     CategoryViewSet, ProductViewSet, BatchViewSet, InventoryViewSet,
     GenericNameViewSet, EnhancedProductViewSet, ProductReviewViewSet,
     WishlistViewSet, ExcelUploadView, DiscountViewSet, # Import DiscountViewSet
-    BulkCategoryCreateAPIView, BulkGenericNameCreateAPIView, BulkProductCreateAPIView # Import new views
+    BulkCategoryCreateAPIView, BulkGenericNameCreateAPIView, BulkProductCreateAPIView, ProductUnitViewSet # Import new views
 )
 
 # Enhanced imports
@@ -31,6 +31,7 @@ router.register(r'wishlist', WishlistViewSet, basename='wishlist')
 router.register(r'batches', BatchViewSet)
 router.register(r'inventory', InventoryViewSet)
 router.register(r'discounts', DiscountViewSet) # Register DiscountViewSet
+router.register(r'product-units', ProductUnitViewSet) # Register ProductUnitViewSet
 
 urlpatterns = [
     # Enhanced API endpoints

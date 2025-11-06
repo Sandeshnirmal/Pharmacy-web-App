@@ -69,6 +69,7 @@ const InventoryManagement = () => {
       const categoriesData = categoriesResponse.data;
       if (Array.isArray(categoriesData)) {
         setCategories(categoriesData);
+        console.log(categoriesData)
       } else if (categoriesData && Array.isArray(categoriesData.results)) {
         setCategories(categoriesData.results);
       } else {
@@ -239,25 +240,6 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleAddComposition = async (e) => {
-    e.preventDefault();
-    try {
-      await productAPI.createComposition(newComposition);
-      setNewComposition({
-        name: "",
-        scientific_name: "",
-        description: "",
-        category: "",
-        side_effects: "",
-        contraindications: "",
-      });
-      fetchCompositions();
-    } catch (error) {
-      const errorInfo = apiUtils.handleError(error);
-      setError(errorInfo.message);
-      console.error("Error adding composition:", error);
-    }
-  };
 
   const EditBatchForm = ({ batch, onSave, onCancel }) => {
     const initialMrpPrice = Number(batch.mrp_price || 0);
@@ -463,12 +445,11 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleAddCategory = async (e) => {
-    e.preventDefault();
+  const handleAddCategory = async (categoryData) => {
     try {
-      await productAPI.createCategory(newCategory);
-      setNewCategory({ name: "", description: "" });
+      await productAPI.createCategory(categoryData);
       fetchCategory();
+      setSuccessMessage("Category added successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -476,15 +457,11 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleUpdateCategory = async (e) => {
-    e.preventDefault();
+  const handleUpdateCategory = async (categoryId, categoryData) => {
     try {
-      await productAPI.updateCategory(editingCategory.id, newCategory);
-      setEditingCategory(null);
-      setNewCategory({ ...newCategory });
-      console.log(editingCategory.id, newCategory);
+      await productAPI.updateCategory(categoryId, categoryData);
       fetchCategory();
-      console.log("Category updated successfully");
+      setSuccessMessage("Category updated successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -492,12 +469,11 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleAddGenericName = async (e) => {
-    e.preventDefault();
+  const handleAddGenericName = async (genericNameData) => {
     try {
-      await productAPI.createGenericName(newGenericName);
-      setNewGenericName({ name: "", description: "" });
+      await productAPI.createGenericName(genericNameData);
       fetchGenericNames();
+      setSuccessMessage("Generic Name added successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -505,13 +481,11 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleUpdateGenericName = async (e) => {
-    e.preventDefault();
+  const handleUpdateGenericName = async (genericNameId, genericNameData) => {
     try {
-      await productAPI.updateGenericName(editingGenericName.id, newGenericName);
-      setEditingGenericName(null);
-      setNewGenericName({ name: "", description: "" });
+      await productAPI.updateGenericName(genericNameId, genericNameData);
       fetchGenericNames();
+      setSuccessMessage("Generic Name updated successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -519,24 +493,41 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleUpdateComposition = async (e) => {
-    e.preventDefault();
+  const handleAddComposition = async (compositionData) => {
     try {
-      await productAPI.updateComposition(editingComposition.id, newComposition);
-      setEditingComposition(null);
-      setNewComposition({
-        name: "",
-        scientific_name: "",
-        description: "",
-        category: "",
-        side_effects: "",
-        contraindications: "",
-      });
+      await productAPI.createComposition(compositionData);
       fetchCompositions();
+      setSuccessMessage("Composition added successfully!");
+    } catch (error) {
+      const errorInfo = apiUtils.handleError(error);
+      setError(errorInfo.message);
+      console.error("Error adding composition:", error);
+    }
+  };
+
+  const handleUpdateComposition = async (compositionId, compositionData) => {
+    try {
+      await productAPI.updateComposition(compositionId, compositionData);
+      fetchCompositions();
+      setSuccessMessage("Composition updated successfully!");
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
       console.error("Error updating composition:", error);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (window.confirm("Are you sure you want to delete this category? This action cannot be undone.")) {
+      try {
+        await productAPI.deleteCategory(categoryId);
+        fetchCategory();
+        setSuccessMessage("Category deleted successfully!");
+      } catch (error) {
+        const errorInfo = apiUtils.handleError(error);
+        setError(errorInfo.message);
+        console.error("Error deleting category:", error);
+      }
     }
   };
 
@@ -642,6 +633,34 @@ const InventoryManagement = () => {
   };
 
   const CategoriesPage = () => {
+    const [addCategoryName, setAddCategoryName] = useState("");
+    const [addCategoryDescription, setAddCategoryDescription] = useState("");
+
+    const [editCategoryName, setEditCategoryName] = useState("");
+    const [editCategoryDescription, setEditCategoryDescription] = useState("");
+
+    useEffect(() => {
+      if (editingCategory) {
+        setEditCategoryName(editingCategory.name);
+        setEditCategoryDescription(editingCategory.description);
+      }
+    }, [editingCategory]);
+
+    const handleAddCategorySubmit = async (e) => {
+      e.preventDefault();
+      await handleAddCategory({ name: addCategoryName, description: addCategoryDescription });
+      setAddCategoryName("");
+      setAddCategoryDescription("");
+    };
+
+    const handleUpdateCategorySubmit = async (e) => {
+      e.preventDefault();
+      await handleUpdateCategory(editingCategory.id, { name: editCategoryName, description: editCategoryDescription });
+      setEditingCategory(null);
+      setEditCategoryName("");
+      setEditCategoryDescription("");
+    };
+
     if (viewingCategory) {
       return (
         <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
@@ -675,7 +694,7 @@ const InventoryManagement = () => {
             </button>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <form onSubmit={handleUpdateCategory} className="space-y-4">
+            <form onSubmit={handleUpdateCategorySubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Category Name
@@ -683,10 +702,8 @@ const InventoryManagement = () => {
                 <input
                   type="text"
                   required
-                  value={newCategory.name}
-                  onChange={(e) =>
-                    setNewCategory({ ...newCategory, name: e.target.value })
-                  }
+                  value={editCategoryName}
+                  onChange={(e) => setEditCategoryName(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -695,13 +712,8 @@ const InventoryManagement = () => {
                   Description
                 </label>
                 <textarea
-                  value={newCategory.description}
-                  onChange={(e) =>
-                    setNewCategory({
-                      ...newCategory,
-                      description: e.target.value,
-                    })
-                  }
+                  value={editCategoryDescription}
+                  onChange={(e) => setEditCategoryDescription(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -732,7 +744,7 @@ const InventoryManagement = () => {
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md mb-8">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Category</h2>
-              <form onSubmit={handleAddCategory} className="space-y-4">
+              <form onSubmit={handleAddCategorySubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
                     Category Name
@@ -740,10 +752,8 @@ const InventoryManagement = () => {
                   <input
                     type="text"
                     required
-                    value={newCategory.name}
-                    onChange={(e) =>
-                      setNewCategory({ ...newCategory, name: e.target.value })
-                    }
+                    value={addCategoryName}
+                    onChange={(e) => setAddCategoryName(e.target.value)}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
@@ -752,13 +762,8 @@ const InventoryManagement = () => {
                     Description
                   </label>
                   <textarea
-                    value={newCategory.description}
-                    onChange={(e) =>
-                      setNewCategory({
-                        ...newCategory,
-                        description: e.target.value,
-                      })
-                    }
+                    value={addCategoryDescription}
+                    onChange={(e) => setAddCategoryDescription(e.target.value)}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   ></textarea>
                 </div>
@@ -792,7 +797,6 @@ const InventoryManagement = () => {
                                       <button
                                           onClick={() => {
                                             setEditingCategory(category);
-                                            setNewCategory({ name: category.name, description: category.description });
                                           }}
                                           className="font-medium text-indigo-600 hover:underline mr-2"
                                       >
@@ -800,9 +804,15 @@ const InventoryManagement = () => {
                                       </button>
                                       <button
                                           onClick={() => setViewingCategory(category)}
-                                          className="font-medium text-blue-600 hover:underline"
+                                          className="font-medium text-blue-600 hover:underline mr-2"
                                       >
                                           View
+                                      </button>
+                                      <button
+                                          onClick={() => handleDeleteCategory(category.id)}
+                                          className="font-medium text-red-600 hover:underline"
+                                      >
+                                          Delete
                                       </button>
                                   </td>
                               </tr>
@@ -816,6 +826,48 @@ const InventoryManagement = () => {
   }
 
   const GenericNamesPage = () => {
+    const [addGenericNameName, setAddGenericNameName] = useState("");
+    const [addGenericNameDescription, setAddGenericNameDescription] = useState("");
+
+    const [editGenericNameName, setEditGenericNameName] = useState("");
+    const [editGenericNameDescription, setEditGenericNameDescription] = useState("");
+
+    useEffect(() => {
+      if (editingGenericName) {
+        setEditGenericNameName(editingGenericName.name);
+        setEditGenericNameDescription(editingGenericName.description);
+      }
+    }, [editingGenericName]);
+
+    const handleAddGenericNameSubmit = async (e) => {
+      e.preventDefault();
+      await handleAddGenericName({ name: addGenericNameName, description: addGenericNameDescription });
+      setAddGenericNameName("");
+      setAddGenericNameDescription("");
+    };
+
+    const handleUpdateGenericNameSubmit = async (e) => {
+      e.preventDefault();
+      await handleUpdateGenericName(editingGenericName.id, { name: editGenericNameName, description: editGenericNameDescription });
+      setEditingGenericName(null);
+      setEditGenericNameName("");
+      setEditGenericNameDescription("");
+    };
+
+    const handleDeleteGenericName = async (genericNameId) => {
+      if (window.confirm("Are you sure you want to delete this generic name? This action cannot be undone.")) {
+        try {
+          await productAPI.deleteGenericName(genericNameId);
+          fetchGenericNames();
+          setSuccessMessage("Generic Name deleted successfully!");
+        } catch (error) {
+          const errorInfo = apiUtils.handleError(error);
+          setError(errorInfo.message);
+          console.error("Error deleting generic name:", error);
+        }
+      }
+    };
+
     if (viewingGenericName) {
       return (
         <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
@@ -849,7 +901,7 @@ const InventoryManagement = () => {
             </button>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <form onSubmit={handleUpdateGenericName} className="space-y-4">
+            <form onSubmit={handleUpdateGenericNameSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Generic Name
@@ -857,10 +909,8 @@ const InventoryManagement = () => {
                 <input
                   type="text"
                   required
-                  value={newGenericName.name}
-                  onChange={(e) =>
-                    setNewGenericName({ ...newGenericName, name: e.target.value })
-                  }
+                  value={editGenericNameName}
+                  onChange={(e) => setEditGenericNameName(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -869,13 +919,8 @@ const InventoryManagement = () => {
                   Description
                 </label>
                 <textarea
-                  value={newGenericName.description}
-                  onChange={(e) =>
-                    setNewGenericName({
-                      ...newGenericName,
-                      description: e.target.value,
-                    })
-                  }
+                  value={editGenericNameDescription}
+                  onChange={(e) => setEditGenericNameDescription(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -906,7 +951,7 @@ const InventoryManagement = () => {
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md mb-8">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Generic Name</h2>
-              <form onSubmit={handleAddGenericName} className="space-y-4">
+              <form onSubmit={handleAddGenericNameSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
                     Generic Name
@@ -914,13 +959,8 @@ const InventoryManagement = () => {
                   <input
                     type="text"
                     required
-                    value={newGenericName.name}
-                    onChange={(e) =>
-                      setNewGenericName({
-                        ...newGenericName,
-                        name: e.target.value,
-                      })
-                    }
+                    value={addGenericNameName}
+                    onChange={(e) => setAddGenericNameName(e.target.value)}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
@@ -929,13 +969,8 @@ const InventoryManagement = () => {
                     Description
                   </label>
                   <textarea
-                    value={newGenericName.description}
-                    onChange={(e) =>
-                      setNewGenericName({
-                        ...newGenericName,
-                        description: e.target.value,
-                      })
-                    }
+                    value={addGenericNameDescription}
+                    onChange={(e) => setAddGenericNameDescription(e.target.value)}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   ></textarea>
                 </div>
@@ -969,7 +1004,6 @@ const InventoryManagement = () => {
                                       <button
                                           onClick={() => {
                                             setEditingGenericName(gn);
-                                            setNewGenericName({ name: gn.name, description: gn.description });
                                           }}
                                           className="font-medium text-indigo-600 hover:underline mr-2"
                                       >
@@ -977,9 +1011,15 @@ const InventoryManagement = () => {
                                       </button>
                                       <button
                                           onClick={() => setViewingGenericName(gn)}
-                                          className="font-medium text-blue-600 hover:underline"
+                                          className="font-medium text-blue-600 hover:underline mr-2"
                                       >
                                           View
+                                      </button>
+                                      <button
+                                          onClick={() => handleDeleteGenericName(gn.id)}
+                                          className="font-medium text-red-600 hover:underline"
+                                      >
+                                          Delete
                                       </button>
                                   </td>
                               </tr>
@@ -993,6 +1033,82 @@ const InventoryManagement = () => {
   }
 
   const CompositionsPage = () => {
+    const [addCompositionName, setAddCompositionName] = useState("");
+    const [addScientificName, setAddScientificName] = useState("");
+    const [addDescription, setAddDescription] = useState("");
+    const [addCategory, setAddCategory] = useState("");
+    const [addSideEffects, setAddSideEffects] = useState("");
+    const [addContraindications, setAddContraindications] = useState("");
+
+    const [editCompositionName, setEditCompositionName] = useState("");
+    const [editScientificName, setEditScientificName] = useState("");
+    const [editDescription, setEditDescription] = useState("");
+    const [editCategory, setEditCategory] = useState("");
+    const [editSideEffects, setEditSideEffects] = useState("");
+    const [editContraindications, setEditContraindications] = useState("");
+
+    useEffect(() => {
+      if (editingComposition) {
+        setEditCompositionName(editingComposition.name);
+        setEditScientificName(editingComposition.scientific_name);
+        setEditDescription(editingComposition.description);
+        setEditCategory(editingComposition.category);
+        setEditSideEffects(editingComposition.side_effects);
+        setEditContraindications(editingComposition.contraindications);
+      }
+    }, [editingComposition]);
+
+    const handleAddCompositionSubmit = async (e) => {
+      e.preventDefault();
+      await handleAddComposition({
+        name: addCompositionName,
+        scientific_name: addScientificName,
+        description: addDescription,
+        category: addCategory,
+        side_effects: addSideEffects,
+        contraindications: addContraindications,
+      });
+      setAddCompositionName("");
+      setAddScientificName("");
+      setAddDescription("");
+      setAddCategory("");
+      setAddSideEffects("");
+      setAddContraindications("");
+    };
+
+    const handleUpdateCompositionSubmit = async (e) => {
+      e.preventDefault();
+      await handleUpdateComposition(editingComposition.id, {
+        name: editCompositionName,
+        scientific_name: editScientificName,
+        description: editDescription,
+        category: editCategory,
+        side_effects: editSideEffects,
+        contraindications: editContraindications,
+      });
+      setEditingComposition(null);
+      setEditCompositionName("");
+      setEditScientificName("");
+      setEditDescription("");
+      setEditCategory("");
+      setEditSideEffects("");
+      setEditContraindications("");
+    };
+
+    const handleDeleteComposition = async (compositionId) => {
+      if (window.confirm("Are you sure you want to delete this composition? This action cannot be undone.")) {
+        try {
+          await productAPI.deleteComposition(compositionId);
+          fetchCompositions();
+          setSuccessMessage("Composition deleted successfully!");
+        } catch (error) {
+          const errorInfo = apiUtils.handleError(error);
+          setError(errorInfo.message);
+          console.error("Error deleting composition:", error);
+        }
+      }
+    };
+
     if (viewingComposition) {
       return (
         <div className="container mx-auto p-4 sm:p-6 lg:p-8 font-sans bg-gray-50 min-h-screen">
@@ -1030,18 +1146,16 @@ const InventoryManagement = () => {
             </button>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <form onSubmit={handleUpdateComposition} className="space-y-4">
+            <form onSubmit={handleUpdateCompositionSubmit} className="space-y-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Composition Name
+                    Name
                 </label>
                 <input
                   type="text"
                   required
-                  value={newComposition.name}
-                  onChange={(e) =>
-                    setNewComposition({ ...newComposition, name: e.target.value })
-                  }
+                  value={editCompositionName}
+                  onChange={(e) => setEditCompositionName(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -1051,13 +1165,8 @@ const InventoryManagement = () => {
                 </label>
                 <input
                   type="text"
-                  value={newComposition.scientific_name}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      scientific_name: e.target.value,
-                    })
-                  }
+                  value={editScientificName}
+                  onChange={(e) => setEditScientificName(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -1066,13 +1175,8 @@ const InventoryManagement = () => {
                   Description
                 </label>
                 <textarea
-                  value={newComposition.description}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      description: e.target.value,
-                    })
-                  }
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -1080,27 +1184,27 @@ const InventoryManagement = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Category
                 </label>
-                <input
-                  type="text"
-                  value={newComposition.category}
-                  onChange={(e) =>
-                    setNewComposition({ ...newComposition, category: e.target.value })
-                  }
+                <select
+                  required
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                >
+                  <option value="">Select Category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Side Effects
                 </label>
                 <textarea
-                  value={newComposition.side_effects}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      side_effects: e.target.value,
-                    })
-                  }
+                  value={editSideEffects}
+                  onChange={(e) => setEditSideEffects(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -1109,13 +1213,8 @@ const InventoryManagement = () => {
                   Contraindications
                 </label>
                 <textarea
-                  value={newComposition.contraindications}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      contraindications: e.target.value,
-                    })
-                  }
+                  value={editContraindications}
+                  onChange={(e) => setEditContraindications(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -1146,7 +1245,7 @@ const InventoryManagement = () => {
           </div>
           <div className="bg-white p-6 rounded-lg shadow-md mb-8">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Add New Composition</h2>
-              <form onSubmit={handleAddComposition} className="space-y-4">
+              <form onSubmit={handleAddCompositionSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Composition Name
@@ -1154,10 +1253,8 @@ const InventoryManagement = () => {
                 <input
                   type="text"
                   required
-                  value={newComposition.name}
-                  onChange={(e) =>
-                    setNewComposition({ ...newComposition, name: e.target.value })
-                  }
+                  value={addCompositionName}
+                  onChange={(e) => setAddCompositionName(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -1167,13 +1264,8 @@ const InventoryManagement = () => {
                 </label>
                 <input
                   type="text"
-                  value={newComposition.scientific_name}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      scientific_name: e.target.value,
-                    })
-                  }
+                  value={addScientificName}
+                  onChange={(e) => setAddScientificName(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -1182,13 +1274,8 @@ const InventoryManagement = () => {
                   Description
                 </label>
                 <textarea
-                  value={newComposition.description}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      description: e.target.value,
-                    })
-                  }
+                  value={addDescription}
+                  onChange={(e) => setAddDescription(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -1196,27 +1283,27 @@ const InventoryManagement = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Category
                 </label>
-                <input
-                  type="text"
-                  value={newComposition.category}
-                  onChange={(e) =>
-                    setNewComposition({ ...newComposition, category: e.target.value })
-                  }
+                <select
+                  required
+                  value={addCategory}
+                  onChange={(e) => setAddCategory(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                >
+                  <option value="">Select Category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Side Effects
                 </label>
                 <textarea
-                  value={newComposition.side_effects}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      side_effects: e.target.value,
-                    })
-                  }
+                  value={addSideEffects}
+                  onChange={(e) => setAddSideEffects(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -1225,13 +1312,8 @@ const InventoryManagement = () => {
                   Contraindications
                 </label>
                 <textarea
-                  value={newComposition.contraindications}
-                  onChange={(e) =>
-                    setNewComposition({
-                      ...newComposition,
-                      contraindications: e.target.value,
-                    })
-                  }
+                  value={addContraindications}
+                  onChange={(e) => setAddContraindications(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 ></textarea>
               </div>
@@ -1265,7 +1347,6 @@ const InventoryManagement = () => {
                                       <button
                                           onClick={() => {
                                             setEditingComposition(c);
-                                            setNewComposition(c);
                                           }}
                                           className="font-medium text-indigo-600 hover:underline mr-2"
                                       >
@@ -1273,9 +1354,15 @@ const InventoryManagement = () => {
                                       </button>
                                       <button
                                           onClick={() => setViewingComposition(c)}
-                                          className="font-medium text-blue-600 hover:underline"
+                                          className="font-medium text-blue-600 hover:underline mr-2"
                                       >
                                           View
+                                      </button>
+                                      <button
+                                          onClick={() => handleDeleteComposition(c.id)}
+                                          className="font-medium text-red-600 hover:underline"
+                                      >
+                                          Delete
                                       </button>
                                   </td>
                               </tr>

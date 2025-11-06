@@ -15,7 +15,7 @@ from django.utils.decorators import method_decorator
 from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
-    ProductViewHistory, Discount, ProductComposition # Import ProductComposition model
+    ProductViewHistory, Discount, ProductComposition, ProductUnit # Import ProductUnit model
 )
 from .serializers import (
     CategorySerializer, ProductSerializer, BatchSerializer,
@@ -23,7 +23,7 @@ from .serializers import (
     ProductReviewSerializer, WishlistSerializer, ProductSearchSerializer,
     BulkCategorySerializer, BulkGenericNameSerializer, BulkProductSerializer, # Import new serializers
     FileSerializer, # Import FileSerializer
-    DiscountSerializer # Import DiscountSerializer
+    DiscountSerializer, ProductUnitSerializer # Import ProductUnitSerializer
 )
 
 from django.db.models import Subquery, OuterRef # Import Subquery and OuterRef
@@ -650,3 +650,17 @@ class DiscountViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+
+@method_decorator(cache_page(300), name='dispatch') # Cache all GET requests for 5 minutes
+class ProductUnitViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows product units to be viewed or edited.
+    """
+    queryset = ProductUnit.objects.all().order_by('unit_name')
+    serializer_class = ProductUnitSerializer
+    permission_classes = [IsAuthenticated] # Restrict to authenticated users
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['unit_name', 'unit_abbreviation', 'base_unit_name', 'base_unit_abbreviation']
+    ordering_fields = ['unit_name', 'base_unit_name', 'conversion_factor', 'created_at']
+    ordering = ['unit_name']
