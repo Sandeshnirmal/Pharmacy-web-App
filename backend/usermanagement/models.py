@@ -93,7 +93,7 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
 
     # Role management
-    user_role = models.ForeignKey(UserRole, on_delete=models.PROTECT, related_name='users', null=True, blank=True)
+    user_role = models.ForeignKey(UserRole, on_delete=models.PROTECT, related_name='users', null=False, blank=False)
 
     # Professional credentials (for doctors/pharmacists)
     license_number = models.CharField(max_length=100, blank=True)

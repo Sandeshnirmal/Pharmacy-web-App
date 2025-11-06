@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, Address, UserProfile, UserPreferences, UserActivity
+from .models import User, Address, UserProfile, UserPreferences, UserActivity, UserRole
 
 class AddressSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True) # Ensure user is not sent in request body
@@ -125,16 +125,27 @@ class EnhancedUserSerializer(serializers.ModelSerializer):
         return Wishlist.objects.filter(user=obj).count()
 
 
+class UserRoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserRole
+        fields = ['id', 'name', 'display_name']
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
             'first_name', 'last_name', 'phone_number',
-            'gender', # Re-added profile_picture_url for updates
+            'gender', 'user_role', # Added user_role for updates
         ]
 
     def update(self, instance, validated_data):
-        # Update user instance
+        # Handle user_role separately if it's in validated_data
+        user_role_data = validated_data.pop('user_role', None)
+        if user_role_data:
+            instance.user_role = user_role_data
+
+        # Update other user instance fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()

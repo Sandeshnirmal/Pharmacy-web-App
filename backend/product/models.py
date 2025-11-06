@@ -118,11 +118,7 @@ class Product(models.Model):
     ]
     prescription_type = models.CharField(max_length=20, choices=PRESCRIPTION_TYPES, default='otc')
 
-    form = models.CharField(max_length=50, blank=True)
     min_stock_level = models.PositiveIntegerField(default=10)
-
-    dosage_form = models.CharField(max_length=100, blank=True)
-    pack_size = models.PositiveIntegerField(default=1, help_text="Number of units in one package (e.g., 10 tablets in a strip)")
     
     # Link to the new ProductUnit model
     product_unit = models.ForeignKey(
@@ -147,7 +143,7 @@ class Product(models.Model):
         related_name='product_list'
     )
 
-    image_url = models.URLField(blank=True)
+    image = models.ImageField(upload_to='product_images/', blank=True, null=True)
     hsn_code = models.CharField(max_length=20, blank=True)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True)
 
@@ -169,7 +165,7 @@ class Product(models.Model):
             models.Index(fields=['is_active']),
             models.Index(fields=['prescription_type']),
         ]
-        unique_together = ['name', 'manufacturer', 'dosage_form']
+        unique_together = ['name', 'manufacturer'] # Removed 'dosage_form'
 
     @property
     def stock_quantity(self):

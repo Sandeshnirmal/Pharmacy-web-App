@@ -10,13 +10,19 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer # Imp
 # though it's typically set as a default in settings.py
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from .models import User, Address
-from .serializers import UserSerializer, AddressSerializer, RegisterSerializer, UserCreateSerializer
+from .models import User, Address, UserRole # Import UserRole
+from .serializers import UserSerializer, AddressSerializer, RegisterSerializer, UserCreateSerializer, UserRoleSerializer # Import UserRoleSerializer
 from rest_framework.decorators import action
 from django.db.models import Q
 from django.utils import timezone
 
 # --- ViewSets for CRUD operations (require authentication for most actions) ---
+class UserRoleViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = UserRole.objects.all()
+    serializer_class = UserRoleSerializer
+    permission_classes = [AllowAny] # Allow anyone to view roles, as they are needed for registration/frontend display
+
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().select_related('user_role').order_by('-date_joined')
     serializer_class = UserSerializer

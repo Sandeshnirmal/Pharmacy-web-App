@@ -62,7 +62,7 @@ class CanManageUsers(permissions.BasePermission):
 class UserRoleViewSet(viewsets.ModelViewSet):
     """ViewSet for managing user roles with full CRUD operations"""
     queryset = UserRole.objects.all()
-    permission_classes = [IsAdminUser]
+    permission_classes = [AllowAny] # Changed to AllowAny to allow unauthenticated access for viewing roles
     
     def get_serializer_class(self):
         if self.action == 'create':
