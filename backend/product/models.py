@@ -96,7 +96,7 @@ class Product(models.Model):
     """Enhanced Medicine database with multiple compositions support"""
     name = models.CharField(max_length=255)
     brand_name = models.CharField(max_length=200, blank=True)
-    generic_name = models.ForeignKey(GenericName, on_delete=models.CASCADE)
+    generic_name = models.ForeignKey(GenericName, on_delete=models.SET_NULL, null=True, blank=True)
     manufacturer = models.CharField(max_length=255, default='MedCorp')
 
     MEDICINE_TYPES = [

@@ -307,10 +307,6 @@ class ProductSerializer(serializers.ModelSerializer):
         queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
     )
     compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
-    # Field to accept detailed composition data for create/update
-    product_compositions_data = ProductCompositionSerializer(
-        many=True, write_only=True, required=False, source='product_compositions'
-    )
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
     )
@@ -322,7 +318,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'medicine_type', 'prescription_type',
             'min_stock_level',
             'description', 'uses',
-            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'product_compositions_data', 'composition_ids',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'composition_ids',
             'image', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'current_selling_price', 'current_cost_price',
@@ -364,16 +360,14 @@ class ProductSerializer(serializers.ModelSerializer):
         return obj.batches.count()
 
     def create(self, validated_data):
-        product_compositions_data = validated_data.pop('product_compositions', [])
+        composition_ids = validated_data.pop('compositions', []) # 'compositions' is the source for composition_ids
         product = super().create(validated_data)
-        for comp_data in product_compositions_data:
-            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
-            if composition_id:
-                ProductComposition.objects.create(product=product, composition_id=composition_id, **comp_data)
+        for comp_id in composition_ids:
+            ProductComposition.objects.create(product=product, composition=comp_id)
         return product
 
     def update(self, instance, validated_data):
-        product_compositions_data = validated_data.pop('product_compositions', [])
+        composition_ids = validated_data.pop('compositions', []) # 'compositions' is the source for composition_ids
 
         # Update basic product fields
         instance = super().update(instance, validated_data)
@@ -382,10 +376,8 @@ class ProductSerializer(serializers.ModelSerializer):
         # Clear existing compositions
         instance.product_compositions.all().delete()
         # Add new compositions
-        for comp_data in product_compositions_data:
-            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
-            if composition_id:
-                ProductComposition.objects.create(product=instance, composition_id=composition_id, **comp_data)
+        for comp_id in composition_ids:
+            ProductComposition.objects.create(product=instance, composition=comp_id)
         
         return instance
 
@@ -437,10 +429,6 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
     )
     compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
-    # Field to accept detailed composition data for create/update
-    product_compositions_data = ProductCompositionSerializer(
-        many=True, write_only=True, required=False, source='product_compositions'
-    )
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
     )
@@ -452,7 +440,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'medicine_type', 'prescription_type',
             'min_stock_level',
             'description', 'uses',
-            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'product_compositions_data', 'composition_ids',
+            'side_effects', 'how_to_use', 'precautions', 'storage', 'compositions', 'composition_ids',
             'image', 'hsn_code', 'category', 'category_id', 'is_active',
             'is_featured', 'created_at', 'updated_at', 'created_by',
             'batches', 'images', 'reviews', 'tags', 'average_rating',
@@ -472,16 +460,14 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         return calculate_effective_discount_percentage(obj)
 
     def create(self, validated_data):
-        product_compositions_data = validated_data.pop('product_compositions', [])
+        composition_ids = validated_data.pop('compositions', [])
         product = super().create(validated_data)
-        for comp_data in product_compositions_data:
-            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
-            if composition_id:
-                ProductComposition.objects.create(product=product, composition_id=composition_id, **comp_data)
+        for comp_id in composition_ids:
+            ProductComposition.objects.create(product=product, composition=comp_id)
         return product
 
     def update(self, instance, validated_data):
-        product_compositions_data = validated_data.pop('product_compositions', [])
+        composition_ids = validated_data.pop('compositions', [])
 
         # Update basic product fields
         instance = super().update(instance, validated_data)
@@ -490,10 +476,8 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         # Clear existing compositions
         instance.product_compositions.all().delete()
         # Add new compositions
-        for comp_data in product_compositions_data:
-            composition_id = comp_data.pop('composition').id if 'composition' in comp_data else None
-            if composition_id:
-                ProductComposition.objects.create(product=instance, composition_id=composition_id, **comp_data)
+        for comp_id in composition_ids:
+            ProductComposition.objects.create(product=instance, composition=comp_id)
         
         return instance
 
@@ -593,10 +577,19 @@ class FileSerializer(serializers.Serializer):
 
 class BulkProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), source='category', write_only=True, required=False, allow_null=True
+    )
     generic_name_str = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    generic_name_id = serializers.PrimaryKeyRelatedField(
+        queryset=GenericName.objects.all(), source='generic_name', write_only=True, required=False, allow_null=True
+    )
     created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
     product_unit_id = serializers.PrimaryKeyRelatedField(
         queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
+    )
+    composition_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
     )
 
     class Meta:
@@ -607,8 +600,8 @@ class BulkProductSerializer(serializers.ModelSerializer):
             'min_stock_level',
             'description', 'uses', 'side_effects', 'how_to_use',
             'precautions', 'storage', 'image', 'hsn_code',
-            'is_active', 'is_featured', 'category_name', 'generic_name_str', 'created_by',
-            'product_unit_id'
+            'is_active', 'is_featured', 'category_name', 'category_id', 'generic_name_str', 'generic_name_id', 'created_by',
+            'product_unit_id', 'composition_ids'
         ]
         extra_kwargs = {
             'generic_name': {'required': False},
@@ -618,39 +611,65 @@ class BulkProductSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         category_name = validated_data.pop('category_name', None)
+        category_id = validated_data.pop('category_id', None)
         generic_name_str = validated_data.pop('generic_name_str', None)
+        generic_name_id = validated_data.pop('generic_name_id', None)
         product_unit_id = validated_data.pop('product_unit_id', None)
+        composition_ids = validated_data.pop('compositions', [])
         
-        if category_name:
+        if category_id:
+            validated_data['category'] = category_id
+        elif category_name:
             category, created = Category.objects.get_or_create(name=category_name)
             validated_data['category'] = category
         
-        if generic_name_str:
+        if generic_name_id:
+            validated_data['generic_name'] = generic_name_id
+        elif generic_name_str:
             generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
             validated_data['generic_name'] = generic_name
 
         if product_unit_id:
             validated_data['product_unit'] = product_unit_id
         
-        return super().create(validated_data)
+        product = super().create(validated_data)
+
+        for comp_id in composition_ids:
+            ProductComposition.objects.create(product=product, composition=comp_id)
+
+        return product
 
     def update(self, instance, validated_data):
         category_name = validated_data.pop('category_name', None)
+        category_id = validated_data.pop('category_id', None)
         generic_name_str = validated_data.pop('generic_name_str', None)
+        generic_name_id = validated_data.pop('generic_name_id', None)
         product_unit_id = validated_data.pop('product_unit_id', None)
+        composition_ids = validated_data.pop('compositions', [])
 
-        if category_name:
+        if category_id:
+            validated_data['category'] = category_id
+        elif category_name:
             category, created = Category.objects.get_or_create(name=category_name)
             validated_data['category'] = category
         
-        if generic_name_str:
+        if generic_name_id:
+            validated_data['generic_name'] = generic_name_id
+        elif generic_name_str:
             generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
             validated_data['generic_name'] = generic_name
 
         if product_unit_id:
             validated_data['product_unit'] = product_unit_id
 
-        return super().update(instance, validated_data)
+        product = super().update(instance, validated_data)
+
+        # Handle product compositions
+        instance.product_compositions.all().delete()
+        for comp_id in composition_ids:
+            ProductComposition.objects.create(product=instance, composition=comp_id)
+
+        return product
 
 
 class WishlistSerializer(serializers.ModelSerializer):
