@@ -310,9 +310,14 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_by']
 
-    # The to_internal_value method is no longer needed for custom parsing of composition_ids
-    # as ListField(child=UUIDField()) handles it automatically.
-    # The previous pop('compositions', None) in create/update methods is still necessary.
+    def validate_image(self, value):
+        """
+        Ensure that if an empty string or None is passed for the image,
+        it's treated as None. This prevents "not a file" errors when no file is uploaded.
+        """
+        if value == '' or value is None:
+            return None
+        return value
 
     def create(self, validated_data):
         image_file = validated_data.pop('image', None) # Changed from image_url to image
@@ -350,9 +355,11 @@ class ProductCreateSerializer(serializers.ModelSerializer):
 
         if image_file: # Handle image file directly
             product.image.save(image_file.name, image_file, save=True)
-        elif 'image' in validated_data and not validated_data['image']:
-            # If image is explicitly set to null/empty, clear it
+        elif 'image' in validated_data and validated_data['image'] is None: # Check if image was explicitly set to None
+            # If image is explicitly set to None, clear it
             product.image.delete(save=True)
+        # If 'image' is not in validated_data, it means the frontend did not send a new image
+        # and intends to keep the existing one, so do nothing.
 
         return product
 

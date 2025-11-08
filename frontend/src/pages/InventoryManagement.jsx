@@ -290,6 +290,7 @@ const InventoryManagement = () => {
         manufacturing_date: batch.manufacturing_date,
         mfg_license_number: batch.mfg_license_number,
         is_primary: batch.is_primary,
+        selling_price: calculatedSellingPrice, // Include calculated selling price
       });
     };
 
@@ -381,11 +382,11 @@ const InventoryManagement = () => {
         discount_percentage: "",
         selling_price: "",
       });
-      fetchMedicines();
-      const updatedProductBatches = batches.filter(
-        (batch) => batch.product === selectedProduct.id
-      );
-      setSelectedProductBatches(updatedProductBatches);
+      fetchMedicines(); // Refresh overall product list
+      // Re-fetch the specific product to get its updated batches
+      const updatedProductResponse = await productAPI.getProduct(selectedProduct.id);
+      setSelectedProduct(updatedProductResponse.data);
+      setSelectedProductBatches(updatedProductResponse.data.batches || []);
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -439,31 +440,51 @@ const InventoryManagement = () => {
       formData.append("how_to_use", newProduct.how_to_use);
       formData.append("precautions", newProduct.precautions);
       formData.append("storage", newProduct.storage);
-      if (newProduct.image instanceof File) { // Ensure it's a File object
+      console.log("DEBUG: newProduct.image state before appending:", newProduct.image, "Type:", typeof newProduct.image, "Is File instance:", newProduct.image instanceof File);
+
+      // Handle image upload:
+      if (newProduct.image instanceof File) {
+        // If a new file is selected, append it.
         formData.append("image", newProduct.image);
-      } else if (editingProduct && newProduct.currentImage && !newProduct.image) {
-        // If editing and no new image is selected, but there was a current image,
-        // we don't append 'image' to keep the existing one.
-        // If the user explicitly cleared the image (e.g., by a "clear image" button, not implemented here),
-        // we would send a specific signal to the backend. For now, not sending means keep existing.
-      } else if (editingProduct && !newProduct.currentImage && !newProduct.image) {
-        // If editing and no current image and no new image, ensure backend knows to clear if needed.
-        // This case is handled by not appending anything, and backend's `validated_data.pop('image', None)`
-        // will result in `image_file` being `None`, thus not saving a new image.
-        // If the backend needs an explicit signal to *clear* an image, we'd send `formData.append("image", "")`
-        // or a specific flag. For now, assuming not sending means no change.
+        console.log("DEBUG: Appending new image file.");
+      } else if (editingProduct) {
+        // If editing an existing product and no new file is selected (newProduct.image is null or a string URL),
+        // we explicitly delete the 'image' field from formData.
+        // This tells the backend to retain the existing image.
+        formData.delete("image");
+        console.log("DEBUG: Editing existing product, no new image selected. Deleting 'image' field from FormData to retain current image.");
       }
+      // For new products (not editing) if newProduct.image is null, the 'image' field is simply not appended,
+      // which is the correct behavior for an optional file field.
       formData.append("hsn_code", newProduct.hsn_code);
       formData.append("category_id", newProduct.category_id); // Use category_id
       formData.append("is_active", newProduct.is_active);
       formData.append("is_featured", newProduct.is_featured);
 
-      // Prepare composition IDs for the backend
-      // For ListField with FormData, append each item individually
-      newProduct.selectedCompositions.forEach(id => {
-        formData.append("composition_ids", id);
-      });
-      // If no compositions are selected, nothing will be appended, which is fine for allow_empty=True
+      // Prepare composition IDs for the backend by appending each ID with '[]'
+      const filteredCompositions = newProduct.selectedCompositions.filter(id => id !== null && id !== undefined);
+      if (filteredCompositions.length > 0) {
+        filteredCompositions.forEach(id => {
+          formData.append("composition_ids[]", id); // Use '[]' to indicate a list
+        });
+      } else {
+        // If no compositions are selected, append an empty array indicator if the backend expects it.
+        // For DRF, sometimes omitting it is fine, but sending an empty array explicitly can be safer.
+        // We'll append an empty string with '[]' to signify an empty list.
+        formData.append("composition_ids[]", "");
+      }
+      // Log the formData before sending the request
+      console.log("FormData contents for composition_ids:");
+      for (let pair of formData.entries()) {
+        if (pair[0].startsWith("composition_ids")) {
+          console.log(pair[0] + ': ' + pair[1]);
+        }
+      }
+      // Log the formData before sending the request
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + pair[1]);
+      }
+
       if (editingProduct) {
         // Update existing product
         await productAPI.updateProduct(editingProduct.id, formData);
@@ -489,7 +510,7 @@ const InventoryManagement = () => {
       name: product.name,
       brand_name: product.brand_name,
       category_id: product.category ? product.category.id : "",
-      generic_name: product.generic_name || "", // generic_name is now a string
+      generic_name: genericNames.find(gn => gn.name === product.generic_name)?.id || "", // Map generic name string to ID
       manufacturer: product.manufacturer,
       medicine_type: product.medicine_type,
       prescription_type: product.prescription_type,
@@ -2029,10 +2050,11 @@ const InventoryManagement = () => {
                       </label>
                       <select
                         required
-                        value={comp_id}
+                        value={comp_id === null ? "" : comp_id}
                         onChange={(e) => {
                           const updatedCompositions = [...newProduct.selectedCompositions];
-                          updatedCompositions[index] = e.target.value;
+                          const value = e.target.value === "" ? null : Number(e.target.value); // Convert to Number or null
+                          updatedCompositions[index] = value;
                           setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
                         }}
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
@@ -2064,7 +2086,7 @@ const InventoryManagement = () => {
                       ...newProduct,
                       selectedCompositions: [
                         ...newProduct.selectedCompositions,
-                        "",
+                        null, // Use null as a placeholder for new, unselected compositions
                       ],
                     })
                   }

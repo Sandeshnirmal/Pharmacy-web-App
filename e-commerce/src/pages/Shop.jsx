@@ -95,20 +95,22 @@ function Shop() {
       // Fetch products based on filters, segment, and pagination
       const productsResponse = await productAPI.getProducts(currentPage, productsPerPage, queryParams);
 
-      const fetchedProducts = productsResponse.data.map(p => ({
-        id: p.id,
-        category: p.category_name,
-        name: p.name,
-        description: p.description,
-        online_mrp_price: p.current_batch.online_mrp_price,
-        online_discount_percentage: p.current_batch.online_discount_percentage,
-        online_selling_price: p.current_batch.online_selling_price,
-        images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
-        fullDescription: p.description,
-        usage: p.usage_instructions,
-        ingredients: p.ingredients,
-        reviews: [],
-      }));
+      const fetchedProducts = productsResponse.data
+        .filter(p => p.current_batch !== null) // Filter out products with null current_batch
+        .map(p => ({
+          id: p.id,
+          category: p.category_name,
+          name: p.name,
+          description: p.description,
+          online_mrp_price: p.current_batch.online_mrp_price,
+          online_discount_percentage: p.current_batch.online_discount_percentage,
+          online_selling_price: p.current_batch.online_selling_price,
+          images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
+          fullDescription: p.description,
+          usage: p.usage_instructions,
+          ingredients: p.ingredients,
+          reviews: [],
+        }));
       setProducts(fetchedProducts);
       setTotalProducts(productsResponse.data.length);
     } catch (err) {
