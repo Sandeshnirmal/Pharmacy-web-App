@@ -11,7 +11,7 @@ from django.db import transaction # New import
 from product.models import Product, Batch, ProductUnit # Moved import, added Batch, ProductUnit
 from inventory.models import StockMovement # Import StockMovement
 from .models import Order, OrderItem, OrderTracking, OrderStatusHistory
-from .serializers import OrderSerializer, OrderItemSerializer
+from .serializers import OrderSerializer, OrderItemSerializer, CancelOrderSerializer # Import CancelOrderSerializer
 import logging
 import base64
 import uuid
@@ -1250,3 +1250,238 @@ def deduct_inventory_from_batches(order, product, quantity_to_deduct, product_un
         raise ValueError(f"Insufficient stock for product {product.name}. Needed {quantity_in_base_units} base units, but could only deduct {quantity_in_base_units - remaining_to_deduct} base units.")
     
     return deducted_batches_info
+
+
+def return_inventory_to_batches(order, product, quantity_to_return, product_unit_id, user, reason="Order cancellation"):
+    """
+    Returns the specified quantity of a product to batches.
+    Records stock movements for each return.
+    """
+    if quantity_to_return <= 0:
+        return
+
+    # Convert quantity_to_return from its original unit to base units
+    if product_unit_id:
+        try:
+            product_unit = ProductUnit.objects.get(id=product_unit_id)
+            quantity_in_base_units = quantity_to_return * product_unit.conversion_factor
+        except ProductUnit.DoesNotExist:
+            raise ValueError(f"ProductUnit with ID {product_unit_id} not found for product {product.name}.")
+    else:
+        # If no product_unit is specified, assume quantity is already in base units
+        quantity_in_base_units = quantity_to_return
+
+    if quantity_in_base_units <= 0:
+        return
+
+    # Find the batch from which the item was originally deducted for this order, if possible.
+    # Otherwise, add to any active batch or create a new stock movement without a specific batch if no active batch exists.
+    # For simplicity, we'll add to the batch with the latest expiry date first, or any available batch.
+    batches = Batch.objects.filter(
+        product=product,
+        expiry_date__gte=timezone.now().date() # Only consider non-expired batches
+    ).order_by('-expiry_date') # Prioritize latest expiry for returns
+
+    remaining_to_return = quantity_in_base_units
+    returned_batches_info = []
+
+    for batch in batches:
+        if remaining_to_return <= 0:
+            break
+
+        return_to_batch = remaining_to_return
+        batch.current_quantity += return_to_batch
+        batch.save(update_fields=['current_quantity'])
+
+        # Record stock movement (quantity in base units)
+        StockMovement.objects.create(
+            product=product,
+            batch=batch,
+            movement_type='IN',
+            quantity=return_to_batch,
+            product_unit=product.product_unit, # Use product's default base unit for stock movement
+            reference_number=f"ORDER_CANCEL_{order.id}_PRODUCT_{product.id}",
+            notes=f"Returned {return_to_batch} base units due to order cancellation {order.id} (Product: {product.name}, Batch: {batch.batch_number}). Reason: {reason}",
+            created_by=user
+        )
+        returned_batches_info.append({
+            'batch_id': batch.id,
+            'batch_number': batch.batch_number,
+            'returned_quantity': return_to_batch
+        })
+        remaining_to_return -= return_to_batch
+    
+    # If there's still quantity to return and no suitable batch was found,
+    # we should still record the stock movement, perhaps without a specific batch,
+    # or log an error/warning. For now, we'll assume there's always a batch to return to.
+    # In a real system, you might create a new batch or add to a "general" stock.
+    if remaining_to_return > 0:
+        # This scenario implies no active batches to return to.
+        # For simplicity, we'll add it to the first available batch or log a warning.
+        # A more robust solution might involve creating a new batch or a specific "returned stock" mechanism.
+        logger.warning(f"No suitable active batch found to return {remaining_to_return} base units for product {product.name}. Recording as general IN movement.")
+        # Create a stock movement without a specific batch if no suitable batch exists
+        StockMovement.objects.create(
+            product=product,
+            movement_type='IN',
+            quantity=remaining_to_return,
+            product_unit=product.product_unit,
+            reference_number=f"ORDER_CANCEL_{order.id}_PRODUCT_{product.id}_NO_BATCH",
+            notes=f"Returned {remaining_to_return} base units due to order cancellation {order.id} (Product: {product.name}). No specific active batch found. Reason: {reason}",
+            created_by=user
+        )
+        returned_batches_info.append({
+            'batch_id': None,
+            'batch_number': 'N/A',
+            'returned_quantity': remaining_to_return
+        })
+
+    return returned_batches_info
+
+
+class OrderViewSet(viewsets.ModelViewSet):
+    queryset = Order.objects.all().order_by('-order_date')
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated] # Changed to IsAuthenticated
+    authentication_classes = [JWTAuthentication] # Add JWTAuthentication
+    pagination_class = OrderPagination # Add pagination class
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        status_filter = self.request.query_params.get('order_status', None)
+        payment_status = self.request.query_params.get('payment_status', None)
+        is_prescription = self.request.query_params.get('is_prescription_order', None)
+        # user_id = self.request.query_params.get('user_id', None) # Removed as we only filter by authenticated user
+
+        if status_filter:
+            queryset = queryset.filter(order_status=status_filter)
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
+        if is_prescription:
+            queryset = queryset.filter(is_prescription_order=is_prescription.lower() == 'true')
+        
+        # If the user is an admin, show all orders, otherwise filter by the authenticated user
+        if self.request.user.is_staff:
+            # Admins see all orders, no user-specific filtering
+            pass
+        elif self.request.user.is_authenticated:
+            queryset = queryset.filter(user=self.request.user)
+        else:
+            # If no user is authenticated, return an empty queryset
+            return queryset.none()
+
+        return queryset.select_related('user', 'address').prefetch_related(
+            'items__product',
+            'items__batch',
+            'tracking_updates',
+            'status_history'
+        )
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Get order statistics for admin dashboard"""
+        total_orders = Order.objects.count()
+        pending_orders = Order.objects.filter(order_status='Pending').count()
+        processing_orders = Order.objects.filter(order_status='Processing').count()
+        delivered_orders = Order.objects.filter(order_status='Delivered').count()
+        prescription_orders = Order.objects.filter(is_prescription_order=True).count()
+
+        total_revenue = Order.objects.filter(
+            payment_status='Paid'
+        ).aggregate(Sum('total_amount'))['total_amount__sum'] or 0
+
+        return Response({
+            'total_orders': total_orders,
+            'pending_orders': pending_orders,
+            'processing_orders': processing_orders,
+            'delivered_orders': delivered_orders,
+            'prescription_orders': prescription_orders,
+            'total_revenue': total_revenue,
+        })
+
+    @action(detail=True, methods=['patch'])
+    def update_status(self, request, pk=None):
+        """Update order status (Admin only)"""
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Permission denied. Admin access required to update order status.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        order = self.get_object()
+        new_status = request.data.get('order_status')
+
+        if new_status in dict(Order.ORDER_STATUS):
+            old_status = order.order_status
+            order.order_status = new_status
+            order.save()
+
+            # Record status history
+            OrderStatusHistory.objects.create(
+                order=order,
+                old_status=old_status,
+                new_status=new_status,
+                changed_by=request.user,
+                reason=f'Manually updated by admin to {new_status}'
+            )
+            return Response({'message': 'Order status updated successfully'})
+
+        return Response(
+            {'error': 'Invalid order status'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    @action(detail=True, methods=['post'])
+    def cancel_order(self, request, pk=None):
+        """
+        Cancel an order with a reason.
+        Only the user who placed the order or an admin can cancel.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permissions
+        if not (user.is_staff or order.user == user):
+            return Response(
+                {'error': 'Permission denied. You can only cancel your own orders or have admin access.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if the order can be cancelled
+        if order.order_status in ['Delivered', 'Cancelled', 'Returned', 'Aborted']:
+            return Response(
+                {'error': f'Order cannot be cancelled as it is already {order.order_status}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = CancelOrderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cancellation_reason = serializer.validated_data['reason']
+
+        with transaction.atomic():
+            old_status = order.order_status
+            order.order_status = 'Cancelled'
+            order.payment_status = 'Refunded' # Assuming cancellation implies refund
+            order.save()
+
+            # Record status history
+            OrderStatusHistory.objects.create(
+                order=order,
+                old_status=old_status,
+                new_status='Cancelled',
+                changed_by=user,
+                reason=cancellation_reason
+            )
+
+            # Return stock to inventory
+            for item in order.items.all():
+                return_inventory_to_batches(
+                    order=order,
+                    product=item.product,
+                    quantity_to_return=item.quantity,
+                    product_unit_id=item.product_unit.id if item.product_unit else None,
+                    user=user,
+                    reason=cancellation_reason
+                )
+
+            return Response({'message': 'Order cancelled successfully', 'order_id': order.id}, status=status.HTTP_200_OK)

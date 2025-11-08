@@ -177,7 +177,7 @@ function ProfilePage() {
         if (loadingOrders) {
           return <p className="text-center text-gray-600">Loading order history...</p>;
         }
-        return <OrderHistoryContent orders={orders} />;
+        return <OrderHistoryContent orders={orders} onOrderCancelled={fetchOrderData} />;
       case "address":
         if (loadingAddresses) {
           return <p className="text-center text-gray-600">Loading address book...</p>;

@@ -908,6 +908,22 @@ export const orderAPI = {
     });
     return axiosInstance.post('/api/order/enhanced/create-paid-order/', orderData);
   },
+
+  cancelOrder: async (orderId, reason) => {
+    // Invalidate cache for order lists and specific order when cancelling
+    Object.keys(apiCache).forEach(key => {
+      if (key.startsWith('orders-') || key === `order-${orderId}`) {
+        delete apiCache[key];
+      }
+    });
+    try {
+      const response = await axiosInstance.post(`/order/orders/${orderId}/cancel/`, { reason });
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      console.error(`Error cancelling order ${orderId}:`, error.response || error);
+      return { success: false, error: error.response?.data?.error || "Failed to cancel order", status: error.response?.status };
+    }
+  },
 };
 
 // ============================================================================
