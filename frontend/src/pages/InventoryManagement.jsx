@@ -136,7 +136,8 @@ const InventoryManagement = () => {
   const [newBatch, setNewBatch] = useState({
     product: "",
     batch_number: "",
-    quantity: "",
+    ordered_quantity_display: "", // User-entered quantity in selected unit
+    product_unit_id: "", // Selected product unit
     expiry_date: "",
     cost_price: "",
     mrp_price: "",
@@ -366,16 +367,24 @@ const InventoryManagement = () => {
       const calculatedSellingPrice = parseFloat((newBatch.mrp_price - (newBatch.mrp_price * newBatch.discount_percentage / 100)).toFixed(2));
 
       const batchData = {
-        ...newBatch,
         product: selectedProduct.id,
+        batch_number: newBatch.batch_number,
+        quantity: newBatch.ordered_quantity_display, // Send display quantity
+        product_unit_id: newBatch.product_unit_id, // Send selected unit ID
+        expiry_date: newBatch.expiry_date,
+        cost_price: newBatch.cost_price,
+        mrp_price: newBatch.mrp_price,
+        discount_percentage: newBatch.discount_percentage,
         selling_price: calculatedSellingPrice,
       };
       await productAPI.addBatch(batchData);
+      setSuccessMessage("Batch added successfully!");
       setShowAddBatchForm(false);
       setNewBatch({
         product: "",
         batch_number: "",
-        quantity: "",
+        ordered_quantity_display: "",
+        product_unit_id: "",
         expiry_date: "",
         cost_price: "",
         mrp_price: "",
@@ -2165,7 +2174,10 @@ const InventoryManagement = () => {
                       Batch #
                     </th>
                     <th scope="col" className="px-6 py-3">
-                      Quantity
+                      Quantity (Unit)
+                    </th>
+                    <th scope="col" className="px-6 py-3">
+                      Quantity (Base Unit)
                     </th>
                     <th scope="col" className="px-6 py-3">
                       MRP
@@ -2202,7 +2214,12 @@ const InventoryManagement = () => {
                           <td className="px-6 py-4 font-medium text-gray-900">
                             {batch.batch_number}
                           </td>
-                          <td className="px-6 py-4">{batch.current_quantity}</td>
+                          <td className="px-6 py-4">
+                            {batch.current_quantity} {batch.selected_unit_abbreviation || 'Units'}
+                          </td>
+                          <td className="px-6 py-4">
+                            {batch.quantity} {batch.product_unit?.base_unit_abbreviation || 'Base Units'}
+                          </td>
                           <td className="px-6 py-4">
                             ₹{batch.mrp_price}
                           </td>
@@ -2291,13 +2308,34 @@ const InventoryManagement = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         required
-                        value={newBatch.quantity}
+                        value={newBatch.ordered_quantity_display}
                         onChange={(e) =>
-                          setNewBatch({ ...newBatch, quantity: e.target.value })
+                          setNewBatch({ ...newBatch, ordered_quantity_display: e.target.value })
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Product Unit
+                      </label>
+                      <select
+                        required
+                        value={newBatch.product_unit_id}
+                        onChange={(e) =>
+                          setNewBatch({ ...newBatch, product_unit_id: e.target.value })
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Unit</option>
+                        {productUnits.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {unit.unit_name} ({unit.unit_abbreviation})
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">

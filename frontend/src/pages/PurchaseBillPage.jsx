@@ -56,36 +56,6 @@ const PurchaseBillPage = () => {
     }
   };
 
-  const handleReturnItems = async (poId) => {
-    // Navigate to a return items page, passing the PO ID
-    window.location.href = `/purchase-bill-return/${poId}`;
-  };
-
-  const handleCancelPO = async (poId) => {
-    if (window.confirm(`Are you sure you want to CANCEL Purchase Order #${poId}?`)) {
-      try {
-        await inventoryAPI.updatePurchaseOrder(poId, { status: 'CANCELLED' });
-        fetchPurchaseOrders(); // Refresh the list
-        alert(`Purchase Order #${poId} has been CANCELLED.`);
-      } catch (error) {
-        console.error("Error cancelling purchase order:", error);
-        alert("Failed to cancel purchase order.");
-      }
-    }
-  };
-
-  const handleDelete = async (poId) => {
-    if (window.confirm(`Are you sure you want to DELETE Purchase Order #${poId}? This action cannot be undone.`)) {
-      try {
-        await inventoryAPI.deletePurchaseOrder(poId);
-        fetchPurchaseOrders(); // Refresh the list
-        alert(`Purchase Order #${poId} has been DELETED.`);
-      } catch (error) {
-        console.error("Error deleting purchase order:", error);
-        alert("Failed to delete purchase order.");
-      }
-    }
-  };
 
   if (loading) {
     return <div className="p-6 text-center">Loading purchase orders...</div>;
@@ -193,27 +163,6 @@ const PurchaseBillPage = () => {
                         title="Receive Items"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" /> Receive Items
-                      </button>
-                      <button
-                        onClick={() => handleReturnItems(po.id)}
-                        className="text-yellow-600 hover:text-yellow-900 flex items-center"
-                        title="Return Items"
-                      >
-                        <RotateCcw className="w-4 h-4 mr-1" /> Return Items
-                      </button>
-                      <button
-                        onClick={() => handleCancelPO(po.id)}
-                        className="text-red-600 hover:text-red-900 flex items-center"
-                        title="Cancel Purchase Order"
-                      >
-                        <XCircle className="w-4 h-4 mr-1" /> Cancel PO
-                      </button>
-                      <button
-                        onClick={() => handleDelete(po.id)}
-                        className="text-gray-600 hover:text-gray-900 flex items-center"
-                        title="Delete Purchase Order"
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" /> Delete
                       </button>
                     </div>
                   </td>

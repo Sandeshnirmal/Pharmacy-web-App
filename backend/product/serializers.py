@@ -199,6 +199,14 @@ class BatchSerializer(serializers.ModelSerializer):
     online_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     offline_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    
+    # Add fields for product unit information
+    product_unit = ProductUnitSerializer(read_only=True)
+    product_unit_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
+    )
+    selected_unit_name = serializers.CharField(read_only=True)
+    selected_unit_abbreviation = serializers.CharField(read_only=True)
 
     class Meta:
         model = Batch
@@ -210,7 +218,8 @@ class BatchSerializer(serializers.ModelSerializer):
             'online_mrp_price', 'online_discount_percentage', 'online_selling_price', # Online
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price', # Offline
             'mfg_license_number', 'created_at',
-            'updated_at', 'days_to_expiry', 'is_expired', 'expiry_status'
+            'updated_at', 'days_to_expiry', 'is_expired', 'expiry_status',
+            'product_unit', 'product_unit_id', 'selected_unit_name', 'selected_unit_abbreviation' # Add new fields
         ]
         extra_kwargs = {
             'current_quantity': {'required': False},
@@ -239,9 +248,42 @@ class BatchSerializer(serializers.ModelSerializer):
             return 'Good'
 
     def create(self, validated_data):
-        if 'current_quantity' not in validated_data:
-            validated_data['current_quantity'] = validated_data.get('quantity', 0)
+        product_unit = validated_data.pop('product_unit', None)
+        # Assuming 'quantity' in validated_data from frontend is the display quantity
+        display_quantity = validated_data.get('quantity', 0)
+
+        if product_unit:
+            validated_data['quantity'] = display_quantity * product_unit.conversion_factor
+            validated_data['current_quantity'] = validated_data['quantity'] # Set current_quantity to base unit quantity
+            validated_data['selected_unit_name'] = product_unit.unit_name
+            validated_data['selected_unit_abbreviation'] = product_unit.unit_abbreviation
+        else:
+            # If no product_unit is provided, assume quantity is already in base units
+            validated_data['quantity'] = display_quantity
+            validated_data['current_quantity'] = display_quantity
+            validated_data['selected_unit_name'] = 'Base Unit' # Default
+            validated_data['selected_unit_abbreviation'] = 'BU' # Default
+
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        product_unit = validated_data.pop('product_unit', None)
+        display_quantity = validated_data.get('quantity', None) # Get display quantity if provided
+
+        if display_quantity is not None:
+            if product_unit:
+                instance.quantity = display_quantity * product_unit.conversion_factor
+                instance.current_quantity = instance.quantity # Update current_quantity to base unit quantity
+                instance.selected_unit_name = product_unit.unit_name
+                instance.selected_unit_abbreviation = product_unit.unit_abbreviation
+            else:
+                instance.quantity = display_quantity
+                instance.current_quantity = display_quantity
+                instance.selected_unit_name = 'Base Unit'
+                instance.selected_unit_abbreviation = 'BU'
+            validated_data['quantity'] = instance.quantity # Ensure validated_data reflects base unit quantity
+
+        return super().update(instance, validated_data)
 
 
 # ----------------------------
@@ -706,7 +748,8 @@ class ProductSearchSerializer(serializers.ModelSerializer):
             'discount_percentage', 'primary_image',
             'batches',
             'current_selling_price',
-            'current_cost_price'
+            'current_cost_price',
+            'is_prescription_required'
         ]
 
     def get_current_selling_price(self, obj):
@@ -738,3 +781,6 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         elif obj.images.exists():
             return obj.images.first().image_url
         return None
+
+    def get_is_prescription_required(self, obj):
+        return obj.prescription_type in ['prescription', 'controlled']

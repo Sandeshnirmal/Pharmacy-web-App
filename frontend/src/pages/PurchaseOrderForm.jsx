@@ -19,6 +19,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
 
   const [items, setItems] = useState([]); // Items for the purchase order
   const [suppliers, setSuppliers] = useState([]);
+  const [productUnits, setProductUnits] = useState([]); // State for product units
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -32,14 +33,16 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [suppliersResponse] = await Promise.all([
+        const [suppliersResponse, productUnitsResponse] = await Promise.all([
           inventoryAPI.getSuppliers(),
-          // productAPI.getProducts(), // Products will be fetched on demand by ModalSearchSelect
+          productAPI.getProductUnits(), // Fetch product units
         ]);
         setSuppliers(suppliersResponse.data.results || suppliersResponse.data);
-        // setProducts(productsResponse.data.results || productsResponse.data);
+        const fetchedProductUnits = productUnitsResponse.data.results || productUnitsResponse.data;
+        setProductUnits(fetchedProductUnits); // Set product units
+        console.log("Fetched Product Units:", fetchedProductUnits); // Debug log
       } catch (err) {
-        setError("Failed to fetch initial data (suppliers).");
+        setError("Failed to fetch initial data (suppliers or product units).");
         console.error("Error fetching initial data:", err);
       } finally {
         setLoading(false);
@@ -60,17 +63,18 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       // Map initialData.items to the local items state
       const initialItems = initialData.items.map((item) => ({
         product: item.product,
-        quantity: item.quantity,
+        ordered_quantity_display: item.ordered_quantity_display, // Display quantity
+        quantity: item.quantity, // Base unit quantity
+        product_unit_id: item.product_unit?.id || "", // Selected unit ID
         unit_price: parseFloat(item.unit_price),
         product_details: item.product_details || null, // Assume product_details comes with initialData or will be fetched
         mrp: item.mrp || "",
         packing: item.packing || "",
         batch_number: item.batch_number || "",
         expiry_date: item.expiry_date || "",
-        // free: item.free || 0, // Removed as per user request
         tax: item.tax || "5",
         disc: item.disc || 0,
-        amount: (item.quantity * parseFloat(item.unit_price)).toFixed(2),
+        amount: (item.ordered_quantity_display * parseFloat(item.unit_price)).toFixed(2), // Use display quantity for amount
       }));
       setItems(initialItems);
     } else {
@@ -96,11 +100,22 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     const newItems = [...items];
     newItems[index][name] = value;
 
-    // Recalculate amount if quantity or rate changes
-    if (name === "quantity" || name === "unit_price") {
-      const qty = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(newItems[index].unit_price || 0);
-      newItems[index].amount = (qty * rate).toFixed(2);
+    // Recalculate amount if ordered_quantity_display or unit_price changes
+    if (name === "ordered_quantity_display" || name === "unit_price" || name === "product_unit_id") {
+      const orderedQty = parseFloat(newItems[index].ordered_quantity_display || 0);
+      const unitPrice = parseFloat(newItems[index].unit_price || 0);
+      const selectedUnitId = newItems[index].product_unit_id;
+      const selectedUnit = productUnits.find(unit => unit.id === parseInt(selectedUnitId));
+
+      // Calculate quantity in base units
+      let quantityInBaseUnits = orderedQty;
+      if (selectedUnit) {
+        quantityInBaseUnits = orderedQty * parseFloat(selectedUnit.conversion_factor);
+      }
+      newItems[index].quantity = quantityInBaseUnits; // Update base unit quantity
+
+      // Calculate amount based on ordered_quantity_display
+      newItems[index].amount = (orderedQty * unitPrice).toFixed(2);
     }
 
     setItems(newItems);
@@ -127,16 +142,34 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       newItems[index].unit_price = product.current_cost_price || 0;
       newItems[index].packing = product.pack_size || "";
       newItems[index].mrp = product.mrp || 0;
-      // Recalculate amount
-      const qty = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(newItems[index].unit_price || 0);
-      newItems[index].amount = (qty * rate).toFixed(2);
+      // Set default product unit if available
+      if (product.product_unit) {
+        newItems[index].product_unit_id = product.product_unit.id;
+      } else {
+        newItems[index].product_unit_id = ""; // No default unit
+      }
+
+      // Recalculate amount and base unit quantity
+      const orderedQty = parseFloat(newItems[index].ordered_quantity_display || 0);
+      const unitPrice = parseFloat(newItems[index].unit_price || 0);
+      const selectedUnit = productUnits.find(unit => unit.id === parseInt(newItems[index].product_unit_id));
+
+      let quantityInBaseUnits = orderedQty;
+      if (selectedUnit) {
+        quantityInBaseUnits = orderedQty * parseFloat(selectedUnit.conversion_factor);
+      }
+      newItems[index].quantity = quantityInBaseUnits; // Update base unit quantity
+
+      newItems[index].amount = (orderedQty * unitPrice).toFixed(2);
     } else {
       // Clear product and related fields
       newItems[index] = {
         ...newItems[index],
         product: "",
         product_details: null,
+        ordered_quantity_display: 0,
+        quantity: 0,
+        product_unit_id: "",
         unit_price: 0,
         packing: "",
         mrp: 0,
@@ -151,14 +184,15 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       ...items,
       {
         product: "", // Product ID
-        quantity: 0,
+        ordered_quantity_display: 0, // User-entered quantity
+        quantity: 0, // Base unit quantity (calculated)
+        product_unit_id: "", // Selected product unit ID
         unit_price: 0,
         product_details: null, // To store product object for display
         mrp: 0,
         packing: "",
         batch_number: "",
         expiry_date: "",
-        // free: 0, // Removed as per user request
         tax: 5,
         disc: 0,
         amount: "0.00",
@@ -213,7 +247,9 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
 
     const itemsPayload = items.map((item) => ({
       product: item.product ? parseInt(item.product) : null, // Send product ID or null
-      quantity: parseInt(item.quantity),
+      ordered_quantity_display: parseFloat(item.ordered_quantity_display), // Send display quantity
+      product_unit: item.product_unit_id ? parseInt(item.product_unit_id) : null, // Send product unit ID
+      quantity: parseFloat(item.quantity), // Send base unit quantity (calculated)
       unit_price: parseFloat(item.unit_price),
       tax_percentage: parseFloat(item.tax || 0), // Include tax_percentage
       batch_number: item.batch_number, // Include batch number
@@ -396,9 +432,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                     Product <span className="text-red-500">*</span>
                   </th>
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Packing
-                  </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     MRP
                   </th>
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -408,11 +441,11 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                     Exp. Date
                   </th>
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Unit
+                  </th>
+                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Qty <span className="text-red-500">*</span>
                   </th>
-                  {/* <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Free
-                  </th> */}
                   <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Rate <span className="text-red-500">*</span>
                   </th>
@@ -462,16 +495,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                     </td>
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
-                        type="text"
-                        name="packing"
-                        value={item.packing || ""}
-                        onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
-                        placeholder="Packing"
-                      />
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <input
                         type="number"
                         name="mrp"
                         value={item.mrp}
@@ -501,27 +524,32 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                       />
                     </td>
                     <td className="py-2 px-3 whitespace-nowrap">
+                      <select
+                        name="product_unit_id"
+                        value={item.product_unit_id}
+                        onChange={(e) => handleItemChange(index, e)}
+                        // Removed styling classes for debugging
+                      >
+                        <option value="">Select Unit</option>
+                        {productUnits.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {unit.unit_name} ({unit.unit_abbreviation})
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="number"
-                        name="quantity"
-                        value={item.quantity}
+                        name="ordered_quantity_display"
+                        value={item.ordered_quantity_display}
                         onChange={(e) => handleItemChange(index, e)}
                         className="w-full p-1 border border-gray-200 rounded-md"
                         min="0"
+                        step="0.01"
                         required
                       />
                     </td>
-                    {/* Removed Free field as per user request */}
-                    {/* <td className="py-2 px-3 whitespace-nowrap">
-                      <input
-                        type="number"
-                        name="free"
-                        value={item.free}
-                        onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
-                        min="0"
-                      />
-                    </td> */}
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="number"
@@ -610,27 +638,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                   ₹ {totalTax.toFixed(2)}
                 </span>
               </div>
-              {/* Bill Disc. input can be added here if it's a separate field */}
-              <div className="mt-4">
-                <label
-                  htmlFor="billDisc"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Bill Discount (%)
-                </label>
-                <div className="flex items-center mt-1">
-                  <input
-                    type="number"
-                    id="billDisc"
-                    name="billDisc"
-                    className="block w-24 p-2 border border-gray-300 rounded-l-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    defaultValue="0.00" // This would need a state variable if it's interactive
-                  />
-                  <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                    %
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* Goods Value & Invoice Value */}
@@ -708,12 +715,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
               onClick={onFormClose} // Use the prop to close the form
             >
               Close
-            </button>
-            <button
-              type="button"
-              className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700"
-            >
-              Last Deal
             </button>
           </div>
         </form>

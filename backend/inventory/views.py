@@ -223,9 +223,14 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             except PurchaseOrderItem.DoesNotExist:
                 return Response({'detail': f'Purchase order item with id {item_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-            if received_quantity > (po_item.quantity - po_item.received_quantity):
+            if received_quantity > (po_item.ordered_quantity_display - po_item.received_quantity):
                 return Response({'detail': f'Received quantity for item {po_item.product.name} exceeds outstanding quantity.'}, status=status.HTTP_400_BAD_REQUEST)
             
+            # Calculate quantity in base units for stock update
+            quantity_in_base_units = received_quantity
+            if po_item.product_unit:
+                quantity_in_base_units = received_quantity * po_item.product_unit.conversion_factor
+
             po_item.received_quantity += received_quantity
             po_item.save()
 
@@ -234,24 +239,28 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             expiry_date = po_item.expiry_date # Get expiry date from purchase order item
 
             batch, created = Batch.objects.get_or_create(
-                product=product,
+                product=po_item.product, # Use po_item.product here
                 batch_number=batch_number,
                 expiry_date=expiry_date,
                 defaults={'quantity': 0, 'current_quantity': 0} # Default values if creating a new batch
             )
             
-            # Update batch quantity
-            batch.quantity += received_quantity
-            batch.current_quantity += received_quantity
+            # Update batch quantity using base units
+            batch.quantity += quantity_in_base_units
+            batch.current_quantity += quantity_in_base_units
             batch.save()
 
             StockMovement.objects.create(
-                product=product,
+                product=po_item.product, # Use po_item.product here
                 batch=batch,
                 movement_type='IN',
-                quantity=received_quantity,
+                moved_quantity_display=received_quantity, # Store display quantity
+                quantity=quantity_in_base_units, # Store base unit quantity
+                product_unit=po_item.product_unit,
+                selected_unit_name=po_item.selected_unit_name,
+                selected_unit_abbreviation=po_item.selected_unit_abbreviation,
                 reference_number=f"PO-{purchase_order.id}",
-                notes=f"Received {received_quantity} units for Purchase Order #{purchase_order.id} into batch {batch.batch_number}",
+                notes=f"Received {received_quantity} {po_item.selected_unit_name} ({quantity_in_base_units} base units) for Purchase Order #{purchase_order.id} into batch {batch.batch_number}",
                 created_by=request.user
             )
 
@@ -307,9 +316,14 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 purchase_return.delete() # Rollback
                 return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-            if quantity > purchase_order_item.quantity - purchase_order_item.returned_quantity:
+            if quantity > purchase_order_item.ordered_quantity_display - purchase_order_item.returned_quantity:
                 purchase_return.delete() # Rollback
                 return Response({'detail': f'Return quantity for item {product.name} exceeds available quantity.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Calculate quantity in base units for stock update
+            quantity_in_base_units = quantity
+            if purchase_order_item.product_unit:
+                quantity_in_base_units = quantity * purchase_order_item.product_unit.conversion_factor
 
             # Get batch_number and expiry_date from the original PurchaseOrderItem
             batch_number = purchase_order_item.batch_number
@@ -319,7 +333,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 purchase_return=purchase_return,
                 purchase_order_item=purchase_order_item,
                 product=product,
-                quantity=quantity,
+                quantity=quantity, # Store display quantity in PurchaseReturnItem
                 unit_price=unit_price,
                 batch_number=batch_number,
                 expiry_date=expiry_date
@@ -339,18 +353,22 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
             if batch:
                 print(f"Before deduction: Batch {batch.batch_number}, Product {product.name}, Total Quantity: {batch.quantity}, Current Quantity: {batch.current_quantity}")
-                if batch.current_quantity >= quantity:
-                    batch.current_quantity -= quantity
-                    batch.quantity -= quantity # Deduct from total quantity as well
+                if batch.current_quantity >= quantity_in_base_units:
+                    batch.current_quantity -= quantity_in_base_units
+                    batch.quantity -= quantity_in_base_units # Deduct from total quantity as well
                     batch.save()
                     print(f"After deduction: Batch {batch.batch_number}, Product {product.name}, New Total Quantity: {batch.quantity}, New Current Quantity: {batch.current_quantity}")
                     StockMovement.objects.create(
                         product=product,
                         batch=batch,
                         movement_type='SUPPLIER_RETURN',
-                        quantity=quantity,
+                        moved_quantity_display=quantity, # Store display quantity
+                        quantity=quantity_in_base_units, # Store base unit quantity
+                        product_unit=purchase_order_item.product_unit,
+                        selected_unit_name=purchase_order_item.selected_unit_name,
+                        selected_unit_abbreviation=purchase_order_item.selected_unit_abbreviation,
                         reference_number=f"PR-{purchase_return.id}",
-                        notes=f"Returned {quantity} units of {product.name} from batch {batch.batch_number} (PO Item {purchase_order_item.id}) for Purchase Return #{purchase_return.id}.",
+                        notes=f"Returned {quantity} {purchase_order_item.selected_unit_name} ({quantity_in_base_units} base units) of {product.name} from batch {batch.batch_number} (PO Item {purchase_order_item.id}) for Purchase Return #{purchase_return.id}.",
                         created_by=request.user
                     )
                 else:

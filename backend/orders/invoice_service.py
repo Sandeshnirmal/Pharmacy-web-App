@@ -121,8 +121,13 @@ class InvoiceService:
     
     @staticmethod
     def create_invoice_for_order(order: Order) -> Invoice:
-        """Create invoice for an order"""
+        """Create invoice for an order, or return existing one if already created."""
         try:
+            # Check if an invoice already exists for this order
+            existing_invoice = Invoice.objects.filter(order=order).first()
+            if existing_invoice:
+                return existing_invoice
+
             with transaction.atomic():
                 # Calculate invoice amounts dynamically based on order items and their batches
                 subtotal = Decimal('0.00')

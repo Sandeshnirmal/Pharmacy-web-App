@@ -17,6 +17,9 @@ router.register(r'order-items', OrderItemViewSet)
 urlpatterns = [
     path('', include(router.urls)),
 
+    # Custom actions for OrderViewSet
+    path('orders/<int:pk>/cancel/', OrderViewSet.as_view({'post': 'cancel_order'}), name='order-cancel'),
+
     # Order tracking endpoints
     path('tracking/<int:order_id>/', get_order_tracking, name='get_order_tracking'),
     path('tracking/<int:order_id>/add/', add_tracking_update, name='add_tracking_update'),

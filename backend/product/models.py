@@ -183,6 +183,13 @@ class Product(models.Model):
             expiry_date__gte=today
         ).order_by('expiry_date').first()
 
+    @property
+    def is_prescription_required(self):
+        """
+        Returns True if the product requires a prescription ('prescription' or 'controlled').
+        """
+        return self.prescription_type in ['prescription', 'controlled']
+
     def __str__(self):
         return f"{self.name} ({self.manufacturer})"
 

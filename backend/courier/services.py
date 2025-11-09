@@ -141,9 +141,11 @@ class TPCCourierService:
             is_serviceable = api_response.get('is_serviceable', False)
             city = api_response.get('city', 'Unknown')
             state = api_response.get('state', 'Unknown')
-            
+            area_name = api_response.get('city', 'Unknown') # Use city (AREANAME from TPC) for area_name
+
             TPCServiceableArea.objects.create(
                 pincode=pincode,
+                area_name=area_name, # Populate area_name
                 city=city,
                 state=state,
                 is_serviceable=is_serviceable,

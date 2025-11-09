@@ -1233,8 +1233,11 @@ def deduct_inventory_from_batches(order, product, quantity_to_deduct, product_un
             product=product,
             batch=batch,
             movement_type='OUT',
-            quantity=deduct_from_batch,
+            moved_quantity_display=quantity_to_deduct, # Original quantity for display
+            quantity=deduct_from_batch, # Quantity in base units for stock management
             product_unit=product.product_unit, # Use product's default base unit for stock movement
+            selected_unit_name=product.product_unit.unit_name if product.product_unit else '',
+            selected_unit_abbreviation=product.product_unit.unit_abbreviation if product.product_unit else '',
             reference_number=f"ORDER_{order.id}_PRODUCT_{product.id}",
             notes=f"Deducted {deduct_from_batch} base units for order {order.id} (Product: {product.name}, Batch: {batch.batch_number})",
             created_by=user
@@ -1298,8 +1301,11 @@ def return_inventory_to_batches(order, product, quantity_to_return, product_unit
             product=product,
             batch=batch,
             movement_type='IN',
-            quantity=return_to_batch,
+            moved_quantity_display=quantity_to_return, # Original quantity for display
+            quantity=return_to_batch, # Quantity in base units for stock management
             product_unit=product.product_unit, # Use product's default base unit for stock movement
+            selected_unit_name=product.product_unit.unit_name if product.product_unit else '',
+            selected_unit_abbreviation=product.product_unit.unit_abbreviation if product.product_unit else '',
             reference_number=f"ORDER_CANCEL_{order.id}_PRODUCT_{product.id}",
             notes=f"Returned {return_to_batch} base units due to order cancellation {order.id} (Product: {product.name}, Batch: {batch.batch_number}). Reason: {reason}",
             created_by=user
@@ -1324,8 +1330,11 @@ def return_inventory_to_batches(order, product, quantity_to_return, product_unit
         StockMovement.objects.create(
             product=product,
             movement_type='IN',
-            quantity=remaining_to_return,
+            moved_quantity_display=quantity_to_return, # Original quantity for display
+            quantity=remaining_to_return, # Quantity in base units for stock management
             product_unit=product.product_unit,
+            selected_unit_name=product.product_unit.unit_name if product.product_unit else '',
+            selected_unit_abbreviation=product.product_unit.unit_abbreviation if product.product_unit else '',
             reference_number=f"ORDER_CANCEL_{order.id}_PRODUCT_{product.id}_NO_BATCH",
             notes=f"Returned {remaining_to_return} base units due to order cancellation {order.id} (Product: {product.name}). No specific active batch found. Reason: {reason}",
             created_by=user
