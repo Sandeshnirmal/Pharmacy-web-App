@@ -410,9 +410,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                   <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Qty <span className="text-red-500">*</span>
                   </th>
-                  {/* <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Free
-                  </th> */}
                   <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Rate <span className="text-red-500">*</span>
                   </th>
@@ -511,17 +508,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                         required
                       />
                     </td>
-                    {/* Removed Free field as per user request */}
-                    {/* <td className="py-2 px-3">
-                      <input
-                        type="number"
-                        name="free"
-                        value={item.free}
-                        onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
-                        min="0"
-                      />
-                    </td> */}
                     <td className="py-2 px-3">
                       <input
                         type="number"

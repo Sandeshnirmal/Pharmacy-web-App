@@ -1,11 +1,25 @@
+import os
+import sys
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 from datetime import datetime, timedelta
 import random
 
-from usermanagement.models import User, Address
-from product.models import Product, Category, GenericName
+# Add the project's 'backend' directory to the Python path
+# This is necessary for running the script directly
+backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+# Set the DJANGO_SETTINGS_MODULE environment variable
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+
+import django
+django.setup()
+
+from usermanagement.models import User, Address, UserRole
+from product.models import Product, Category, GenericName, Batch
 from orders.models import Order, OrderItem
 
 User = get_user_model()
@@ -18,6 +32,10 @@ class Command(BaseCommand):
         self.stdout.write("=== Creating Sample Data for Pharmacy Management System ===")
         
         try:
+            # Create user roles
+            self.create_sample_user_roles()
+            self.stdout.write("")
+
             # Create users
             users = self.create_sample_users()
             self.stdout.write("")
@@ -48,6 +66,21 @@ class Command(BaseCommand):
             import traceback
             traceback.print_exc()
 
+    def create_sample_user_roles(self):
+        """Create sample user roles"""
+        self.stdout.write("Creating sample user roles...")
+        roles_data = [
+            {'name': 'admin', 'display_name': 'Admin', 'permissions': {'is_staff': True, 'is_superuser': True}},
+            {'name': 'doctor', 'display_name': 'Doctor', 'permissions': {}},
+            {'name': 'pharmacist', 'display_name': 'Pharmacist', 'permissions': {'is_staff': True}},
+            {'name': 'verifier', 'display_name': 'Verifier', 'permissions': {}},
+            {'name': 'staff', 'display_name': 'Staff', 'permissions': {'is_staff': True}},
+            {'name': 'customer', 'display_name': 'Customer', 'permissions': {}},
+        ]
+        for role_data in roles_data:
+            UserRole.objects.get_or_create(name=role_data['name'], defaults=role_data)
+        self.stdout.write("✅ Sample user roles created.")
+
     def create_sample_users(self):
         """Create sample users for testing"""
         self.stdout.write("Creating sample users...")
@@ -60,8 +93,6 @@ class Command(BaseCommand):
                 'last_name': 'User',
                 'phone_number': '9876543210',
                 'role': 'admin',
-                'is_staff': True,
-                'is_superuser': True,
             },
             {
                 'email': 'customer@pharmacy.com',
@@ -78,7 +109,6 @@ class Command(BaseCommand):
                 'last_name': 'Smith',
                 'phone_number': '9876543212',
                 'role': 'pharmacist',
-                'is_staff': True,
             },
             {
                 'email': 'customer2@pharmacy.com',
@@ -100,9 +130,15 @@ class Command(BaseCommand):
         
         created_users = []
         for user_data in users_data:
+            role_name = user_data.pop('role')
+            user_role = UserRole.objects.get(name=role_name)
+            
+            user_defaults = user_data.copy()
+            user_defaults['user_role'] = user_role
+
             user, created = User.objects.get_or_create(
                 email=user_data['email'],
-                defaults=user_data
+                defaults=user_defaults
             )
             if created:
                 user.set_password(user_data['password'])
@@ -273,19 +309,46 @@ class Command(BaseCommand):
         
         created_products = []
         for i, product_data in enumerate(products_data):
+            original_product_data = product_data.copy()
+            
+            product_data['medicine_type'] = product_data.pop('form').lower()
+            product_data['prescription_type'] = 'prescription' if product_data.pop('is_prescription_required') else 'otc'
+            
+            product_data.pop('strength', None)
+            product_data.pop('price', None)
+            product_data.pop('mrp', None)
+            product_data.pop('stock_quantity', None)
+            product_data.pop('image_url', None)
+
             product, created = Product.objects.get_or_create(
-                name=product_data['name'],
+                name=original_product_data['name'],
+                manufacturer=original_product_data['manufacturer'],
                 defaults={
                     **product_data,
                     'category': categories[i % len(categories)],
                     'generic_name': generics[i % len(generics)],
-                    'description': f'{product_data["name"]} - High quality medicine from {product_data["manufacturer"]}',
-                    'image_url': 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400',
+                    'description': f'{original_product_data["name"]} - High quality medicine from {original_product_data["manufacturer"]}',
                     'is_active': True,
                 }
             )
             if created:
                 self.stdout.write(f"✅ Created product: {product.name}")
+                Batch.objects.create(
+                    product=product,
+                    batch_number=f"SAMPLE{random.randint(1000, 9999)}",
+                    manufacturing_date=datetime.now().date() - timedelta(days=180),
+                    expiry_date=datetime.now().date() + timedelta(days=365),
+                    quantity=original_product_data['stock_quantity'],
+                    current_quantity=original_product_data['stock_quantity'],
+                    cost_price=Decimal(original_product_data['price']) * Decimal('0.8'),
+                    selling_price=original_product_data['price'],
+                    mrp_price=original_product_data['mrp'],
+                    online_mrp_price=original_product_data['mrp'],
+                    online_selling_price=original_product_data['price'],
+                    offline_mrp_price=original_product_data['mrp'],
+                    offline_selling_price=original_product_data['price'],
+                )
+                self.stdout.write(f"    -> Created batch for {product.name}")
             else:
                 self.stdout.write(f"📝 Product already exists: {product.name}")
             

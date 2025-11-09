@@ -319,14 +319,10 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         total_amount = 0
         
         for item_data in items_data:
-            # Ensure product is an ID, then retrieve the Product object
-            product_data = item_data.pop('product')
-            if product_data is None:
-                raise serializers.ValidationError({"product": "Product ID cannot be null for purchase order items."})
-            if isinstance(product_data, Product):
-                product = product_data
-            else: # Assume it's an ID
-                product = Product.objects.get(id=product_data)
+            # product is a Product instance after validation by PrimaryKeyRelatedField
+            product = item_data.pop('product')
+            if product is None:
+                raise serializers.ValidationError({"product": "Product cannot be null for purchase order items."})
             
             quantity = Decimal(str(item_data.pop('quantity')))
             unit_price = Decimal(str(item_data.pop('unit_price')))

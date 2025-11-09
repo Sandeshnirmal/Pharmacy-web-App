@@ -706,8 +706,12 @@ class ProductSearchSerializer(serializers.ModelSerializer):
             'discount_percentage', 'primary_image',
             'batches',
             'current_selling_price',
-            'current_cost_price'
+            'current_cost_price',
+            'is_prescription_required'
         ]
+
+    def get_is_prescription_required(self, obj):
+        return obj.prescription_type != 'otc'
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')
