@@ -164,7 +164,7 @@ const InventoryManagement = () => {
     is_active: true, // Added, default true
     is_featured: false, // Added, default false
     manufacturer: "MedCorp",
-    selectedCompositions: [],
+    selectedCompositions: [], // Now stores only IDs
     currentImage: null, // To store the URL of the current image when editing
   });
 
@@ -184,8 +184,9 @@ const InventoryManagement = () => {
 
   const getCategoryName = (id) =>
     categories.find((c) => c.id === id)?.name || "N/A";
-  const getGenericName = (id) =>
-    genericNames.find((g) => g.id === id)?.name || "N/A";
+  // The getGenericName function is no longer needed as generic_name is now a string from the serializer.
+  // const getGenericName = (id) =>
+  //   genericNames.find((g) => g.id === id)?.name || "N/A";
 
   const fetchCompositions = async () => {
     try {
@@ -289,6 +290,7 @@ const InventoryManagement = () => {
         manufacturing_date: batch.manufacturing_date,
         mfg_license_number: batch.mfg_license_number,
         is_primary: batch.is_primary,
+        selling_price: calculatedSellingPrice, // Include calculated selling price
       });
     };
 
@@ -380,11 +382,11 @@ const InventoryManagement = () => {
         discount_percentage: "",
         selling_price: "",
       });
-      fetchMedicines();
-      const updatedProductBatches = batches.filter(
-        (batch) => batch.product === selectedProduct.id
-      );
-      setSelectedProductBatches(updatedProductBatches);
+      fetchMedicines(); // Refresh overall product list
+      // Re-fetch the specific product to get its updated batches
+      const updatedProductResponse = await productAPI.getProduct(selectedProduct.id);
+      setSelectedProduct(updatedProductResponse.data);
+      setSelectedProductBatches(updatedProductResponse.data.batches || []);
     } catch (error) {
       const errorInfo = apiUtils.handleError(error);
       setError(errorInfo.message);
@@ -426,7 +428,7 @@ const InventoryManagement = () => {
       const formData = new FormData();
       formData.append("name", newProduct.name);
       formData.append("brand_name", newProduct.brand_name || newProduct.name);
-      formData.append("generic_name_id", newProduct.generic_name); // Use generic_name_id
+      formData.append("generic_name_id", newProduct.generic_name); // generic_name now holds the ID
       formData.append("manufacturer", newProduct.manufacturer);
       formData.append("medicine_type", newProduct.medicine_type);
       formData.append("prescription_type", newProduct.prescription_type);
@@ -438,24 +440,50 @@ const InventoryManagement = () => {
       formData.append("how_to_use", newProduct.how_to_use);
       formData.append("precautions", newProduct.precautions);
       formData.append("storage", newProduct.storage);
-      if (newProduct.image) {
+      console.log("DEBUG: newProduct.image state before appending:", newProduct.image, "Type:", typeof newProduct.image, "Is File instance:", newProduct.image instanceof File);
+
+      // Handle image upload:
+      if (newProduct.image instanceof File) {
+        // If a new file is selected, append it.
         formData.append("image", newProduct.image);
+        console.log("DEBUG: Appending new image file.");
+      } else if (editingProduct) {
+        // If editing an existing product and no new file is selected (newProduct.image is null or a string URL),
+        // we explicitly delete the 'image' field from formData.
+        // This tells the backend to retain the existing image.
+        formData.delete("image");
+        console.log("DEBUG: Editing existing product, no new image selected. Deleting 'image' field from FormData to retain current image.");
       }
+      // For new products (not editing) if newProduct.image is null, the 'image' field is simply not appended,
+      // which is the correct behavior for an optional file field.
       formData.append("hsn_code", newProduct.hsn_code);
       formData.append("category_id", newProduct.category_id); // Use category_id
       formData.append("is_active", newProduct.is_active);
       formData.append("is_featured", newProduct.is_featured);
 
-      // Prepare compositions data for the backend
-      const compositionsData = newProduct.selectedCompositions.map(comp => ({
-        composition: comp.composition_id, // Send ID
-        strength: comp.strength,
-        strength_unit: comp.unit, // Use strength_unit as per backend
-        is_primary: comp.is_primary,
-      }));
-      // Append compositions data as a JSON string
-      formData.append("product_compositions_data", JSON.stringify(compositionsData));
-
+      // Prepare composition IDs for the backend by appending each ID with '[]'
+      const filteredCompositions = newProduct.selectedCompositions.filter(id => id !== null && id !== undefined);
+      if (filteredCompositions.length > 0) {
+        filteredCompositions.forEach(id => {
+          formData.append("composition_ids[]", id); // Use '[]' to indicate a list
+        });
+      } else {
+        // If no compositions are selected, append an empty array indicator if the backend expects it.
+        // For DRF, sometimes omitting it is fine, but sending an empty array explicitly can be safer.
+        // We'll append an empty string with '[]' to signify an empty list.
+        formData.append("composition_ids[]", "");
+      }
+      // Log the formData before sending the request
+      console.log("FormData contents for composition_ids:");
+      for (let pair of formData.entries()) {
+        if (pair[0].startsWith("composition_ids")) {
+          console.log(pair[0] + ': ' + pair[1]);
+        }
+      }
+      // Log the formData before sending the request
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + pair[1]);
+      }
 
       if (editingProduct) {
         // Update existing product
@@ -482,7 +510,7 @@ const InventoryManagement = () => {
       name: product.name,
       brand_name: product.brand_name,
       category_id: product.category ? product.category.id : "",
-      generic_name: product.generic_name ? product.generic_name.id : "",
+      generic_name: genericNames.find(gn => gn.name === product.generic_name)?.id || "", // Map generic name string to ID
       manufacturer: product.manufacturer,
       medicine_type: product.medicine_type,
       prescription_type: product.prescription_type,
@@ -498,12 +526,7 @@ const InventoryManagement = () => {
       hsn_code: product.hsn_code,
       is_active: product.is_active,
       is_featured: product.is_featured,
-      selectedCompositions: product.compositions.map(comp => ({
-        composition_id: comp.composition.id,
-        strength: comp.strength,
-        unit: comp.strength_unit, // Map to 'unit' for frontend state
-        is_primary: comp.is_primary,
-      })),
+      selectedCompositions: product.compositions_detail.map(comp => comp.composition), // Use compositions_detail
       currentImage: product.image, // Store current image URL for display
     });
     setShowProductModal(true);
@@ -684,8 +707,9 @@ const InventoryManagement = () => {
     return availableBatches.length > 0 ? availableBatches[0] : null;
   };
 
-  const filteredProducts = products.filter((product) => {
-    const genericName = getGenericName(product.generic_name);
+      const filteredProducts = products.filter((product) => {
+    // generic_name is now a string directly from the serializer
+    const genericName = product.generic_name || ""; 
     const matchesSearch =
       !searchTerm ||
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1628,15 +1652,17 @@ const InventoryManagement = () => {
                   >
                     <td className="px-6 py-4 font-medium text-gray-900">
                       {product.name}{" "}
-                      <span className="text-gray-500">
-                        ({product.strength})
-                      </span>
+                      {product.composition_summary && product.composition_summary.length > 0 && (
+                        <span className="text-gray-500">
+                          ({product.composition_summary.join(', ')})
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
-                      {product.category ? product.category_name :"N/A"}
+                      {product.category_name || "N/A"}
                     </td>
                     <td className="px-6 py-4">
-                      {getGenericName(product.generic_name)}
+                      {product.generic_name || "N/A"}
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-lg">
                       {getFirstAvailableBatch(product.batches) ? `₹${Number(getFirstAvailableBatch(product.batches).selling_price).toFixed(2)}` : 'N/A'}
@@ -1808,7 +1834,7 @@ const InventoryManagement = () => {
                   >
                     <option value="">Select Generic Name</option>
                     {genericNames.map((g) => (
-                      <option key={g.id} value={g.id}>
+                      <option key={g.id} value={g.id}> {/* Revert to g.id for value */}
                         {g.name}
                       </option>
                     ))}
@@ -2016,18 +2042,19 @@ const InventoryManagement = () => {
                 Compositions
               </h4>
               <div className="space-y-3">
-                {newProduct.selectedCompositions.map((comp, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end p-2 border rounded-md bg-gray-50">
-                    <div className="md:col-span-2">
+                {newProduct.selectedCompositions.map((comp_id, index) => (
+                  <div key={index} className="flex items-center gap-2 p-2 border rounded-md bg-gray-50">
+                    <div className="flex-grow">
                       <label className="block text-sm font-medium text-gray-700">
                         Composition
                       </label>
                       <select
                         required
-                        value={comp.composition_id}
+                        value={comp_id === null ? "" : comp_id}
                         onChange={(e) => {
                           const updatedCompositions = [...newProduct.selectedCompositions];
-                          updatedCompositions[index].composition_id = e.target.value;
+                          const value = e.target.value === "" ? null : Number(e.target.value); // Convert to Number or null
+                          updatedCompositions[index] = value;
                           setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
                         }}
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
@@ -2040,67 +2067,16 @@ const InventoryManagement = () => {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Strength
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={comp.strength}
-                        onChange={(e) => {
-                          const updatedCompositions = [...newProduct.selectedCompositions];
-                          updatedCompositions[index].strength = e.target.value;
-                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
-                        }}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Unit
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={comp.unit}
-                        onChange={(e) => {
-                          const updatedCompositions = [...newProduct.selectedCompositions];
-                          updatedCompositions[index].unit = e.target.value;
-                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
-                        }}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between md:col-span-4">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={comp.is_primary}
-                          onChange={(e) => {
-                            const updatedCompositions = newProduct.selectedCompositions.map((item, i) => ({
-                              ...item,
-                              is_primary: i === index ? e.target.checked : false,
-                            }));
-                            setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
-                          }}
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                        />
-                        <label className="ml-2 block text-sm text-gray-900">
-                          Primary Composition
-                        </label>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updatedCompositions = newProduct.selectedCompositions.filter((_, i) => i !== index);
-                          setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
-                        }}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updatedCompositions = newProduct.selectedCompositions.filter((_, i) => i !== index);
+                        setNewProduct({ ...newProduct, selectedCompositions: updatedCompositions });
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm font-medium self-end mb-1"
+                    >
+                      Remove
+                    </button>
                   </div>
                 ))}
                 <button
@@ -2110,7 +2086,7 @@ const InventoryManagement = () => {
                       ...newProduct,
                       selectedCompositions: [
                         ...newProduct.selectedCompositions,
-                        { composition_id: "", strength: "", unit: "", is_primary: false },
+                        null, // Use null as a placeholder for new, unselected compositions
                       ],
                     })
                   }

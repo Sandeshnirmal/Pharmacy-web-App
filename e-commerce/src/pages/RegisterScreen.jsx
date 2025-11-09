@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Import useEffect
 import { Link, useNavigate } from 'react-router-dom';
 import { authAPI, userAPI } from '../api/apiService'; // Assuming authAPI and userAPI are available
 
@@ -11,7 +11,28 @@ function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [customerRoleId, setCustomerRoleId] = useState(null); // New state for customer role ID
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchCustomerRoleId = async () => {
+      try {
+        const response = await userAPI.getRoles();
+        if (response.data) {
+          const customerRole = response.data.find(role => role.name === 'customer');
+          if (customerRole) {
+            setCustomerRoleId(customerRole.id);
+          } else {
+            setError("Customer role not found. Please contact support.");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch user roles:", err);
+        setError("Failed to load necessary data. Please try again later.");
+      }
+    };
+    fetchCustomerRoleId();
+  }, []); // Run once on component mount
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,10 +45,13 @@ function RegisterScreen() {
       return;
     }
 
+    if (!customerRoleId) {
+      setError("Customer role ID is not available. Please try again.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Assuming a register API endpoint exists in authAPI or userAPI
-      // For now, I'll use a placeholder or assume userAPI.createUser
-      // The backend API for registration might be different, adjust as needed.
       const response = await userAPI.createUser({
         first_name: firstName,
         last_name: lastName,
@@ -35,6 +59,7 @@ function RegisterScreen() {
         phone_number: phone,
         password,
         password_confirm: confirmPassword,
+        user_role: customerRoleId, // Use the fetched customer role ID
       });
 
       if (response.data) {

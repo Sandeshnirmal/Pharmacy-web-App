@@ -508,20 +508,22 @@ function Home() {
 
         // Fetch products (top sellers)
         const productsResponse = await productAPI.getProducts(1, 8); // Fetch first 8 products
-        const products = productsResponse.data.map(p => ({
-          id: p.id,
-          category: p.category_name,
-          name: p.name,
-          description: p.description,
-          online_mrp_price: p.current_batch.online_mrp_price,
-          online_discount_percentage: p.current_batch.online_discount_percentage,
-          online_selling_price: p.current_batch.online_selling_price,
-          images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"], // Updated Placeholder
-          fullDescription: p.description,
-          usage: p.usage_instructions,
-          ingredients: p.ingredients,
-          reviews: [], // Assuming reviews are not directly in product API for now
-        }));
+        const products = productsResponse.data
+          .filter(p => p.current_batch !== null) // Filter out products with null current_batch
+          .map(p => ({
+            id: p.id,
+            category: p.category_name,
+            name: p.name,
+            description: p.description,
+            online_mrp_price: p.current_batch.online_mrp_price,
+            online_discount_percentage: p.current_batch.online_discount_percentage,
+            online_selling_price: p.current_batch.online_selling_price,
+            images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"], // Updated Placeholder
+            fullDescription: p.description,
+            usage: p.usage_instructions,
+            ingredients: p.ingredients,
+            reviews: [], // Assuming reviews are not directly in product API for now
+          }));
         setTopSellers(products);
 
         // Set deal of the day (e.g., the second product fetched)

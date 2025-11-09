@@ -359,40 +359,50 @@ function ProductPage({ TopSellerCard }) { // Only accept TopSellerCard
       setError(null);
       try {
         const productResponse = await productAPI.getProduct(id);
+        const productData = productResponse.data;
+
+        if (!productData.current_batch) {
+          setError("Product details are incomplete (missing batch information).");
+          setLoading(false);
+          return;
+        }
+
         const fetchedProduct = {
-          id: productResponse.data.id,
-          category: productResponse.data.category_name,
-          name: productResponse.data.name,
-          description: productResponse.data.description,
-          price: parseFloat(productResponse.data.current_batch.online_selling_price), // Store price as number
-          mrp_price: `₹${parseFloat(productResponse.data.current_batch.online_mrp_price).toFixed(2)}`,
-          discount_percentage: parseFloat(productResponse.data.current_batch.online_discount_percentage),
-          images: productResponse.data.images && productResponse.data.images.length > 0 ? productResponse.data.images.map(img => img.image_url) : ["https://via.placeholder.com/400x300?text=No+Image"],
-          fullDescription: productResponse.data.description,
-          usage: productResponse.data.usage_instructions,
-          ingredients: productResponse.data.ingredients,
-          generic_name_display: productResponse.data.generic_name_display,
-          composition_summary: productResponse.data.composition_summary,
+          id: productData.id,
+          category: productData.category_name,
+          name: productData.name,
+          description: productData.description,
+          price: parseFloat(productData.current_batch.online_selling_price), // Store price as number
+          mrp_price: `₹${parseFloat(productData.current_batch.online_mrp_price).toFixed(2)}`,
+          discount_percentage: parseFloat(productData.current_batch.online_discount_percentage),
+          images: productData.images && productData.images.length > 0 ? productData.images.map(img => img.image_url) : ["https://via.placeholder.com/400x300?text=No+Image"],
+          fullDescription: productData.description,
+          usage: productData.usage_instructions,
+          ingredients: productData.ingredients,
+          generic_name_display: productData.generic_name_display,
+          composition_summary: productData.composition_summary,
           reviews: [], // Assuming reviews are not directly in product API for now
         };
         setProduct(fetchedProduct);
 
         // Fetch top sellers for related products
         const productsResponse = await productAPI.getProducts(1, 8);
-        const products = productsResponse.data.map(p => ({
-          id: p.id,
-          category: p.category_name,
-          name: p.name,
-          description: p.description,
-          price: parseFloat(p.current_batch.online_selling_price), // Store price as number
-          mrp_price: `₹${parseFloat(p.current_batch.online_mrp_price).toFixed(2)}`,
-          discount_percentage: parseFloat(p.current_batch.online_discount_percentage),
-          images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
-          fullDescription: p.description,
-          usage: p.usage_instructions,
-          ingredients: p.ingredients,
-          reviews: [],
-        }));
+        const products = productsResponse.data
+          .filter(p => p.current_batch !== null) // Filter out products with null current_batch
+          .map(p => ({
+            id: p.id,
+            category: p.category_name,
+            name: p.name,
+            description: p.description,
+            price: parseFloat(p.current_batch.online_selling_price), // Store price as number
+            mrp_price: `₹${parseFloat(p.current_batch.online_mrp_price).toFixed(2)}`,
+            discount_percentage: parseFloat(p.current_batch.online_discount_percentage),
+            images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
+            fullDescription: p.description,
+            usage: p.usage_instructions,
+            ingredients: p.ingredients,
+            reviews: [],
+          }));
         setTopSellers(products);
 
         window.scrollTo(0, 0); // Scroll to top after fetching

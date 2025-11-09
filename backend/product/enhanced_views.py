@@ -24,6 +24,7 @@ from .enhanced_serializers import (
     CompositionSerializer, EnhancedProductSerializer, ProductCompositionSerializer,
     ProductCompositionCreateSerializer, ProductSearchSerializer, CompositionSearchSerializer,
     CategorySerializer, GenericNameSerializer, BatchSerializer, InventorySerializer,
+    ProductCreateSerializer, # Import the new serializer
 )
 from usermanagement.enhanced_views import IsPharmacistOrAdmin, IsAdminUser
 
@@ -122,6 +123,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return ProductCreateSerializer
+        return EnhancedProductSerializer
     
     def get_queryset(self):
         """Filter products with advanced search capabilities and optimize queries"""
