@@ -71,43 +71,45 @@ function ProfilePage() {
     fetchUserData();
   }, [authUser, logout, navigate]); // Added authUser to dependency array
 
+  const fetchOrderData = async () => {
+    if (!user || !user.id) return; // Ensure user is available before fetching
+    try {
+      setLoadingOrders(true);
+      const response = await orderAPI.getOrders();
+      if (response.data && Array.isArray(response.data.results)) {
+        setOrders(response.data.results);
+        console.log(response.data.results)
+      } else {
+        setOrders([]);
+      }
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      setOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  const fetchAddressData = async () => {
+    if (!user || !user.id) return; // Ensure user is available before fetching
+    try {
+      setLoadingAddresses(true);
+      const response = await addressAPI.getAddresses(user.id);
+      if (response.data && Array.isArray(response.data)) {
+        setAddresses(response.data);
+      } else {
+        setAddresses([]);
+      }
+    } catch (err) {
+      console.error("Error fetching addresses:", err);
+      setAddresses([]);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+
   useEffect(() => {
     if (!user || !user.id) return;
-
-    const fetchOrderData = async () => {
-      try {
-        setLoadingOrders(true);
-        const response = await orderAPI.getOrders();
-        if (response.data && Array.isArray(response.data.results)) {
-          setOrders(response.data.results);
-        } else {
-          setOrders([]);
-        }
-      } catch (err) {
-        console.error("Error fetching orders:", err);
-        setOrders([]);
-      } finally {
-        setLoadingOrders(false);
-      }
-    };
-
-    const fetchAddressData = async () => {
-      try {
-        setLoadingAddresses(true);
-        const response = await addressAPI.getAddresses(user.id);
-        if (response.data && Array.isArray(response.data)) {
-          setAddresses(response.data);
-        } else {
-          setAddresses([]);
-        }
-      } catch (err) {
-        console.error("Error fetching addresses:", err);
-        setAddresses([]);
-      } finally {
-        setLoadingAddresses(false);
-      }
-    };
-
     fetchOrderData();
     fetchAddressData();
   }, [user]);

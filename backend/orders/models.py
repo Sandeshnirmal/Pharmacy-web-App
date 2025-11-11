@@ -57,14 +57,6 @@ class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField()
-    # Add a ForeignKey to ProductUnit to specify the unit for this order item
-    product_unit = models.ForeignKey(
-        'product.ProductUnit',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="The unit in which this product was ordered (e.g., 'strip', 'bottle')."
-    )
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # Renamed for consistency
     unit_price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
     prescription_detail = models.ForeignKey('prescriptions.PrescriptionMedicine', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
@@ -75,8 +67,7 @@ class OrderItem(models.Model):
         return self.quantity * self.unit_price_at_order
 
     def __str__(self):
-        unit_display = self.product_unit.unit_abbreviation if self.product_unit and self.product_unit.unit_abbreviation else (self.product_unit.unit_name if self.product_unit else 'units')
-        return f"{self.product.name if self.product else 'Unknown'} x {self.quantity} {unit_display}"
+        return f"{self.product.name if self.product else 'Unknown'} x {self.quantity}"
 
 
 class OrderTracking(models.Model):

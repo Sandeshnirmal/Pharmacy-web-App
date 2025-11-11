@@ -116,10 +116,7 @@ const SidebarNavbar = () => {
               label="Purchase Returns List"
               to="/purchase-returns"
             />
-            <SidebarItem
-              label="Supplier Details"
-              to="/Suppliers"
-            />
+            
           </SidebarItem>
           <SidebarItem label="Sales Management">
             <SidebarItem label="Sales bill" to="/sale-billing" />

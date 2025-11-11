@@ -4,7 +4,6 @@ import { apiUtils, productAPI } from "../api/apiService";
 
 const InventoryManagement = () => {
   const [products, setProducts] = useState([]);
-  const [productUnits, setProductUnits] = useState([]);
   const [batches, setBatches] = useState([]);
   const [categories, setCategories] = useState([]);
   const [genericNames, setGenericNames] = useState([]);
@@ -48,13 +47,11 @@ const InventoryManagement = () => {
         categoriesResponse,
         genericNamesResponse,
         compositionsResponse,
-        productUnitsResponse,
       ] = await Promise.all([
         productAPI.getProducts(page, size),
         productAPI.getCategories(),
         productAPI.getGenericNames(),
         productAPI.getCompositions(),
-        productAPI.getProductUnits(),
       ]);
 
       const productsData = productsResponse.data;
@@ -101,16 +98,6 @@ const InventoryManagement = () => {
         setCompositions([]);
       }
 
-      const productUnitsData = productUnitsResponse.data;
-      if (Array.isArray(productUnitsData)) {
-        setProductUnits(productUnitsData);
-      } else if (productUnitsData && Array.isArray(productUnitsData.results)) {
-        setProductUnits(productUnitsData.results);
-      } else {
-        console.warn("Unexpected API response format for product units.");
-        setProductUnits([]);
-      }
-
     } catch (err) {
       const errorInfo = apiUtils.handleError(err);
       setError(errorInfo.message);
@@ -137,7 +124,6 @@ const InventoryManagement = () => {
     product: "",
     batch_number: "",
     ordered_quantity_display: "", // User-entered quantity in selected unit
-    product_unit_id: "", // Selected product unit
     expiry_date: "",
     cost_price: "",
     mrp_price: "",
@@ -153,7 +139,6 @@ const InventoryManagement = () => {
     medicine_type: "tablet", // Default but allow selection
     prescription_type: "otc", // Added, default to 'otc'
     min_stock_level: "10",
-    product_unit_id: "", // Renamed from packaging_unit for clarity
     description: "", // Added
     uses: "", // Added
     side_effects: "", // Added
@@ -370,7 +355,6 @@ const InventoryManagement = () => {
         product: selectedProduct.id,
         batch_number: newBatch.batch_number,
         quantity: newBatch.ordered_quantity_display, // Send display quantity
-        product_unit_id: newBatch.product_unit_id, // Send selected unit ID
         expiry_date: newBatch.expiry_date,
         cost_price: newBatch.cost_price,
         mrp_price: newBatch.mrp_price,
@@ -412,7 +396,6 @@ const InventoryManagement = () => {
       medicine_type: "tablet",
       prescription_type: "otc",
       min_stock_level: "10",
-      product_unit_id: "",
       description: "",
       uses: "",
       side_effects: "",
@@ -442,7 +425,6 @@ const InventoryManagement = () => {
       formData.append("medicine_type", newProduct.medicine_type);
       formData.append("prescription_type", newProduct.prescription_type);
       formData.append("min_stock_level", newProduct.min_stock_level);
-      formData.append("product_unit_id", newProduct.product_unit_id); // Use product_unit_id
       formData.append("description", newProduct.description);
       formData.append("uses", newProduct.uses);
       formData.append("side_effects", newProduct.side_effects);
@@ -524,7 +506,6 @@ const InventoryManagement = () => {
       medicine_type: product.medicine_type,
       prescription_type: product.prescription_type,
       min_stock_level: product.min_stock_level,
-      product_unit_id: product.product_unit ? product.product_unit.id : "",
       description: product.description,
       uses: product.uses,
       side_effects: product.side_effects,
@@ -1924,25 +1905,6 @@ const InventoryManagement = () => {
                
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Product Unit
-                  </label>
-                  <select
-                    value={newProduct.product_unit_id}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, product_unit_id: e.target.value })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="">Select Unit</option>
-                    {productUnits.map((unit) => (
-                      <option key={unit.id} value={unit.id}>
-                        {unit.unit_name} ({unit.unit_abbreviation})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
                     HSN Code
                   </label>
                   <input
@@ -2316,26 +2278,6 @@ const InventoryManagement = () => {
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Product Unit
-                      </label>
-                      <select
-                        required
-                        value={newBatch.product_unit_id}
-                        onChange={(e) =>
-                          setNewBatch({ ...newBatch, product_unit_id: e.target.value })
-                        }
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">Select Unit</option>
-                        {productUnits.map((unit) => (
-                          <option key={unit.id} value={unit.id}>
-                            {unit.unit_name} ({unit.unit_abbreviation})
-                          </option>
-                        ))}
-                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">

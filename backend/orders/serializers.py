@@ -4,10 +4,6 @@ from decimal import Decimal # Import Decimal
 from .models import Order, OrderItem
 from product.serializers import ProductSerializer
 from usermanagement.models import Address # Import Address model
-from product.models import ProductUnit # Import ProductUnit model
-
-from product.serializers import ProductUnitSerializer # Import ProductUnitSerializer
-
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -15,16 +11,12 @@ class OrderItemSerializer(serializers.ModelSerializer):
     tax_percentage = serializers.DecimalField(source='batch.tax_percentage', max_digits=5, decimal_places=2, read_only=True)
     tax_amount = serializers.SerializerMethodField()
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    product_unit = ProductUnitSerializer(read_only=True) # Nested serializer for read operations
-    product_unit_id = serializers.PrimaryKeyRelatedField( # For write operations
-        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
-    )
 
     class Meta:
         model = OrderItem
         fields = ['id', 'product', 'quantity', 'unit_price', 'unit_price_at_order',
                  'total_price', 'product_name', 'batch_number',
-                 'tax_percentage', 'tax_amount', 'product_unit', 'product_unit_id']
+                 'tax_percentage', 'tax_amount']
 
     def get_tax_amount(self, obj):
         if obj.batch and obj.batch.tax_percentage is not None:

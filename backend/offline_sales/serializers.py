@@ -3,7 +3,7 @@ from .models import OfflineSale, OfflineSaleItem, BillReturn, BillReturnItem, Of
 from product.serializers import ProductSerializer, BatchSerializer # Assuming these exist
 from decimal import Decimal # Import Decimal for precise calculations
 from django.utils import timezone # Import timezone
-from product.models import Discount, Product, Batch, ProductUnit # Import Product, Batch, ProductUnit
+from product.models import Discount, Product, Batch # Import Product, Batch
 
 class OfflineCustomerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -131,15 +131,7 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             
             # Stock reduction logic
             # Convert quantity from product_unit to base_unit
-            product_unit_id = item_data.get('product_unit') # Assuming product_unit is passed in item_data
-            if product_unit_id:
-                try:
-                    product_unit = ProductUnit.objects.get(id=product_unit_id)
-                    quantity_in_base_units = quantity * product_unit.conversion_factor
-                except ProductUnit.DoesNotExist:
-                    raise serializers.ValidationError(f"ProductUnit with ID {product_unit_id} not found.")
-            else:
-                quantity_in_base_units = quantity # Assume already in base units
+            quantity_in_base_units = quantity # Assume quantity is always in base units after removing ProductUnit
 
             if batch.current_quantity < quantity_in_base_units:
                 raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity_in_base_units} base units.")
@@ -197,11 +189,7 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 batch = old_item.batch
                 if batch:
                     # Convert old_item quantity to base units for reversal
-                    product_unit = old_item.product_unit
-                    if product_unit:
-                        quantity_in_base_units = old_item.quantity * product_unit.conversion_factor
-                    else:
-                        quantity_in_base_units = old_item.quantity # Assume already in base units
+                    quantity_in_base_units = old_item.quantity # Assume quantity is always in base units after removing ProductUnit
 
                     batch.current_quantity += quantity_in_base_units
                     batch.save(update_fields=['current_quantity'])
@@ -270,15 +258,7 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 
                 batch = item_data['batch']
                 # Convert quantity from product_unit to base_unit
-                product_unit_id = item_data.get('product_unit') # Assuming product_unit is passed in item_data
-                if product_unit_id:
-                    try:
-                        product_unit = ProductUnit.objects.get(id=product_unit_id)
-                        quantity_in_base_units = quantity * product_unit.conversion_factor
-                    except ProductUnit.DoesNotExist:
-                        raise serializers.ValidationError(f"ProductUnit with ID {product_unit_id} not found.")
-                else:
-                    quantity_in_base_units = quantity # Assume already in base units
+                quantity_in_base_units = quantity # Assume quantity is always in base units after removing ProductUnit
 
                 if batch.current_quantity < quantity_in_base_units:
                     raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity_in_base_units} base units.")
@@ -348,11 +328,7 @@ class BillReturnSerializer(serializers.ModelSerializer):
             # Stock increment logic for returned items
             batch = offline_sale_item.batch
             # Convert returned_quantity from its original unit to base units
-            product_unit = offline_sale_item.product_unit
-            if product_unit:
-                returned_quantity_in_base_units = returned_quantity * product_unit.conversion_factor
-            else:
-                returned_quantity_in_base_units = returned_quantity # Assume already in base units
+            returned_quantity_in_base_units = returned_quantity # Assume quantity is always in base units after removing ProductUnit
 
             batch.current_quantity += returned_quantity_in_base_units
             batch.save(update_fields=['current_quantity'])

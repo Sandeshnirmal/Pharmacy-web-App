@@ -17,7 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 # --- ViewSets for CRUD operations (require authentication for most actions) ---
-class UserRoleViewSet(viewsets.ReadOnlyModelViewSet):
+class UserRoleViewSet(viewsets.ModelViewSet):
     queryset = UserRole.objects.all()
     serializer_class = UserRoleSerializer
     permission_classes = [AllowAny] # Allow anyone to view roles, as they are needed for registration/frontend display
@@ -284,7 +284,7 @@ class EnhancedProfileView(APIView):
         serializer = EnhancedUserSerializer(request.user, context={'request': request})
         return Response(serializer.data)
 
-    def put(self, request):
+    def patch(self, request):
         """Update user profile"""
         from .serializers import UserUpdateSerializer
         serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)

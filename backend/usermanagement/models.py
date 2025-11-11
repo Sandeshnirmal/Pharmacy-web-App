@@ -38,44 +38,44 @@ class UserRole(models.Model):
 
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, email, password=None, **extra_fields):
+    def _create_user_with_role(self, email, password, role_name, **extra_fields):
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
+
+        UserRoleModel = apps.get_model('usermanagement', 'UserRole')
+        try:
+            role = UserRoleModel.objects.get(name=role_name)
+        except UserRoleModel.DoesNotExist:
+            print(f"Creating missing '{role_name}' role.")
+            # Create the role with a default display name.
+            # You might want to add more sophisticated default permissions here.
+            role = UserRoleModel.objects.create(name=role_name, display_name=role_name.capitalize())
+
+        extra_fields.setdefault('user_role', role) # Ensure user_role is set in extra_fields
+
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
-        
-        # Assign default role if not provided
-        if not user.user_role_id: # Check if user_role is already set
-            UserRole = apps.get_model('usermanagement', 'UserRole')
-            try:
-                default_role = UserRole.objects.get(name='customer')
-                user.user_role = default_role
-            except UserRole.DoesNotExist:
-                print("Warning: 'customer' role not found. Please create it.")
-
         user.save(using=self._db)
         return user
+
+    def create_user(self, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', False)
+        extra_fields.setdefault('is_superuser', False)
+        extra_fields.setdefault('is_active', True)
+        return self._create_user_with_role(email, password, 'customer', **extra_fields)
 
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('is_active', True) # Often forgotten for superusers
-
-        # Assign 'admin' role to superuser
-        UserRole = apps.get_model('usermanagement', 'UserRole')
-        try:
-            admin_role = UserRole.objects.get(name='admin')
-            extra_fields.setdefault('user_role', admin_role)
-        except UserRole.DoesNotExist:
-            print("Warning: 'admin' role not found. Please create it.")
-            
+        extra_fields.setdefault('is_active', True)
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
-        return self.create_user(email, password, **extra_fields)
+        
+        return self._create_user_with_role(email, password, 'admin', **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
@@ -138,7 +138,8 @@ class User(AbstractBaseUser, PermissionsMixin): # <--- MUST inherit from both
         return self.first_name
     
     def save(self, *args, **kwargs):
-        if self.user_role:
+        # Only attempt to set permissions if user_role is already assigned
+        if self.user_role_id: # Check if the foreign key exists
             permissions = self.user_role.permissions
             self.is_staff = permissions.get('is_staff', False)
             self.is_superuser = permissions.get('is_superuser', False)

@@ -19,7 +19,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
 
   const [items, setItems] = useState([]); // Items for the purchase order
   const [suppliers, setSuppliers] = useState([]);
-  const [productUnits, setProductUnits] = useState([]); // State for product units
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -33,16 +32,10 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [suppliersResponse, productUnitsResponse] = await Promise.all([
-          inventoryAPI.getSuppliers(),
-          productAPI.getProductUnits(), // Fetch product units
-        ]);
+        const suppliersResponse = await inventoryAPI.getSuppliers();
         setSuppliers(suppliersResponse.data.results || suppliersResponse.data);
-        const fetchedProductUnits = productUnitsResponse.data.results || productUnitsResponse.data;
-        setProductUnits(fetchedProductUnits); // Set product units
-        console.log("Fetched Product Units:", fetchedProductUnits); // Debug log
       } catch (err) {
-        setError("Failed to fetch initial data (suppliers or product units).");
+        setError("Failed to fetch initial data (suppliers).");
         console.error("Error fetching initial data:", err);
       } finally {
         setLoading(false);
@@ -65,7 +58,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         product: item.product,
         ordered_quantity_display: item.ordered_quantity_display, // Display quantity
         quantity: item.quantity, // Base unit quantity
-        product_unit_id: item.product_unit?.id || "", // Selected unit ID
         unit_price: parseFloat(item.unit_price),
         product_details: item.product_details || null, // Assume product_details comes with initialData or will be fetched
         mrp: item.mrp || "",
@@ -101,18 +93,12 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     newItems[index][name] = value;
 
     // Recalculate amount if ordered_quantity_display or unit_price changes
-    if (name === "ordered_quantity_display" || name === "unit_price" || name === "product_unit_id") {
+    if (name === "ordered_quantity_display" || name === "unit_price") {
       const orderedQty = parseFloat(newItems[index].ordered_quantity_display || 0);
       const unitPrice = parseFloat(newItems[index].unit_price || 0);
-      const selectedUnitId = newItems[index].product_unit_id;
-      const selectedUnit = productUnits.find(unit => unit.id === parseInt(selectedUnitId));
-
-      // Calculate quantity in base units
-      let quantityInBaseUnits = orderedQty;
-      if (selectedUnit) {
-        quantityInBaseUnits = orderedQty * parseFloat(selectedUnit.conversion_factor);
-      }
-      newItems[index].quantity = quantityInBaseUnits; // Update base unit quantity
+      
+      // Assuming orderedQty is always in base units now, so quantity = orderedQty
+      newItems[index].quantity = orderedQty; 
 
       // Calculate amount based on ordered_quantity_display
       newItems[index].amount = (orderedQty * unitPrice).toFixed(2);
@@ -142,24 +128,12 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
       newItems[index].unit_price = product.current_cost_price || 0;
       newItems[index].packing = product.pack_size || "";
       newItems[index].mrp = product.mrp || 0;
-      // Set default product unit if available
-      if (product.product_unit) {
-        newItems[index].product_unit_id = product.product_unit.id;
-      } else {
-        newItems[index].product_unit_id = ""; // No default unit
-      }
+      // Assuming orderedQty is always in base units now, so quantity = orderedQty
+      newItems[index].quantity = parseFloat(newItems[index].ordered_quantity_display || 0);
 
-      // Recalculate amount and base unit quantity
+      // Recalculate amount
       const orderedQty = parseFloat(newItems[index].ordered_quantity_display || 0);
       const unitPrice = parseFloat(newItems[index].unit_price || 0);
-      const selectedUnit = productUnits.find(unit => unit.id === parseInt(newItems[index].product_unit_id));
-
-      let quantityInBaseUnits = orderedQty;
-      if (selectedUnit) {
-        quantityInBaseUnits = orderedQty * parseFloat(selectedUnit.conversion_factor);
-      }
-      newItems[index].quantity = quantityInBaseUnits; // Update base unit quantity
-
       newItems[index].amount = (orderedQty * unitPrice).toFixed(2);
     } else {
       // Clear product and related fields
@@ -169,7 +143,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         product_details: null,
         ordered_quantity_display: 0,
         quantity: 0,
-        product_unit_id: "",
         unit_price: 0,
         packing: "",
         mrp: 0,
@@ -186,7 +159,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
         product: "", // Product ID
         ordered_quantity_display: 0, // User-entered quantity
         quantity: 0, // Base unit quantity (calculated)
-        product_unit_id: "", // Selected product unit ID
         unit_price: 0,
         product_details: null, // To store product object for display
         mrp: 0,
@@ -248,7 +220,6 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
     const itemsPayload = items.map((item) => ({
       product: item.product ? parseInt(item.product) : null, // Send product ID or null
       ordered_quantity_display: parseFloat(item.ordered_quantity_display), // Send display quantity
-      product_unit: item.product_unit_id ? parseInt(item.product_unit_id) : null, // Send product unit ID
       quantity: parseFloat(item.quantity), // Send base unit quantity (calculated)
       unit_price: parseFloat(item.unit_price),
       tax_percentage: parseFloat(item.tax || 0), // Include tax_percentage
@@ -323,9 +294,9 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
   }
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h1 className="text-xl font-bold text-gray-800 mb-4">
+    <div className="p-8 bg-gray-50 min-h-screen">
+      <div className="bg-white p-8 rounded-lg shadow-xl border border-gray-200">
+        <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
           {initialData ? "Edit Purchase Bill" : "Create Purchase Bill"}
         </h1>
 
@@ -347,7 +318,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
             <div>
               <label
                 htmlFor="supplier"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
                 Supplier <span className="text-red-500">*</span>
               </label>
@@ -356,7 +327,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                 name="supplier"
                 value={formData.supplier}
                 onChange={handleFormChange}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                 required
               >
                 <option value="">Select Supplier</option>
@@ -370,7 +341,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
             <div>
               <label
                 htmlFor="invoice_date"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
                 Invoice Date <span className="text-red-500">*</span>
               </label>
@@ -380,14 +351,14 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                 name="invoice_date"
                 value={formData.invoice_date}
                 onChange={handleFormChange}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                 required
               />
             </div>
             <div>
               <label
                 htmlFor="invoice_number"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
                 Invoice Number
               </label>
@@ -397,13 +368,13 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                 name="invoice_number"
                 value={formData.invoice_number}
                 onChange={handleFormChange}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
               />
             </div>
             <div>
               <label
                 htmlFor="status"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-sm font-medium text-gray-700 mb-1"
               >
                 Status <span className="text-red-500">*</span>
               </label>
@@ -412,7 +383,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                 name="status"
                 value={formData.status}
                 onChange={handleFormChange}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                 required
               >
                 <option value="PENDING">Pending</option>
@@ -424,41 +395,41 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
           </div>
 
           {/* Product Entry Table */}
-          <div className="overflow-x-auto border border-gray-200 rounded-md">
+          <div className="overflow-x-auto border border-gray-200 rounded-md mt-6">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-100">
                 <tr>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Product <span className="text-red-500">*</span>
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Packing
+                  </th>
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     MRP
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Batch
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Exp. Date
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Unit
-                  </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Qty <span className="text-red-500">*</span>
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Rate <span className="text-red-500">*</span>
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Disc %
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    tax
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Tax
                   </th>
-                  <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-3 px-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Amount
                   </th>
-                  <th className="py-2 px-3"></th> {/* For remove button */}
+                  <th className="py-3 px-3"></th> {/* For remove button */}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -473,8 +444,8 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                   </tr>
                 )}
                 {items.map((item, index) => (
-                  <tr key={index}>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="py-2 px-3">
                       <ModalSearchSelect
                         label="Product Name"
                         placeholder="Select Product"
@@ -493,104 +464,99 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                         ]}
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
+                      <input
+                        type="text"
+                        name="packing"
+                        value={item.packing || ""}
+                        onChange={(e) => handleItemChange(index, e)}
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
+                        placeholder="Packing"
+                      />
+                    </td>
+                    <td className="py-2 px-3">
                       <input
                         type="number"
                         name="mrp"
                         value={item.mrp}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         step="1"
                         placeholder="MRP"
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="text"
                         name="batch_number"
                         value={item.batch_number}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         placeholder="Batch No."
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="date"
                         name="expiry_date"
                         value={item.expiry_date}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <select
-                        name="product_unit_id"
-                        value={item.product_unit_id}
-                        onChange={(e) => handleItemChange(index, e)}
-                        // Removed styling classes for debugging
-                      >
-                        <option value="">Select Unit</option>
-                        {productUnits.map((unit) => (
-                          <option key={unit.id} value={unit.id}>
-                            {unit.unit_name} ({unit.unit_abbreviation})
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="number"
                         name="ordered_quantity_display"
                         value={item.ordered_quantity_display}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         min="0"
                         step="0.01"
                         required
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="number"
                         name="unit_price"
                         value={item.unit_price}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         min="0"
                         step="0.01"
                         required
                       />
                     </td>
 
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="number"
                         name="disc"
                         value={item.disc}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         min="0"
                         max="100"
                         step="0.01"
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="number"
                         name="tax"
                         value={item.tax || 0}
                         onChange={(e) => handleItemChange(index, e)}
-                        className="w-full p-1 border border-gray-200 rounded-md bg-gray-50"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         readOnly
                       />
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3">
                       <input
                         type="text"
                         name="amount"
                         value={item.amount}
-                        className="w-full p-1 border border-gray-200 rounded-md bg-gray-50"
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
                         readOnly
                       />
                     </td>
@@ -598,7 +564,7 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(index)}
-                        className="text-red-500 hover:text-red-700 font-bold"
+                        className="text-red-500 hover:text-red-700 font-bold text-lg"
                       >
                         &times;
                       </button>
@@ -611,88 +577,109 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
           <button
             type="button"
             onClick={handleAddItem}
-            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 mt-4"
+            className="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 transition duration-150 ease-in-out shadow-md mt-4"
           >
-            Add Item
+            + Add Item
           </button>
 
           {/* Summary and Action Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
             {/* Discount Info */}
-            {/* Discount Info */}
-            <div className="border p-4 rounded-md bg-gray-50">
-              <h3 className="font-semibold text-gray-700 mb-2">
+            <div className="border border-gray-200 p-5 rounded-lg bg-gray-50 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-3 text-lg">
                 Discount & Tax Info
               </h3>
               <div className="flex justify-between py-1">
                 <span className="text-sm text-gray-600">
                   Total Item Discount:
                 </span>
-                <span className="text-sm font-medium">
+                <span className="text-sm font-medium text-gray-800">
                   ₹ {totalDiscount.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-sm text-gray-600">Total Tax:</span>
-                <span className="text-sm font-medium">
+                <span className="text-sm font-medium text-gray-800">
                   ₹ {totalTax.toFixed(2)}
                 </span>
+              </div>
+              {/* Bill Disc. input can be added here if it's a separate field */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <label
+                  htmlFor="billDisc"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Bill Discount (%)
+                </label>
+                <div className="flex items-center mt-1">
+                  <input
+                    type="number"
+                    id="billDisc"
+                    name="billDisc"
+                    className="block w-24 p-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
+                    defaultValue="0.00" // This would need a state variable if it's interactive
+                  />
+                  <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-100 text-gray-600 text-sm">
+                    %
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Goods Value & Invoice Value */}
             <div className="space-y-4 col-span-2">
-              <div className="border p-4 rounded-md bg-gray-50">
-                <h3 className="font-semibold text-gray-700 mb-2">
+              <div className="border border-gray-200 p-5 rounded-lg bg-gray-50 shadow-sm">
+                <h3 className="font-semibold text-gray-800 mb-3 text-lg">
                   Additional Details
                 </h3>
                 <textarea
                   name="notes"
                   value={formData.notes}
                   onChange={handleFormChange}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  rows="3"
+                  className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out"
+                  rows="4"
+                  placeholder="Add any additional notes here..."
                 ></textarea>
               </div>
-              <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                <span className="text-md font-medium text-gray-700">
                   Goods Value:
                 </span>
                 <span className="text-lg font-bold text-gray-800">
                   ₹ {goodsValue.toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                <span className="text-md font-medium text-gray-700">
                   Total Discount:
                 </span>
                 <span className="text-lg font-bold text-gray-800">
                   ₹ {totalDiscount.toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                <span className="text-md font-medium text-gray-700">
                   Total Tax:
                 </span>
                 <span className="text-lg font-bold text-gray-800">
                   ₹ {totalTax.toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center py-2">
+                <span className="text-xl font-semibold text-gray-800">
                   Bill Value:
                 </span>
-                <span className="text-lg font-bold text-gray-800">
+                <span className="text-xl font-bold text-blue-600">
                   ₹ {billValue.toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-1">
-                <span className="text-sm font-medium text-gray-700">
+              <div className="flex justify-between items-center py-2 border-t border-gray-200 pt-4">
+                <span className="text-xl font-semibold text-gray-800">
                   Invoice Value:
                 </span>
                 <input
                   type="text"
-                  className="w-32 p-2 border border-gray-300 rounded-md shadow-sm text-lg font-bold text-right bg-gray-50"
+                  className="w-40 p-3 border border-gray-300 rounded-md shadow-sm text-xl font-bold text-right bg-blue-50 text-blue-800"
                   value={billValue.toFixed(2)}
                   readOnly
                 />
@@ -701,20 +688,26 @@ const PurchaseOrderForm = ({ onFormClose, initialData }) => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-end space-x-2 mt-6">
+          <div className="flex justify-end space-x-3 mt-8">
             <button
-              type="submit"
-              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
-              disabled={submitting}
+              type="button"
+              className="bg-gray-300 text-gray-800 px-5 py-2 rounded-md hover:bg-gray-400 transition duration-150 ease-in-out shadow-sm"
+              onClick={onFormClose} // Use the prop to close the form
             >
-              {submitting ? "Saving..." : "Save"}
+              Cancel
             </button>
             <button
               type="button"
-              className="bg-gray-400 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-500"
-              onClick={onFormClose} // Use the prop to close the form
+              className="bg-purple-600 text-white px-5 py-2 rounded-md hover:bg-purple-700 transition duration-150 ease-in-out shadow-md"
             >
-              Close
+              Last Deal
+            </button>
+            <button
+              type="submit"
+              className="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 transition duration-150 ease-in-out shadow-md"
+              disabled={submitting}
+            >
+              {submitting ? "Saving..." : "Save Purchase Bill"}
             </button>
           </div>
         </form>

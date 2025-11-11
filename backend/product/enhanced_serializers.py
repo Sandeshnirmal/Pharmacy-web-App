@@ -132,7 +132,7 @@ class ProductCompositionSerializer(serializers.ModelSerializer):
         model = ProductComposition
         fields = [
             'id', 'composition', 'composition_name', 'composition_details',
-            'strength', 'strength_unit', 'is_active', 'created_at'
+            'strength', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
         extra_kwargs = {'composition': {'read_only': True}} # Ensure composition is fetched with select_related
@@ -204,7 +204,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     def get_composition_summary(self, obj):
         """Get a summary of all compositions using prefetched data"""
         return [
-            f"{comp.composition.name} {comp.strength}{comp.strength_unit}"
+            f"{comp.composition.name} {comp.strength}"
             for comp in obj.active_product_compositions
         ]
     
@@ -301,7 +301,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'brand_name', 'generic_name', 'generic_name_id',
             'manufacturer', 'medicine_type', 'prescription_type',
-            'min_stock_level', 'product_unit',
+            'min_stock_level',
             'description', 'uses', 'side_effects',
             'how_to_use', 'precautions', 'storage',
             'hsn_code', 'category', 'category_id',

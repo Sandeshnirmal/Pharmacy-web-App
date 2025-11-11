@@ -8,20 +8,11 @@ from .models import (
     Category, Product, Batch, Inventory, GenericName,
     ProductReview, ProductImage, Wishlist, ProductTag,
     ProductTagAssignment, ProductViewHistory, Composition, Discount,
-    ProductUnit, ProductComposition # Import ProductUnit and ProductComposition
+    ProductComposition # Import ProductComposition
 )
 from .utils import calculate_current_selling_price, calculate_current_cost_price, calculate_effective_discount_percentage
 
 User = get_user_model()
-
-
-# ----------------------------
-# ProductUnit Serializer
-# ----------------------------
-class ProductUnitSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductUnit
-        fields = '__all__'
 
 
 # ----------------------------
@@ -30,7 +21,7 @@ class ProductUnitSerializer(serializers.ModelSerializer):
 class ProductCompositionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductComposition
-        fields = ['id', 'composition', 'strength', 'strength_unit', 'percentage', 'is_primary', 'is_active', 'notes']
+        fields = ['id', 'composition', 'strength', 'percentage', 'is_primary', 'is_active', 'notes']
         extra_kwargs = {
             'composition': {'required': False}, # Allow composition to be set by ID
         }
@@ -200,14 +191,6 @@ class BatchSerializer(serializers.ModelSerializer):
     offline_mrp_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     offline_discount_percentage = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     
-    # Add fields for product unit information
-    product_unit = ProductUnitSerializer(read_only=True)
-    product_unit_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
-    )
-    selected_unit_name = serializers.CharField(read_only=True)
-    selected_unit_abbreviation = serializers.CharField(read_only=True)
-
     class Meta:
         model = Batch
         fields = [
@@ -219,7 +202,6 @@ class BatchSerializer(serializers.ModelSerializer):
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price', # Offline
             'mfg_license_number', 'created_at',
             'updated_at', 'days_to_expiry', 'is_expired', 'expiry_status',
-            'product_unit', 'product_unit_id', 'selected_unit_name', 'selected_unit_abbreviation' # Add new fields
         ]
         extra_kwargs = {
             'current_quantity': {'required': False},
@@ -248,39 +230,20 @@ class BatchSerializer(serializers.ModelSerializer):
             return 'Good'
 
     def create(self, validated_data):
-        product_unit = validated_data.pop('product_unit', None)
         # Assuming 'quantity' in validated_data from frontend is the display quantity
         display_quantity = validated_data.get('quantity', 0)
 
-        if product_unit:
-            validated_data['quantity'] = display_quantity * product_unit.conversion_factor
-            validated_data['current_quantity'] = validated_data['quantity'] # Set current_quantity to base unit quantity
-            validated_data['selected_unit_name'] = product_unit.unit_name
-            validated_data['selected_unit_abbreviation'] = product_unit.unit_abbreviation
-        else:
-            # If no product_unit is provided, assume quantity is already in base units
-            validated_data['quantity'] = display_quantity
-            validated_data['current_quantity'] = display_quantity
-            validated_data['selected_unit_name'] = 'Base Unit' # Default
-            validated_data['selected_unit_abbreviation'] = 'BU' # Default
+        validated_data['quantity'] = display_quantity
+        validated_data['current_quantity'] = display_quantity
 
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        product_unit = validated_data.pop('product_unit', None)
         display_quantity = validated_data.get('quantity', None) # Get display quantity if provided
 
         if display_quantity is not None:
-            if product_unit:
-                instance.quantity = display_quantity * product_unit.conversion_factor
-                instance.current_quantity = instance.quantity # Update current_quantity to base unit quantity
-                instance.selected_unit_name = product_unit.unit_name
-                instance.selected_unit_abbreviation = product_unit.unit_abbreviation
-            else:
-                instance.quantity = display_quantity
-                instance.current_quantity = display_quantity
-                instance.selected_unit_name = 'Base Unit'
-                instance.selected_unit_abbreviation = 'BU'
+            instance.quantity = display_quantity
+            instance.current_quantity = display_quantity
             validated_data['quantity'] = instance.quantity # Ensure validated_data reflects base unit quantity
 
         return super().update(instance, validated_data)
@@ -344,10 +307,6 @@ class ProductSerializer(serializers.ModelSerializer):
     online_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
-    product_unit = ProductUnitSerializer(read_only=True)
-    product_unit_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
-    )
     compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
@@ -368,7 +327,6 @@ class ProductSerializer(serializers.ModelSerializer):
             'current_batch', # Include current_batch in fields
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
             'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
-            'product_unit', 'product_unit_id'
         ]
         extra_kwargs = {
             'image': {'required': False, 'allow_null': True}
@@ -466,10 +424,6 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     online_discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     online_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
-    product_unit = ProductUnitSerializer(read_only=True)
-    product_unit_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
-    )
     compositions = ProductCompositionSerializer(many=True, read_only=True) # Use nested serializer for compositions
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
@@ -492,7 +446,6 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'current_batch', # Include current_batch in fields
             'offline_mrp_price', 'offline_discount_percentage', 'offline_selling_price',
             'online_mrp_price', 'online_discount_percentage', 'online_selling_price',
-            'product_unit', 'product_unit_id'
         ]
         extra_kwargs = {
             'image': {'required': False, 'allow_null': True}
@@ -627,9 +580,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
         queryset=GenericName.objects.all(), source='generic_name', write_only=True, required=False, allow_null=True
     )
     created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
-    product_unit_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductUnit.objects.all(), source='product_unit', write_only=True, allow_null=True, required=False
-    )
     composition_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Composition.objects.all(), write_only=True, source='compositions', required=False
     )
@@ -643,12 +593,11 @@ class BulkProductSerializer(serializers.ModelSerializer):
             'description', 'uses', 'side_effects', 'how_to_use',
             'precautions', 'storage', 'image', 'hsn_code',
             'is_active', 'is_featured', 'category_name', 'category_id', 'generic_name_str', 'generic_name_id', 'created_by',
-            'product_unit_id', 'composition_ids'
+            'composition_ids'
         ]
         extra_kwargs = {
             'generic_name': {'required': False},
             'category': {'required': False},
-            'product_unit': {'required': False, 'allow_null': True},
         }
 
     def create(self, validated_data):
@@ -656,7 +605,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
         category_id = validated_data.pop('category_id', None)
         generic_name_str = validated_data.pop('generic_name_str', None)
         generic_name_id = validated_data.pop('generic_name_id', None)
-        product_unit_id = validated_data.pop('product_unit_id', None)
         composition_ids = validated_data.pop('compositions', [])
         
         if category_id:
@@ -670,9 +618,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
         elif generic_name_str:
             generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
             validated_data['generic_name'] = generic_name
-
-        if product_unit_id:
-            validated_data['product_unit'] = product_unit_id
         
         product = super().create(validated_data)
 
@@ -686,7 +631,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
         category_id = validated_data.pop('category_id', None)
         generic_name_str = validated_data.pop('generic_name_str', None)
         generic_name_id = validated_data.pop('generic_name_id', None)
-        product_unit_id = validated_data.pop('product_unit_id', None)
         composition_ids = validated_data.pop('compositions', [])
 
         if category_id:
@@ -700,9 +644,6 @@ class BulkProductSerializer(serializers.ModelSerializer):
         elif generic_name_str:
             generic_name, created = GenericName.objects.get_or_create(name=generic_name_str)
             validated_data['generic_name'] = generic_name
-
-        if product_unit_id:
-            validated_data['product_unit'] = product_unit_id
 
         product = super().update(instance, validated_data)
 
@@ -751,6 +692,9 @@ class ProductSearchSerializer(serializers.ModelSerializer):
             'current_cost_price',
             'is_prescription_required'
         ]
+
+    def get_is_prescription_required(self, obj):
+        return obj.prescription_type != 'otc'
 
     def get_current_selling_price(self, obj):
         request = self.context.get('request')

@@ -51,22 +51,13 @@ class OfflineSaleItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE, null=True, blank=True) # Optional, if tracking by batch
     quantity = models.IntegerField()
-    # Add a ForeignKey to ProductUnit to specify the unit for this offline sale item
-    product_unit = models.ForeignKey(
-        'product.ProductUnit',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="The unit in which this product was sold (e.g., 'strip', 'bottle')."
-    )
     price_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # New field for item-level discount
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00) # New field for item-level discount amount
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
-        unit_display = self.product_unit.unit_abbreviation if self.product_unit and self.product_unit.unit_abbreviation else (self.product_unit.unit_name if self.product_unit else 'units')
-        return f"{self.quantity} {unit_display} of {self.product.name} in Sale #{self.sale.id}"
+        return f"{self.quantity} units of {self.product.name} in Sale #{self.sale.id}"
 
 class BillReturn(models.Model):
     STATUS_CHOICES = [

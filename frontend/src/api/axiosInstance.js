@@ -42,6 +42,7 @@ axiosInstance.interceptors.request.use(
     }
 
     const accessToken = localStorage.getItem('access_token');
+    console.log(accessToken)
     if (accessToken) {
       config.headers['Authorization'] = `Bearer ${accessToken}`;
     }

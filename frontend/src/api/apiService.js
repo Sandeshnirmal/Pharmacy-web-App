@@ -126,10 +126,6 @@ export const productAPI = {
   deleteGenericName: (id) => axiosInstance.delete(`/api/products/legacy/generic-names/${id}/`),
 
   // Product Unit management (assuming a new endpoint)
-  getProductUnits: () => axiosInstance.get('/api/products/legacy/product-units/'),
-  createProductUnit: (data) => axiosInstance.post('/api/products/legacy/product-units/', data),
-  updateProductUnit: (id, data) => axiosInstance.patch(`/api/products/legacy/product-units/${id}/`, data),
-  deleteProductUnit: (id) => axiosInstance.delete(`/api/products/legacy/product-units/${id}/`),
 };
 
 // ============================================================================
