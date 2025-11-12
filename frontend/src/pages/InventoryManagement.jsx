@@ -438,15 +438,20 @@ const InventoryManagement = () => {
         // If a new file is selected, append it.
         formData.append("image", newProduct.image);
         console.log("DEBUG: Appending new image file.");
-      } else if (editingProduct) {
-        // If editing an existing product and no new file is selected (newProduct.image is null or a string URL),
-        // we explicitly delete the 'image' field from formData.
-        // This tells the backend to retain the existing image.
-        formData.delete("image");
-        console.log("DEBUG: Editing existing product, no new image selected. Deleting 'image' field from FormData to retain current image.");
+      } else if (editingProduct && newProduct.currentImage) {
+        // If editing an existing product and no new file is selected, and there's an existing image,
+        // we don't append anything for 'image' to retain the current one.
+        // The backend should handle the absence of the field as "keep current image".
+        console.log("DEBUG: Editing existing product, no new image selected. Retaining current image.");
+      } else if (editingProduct && !newProduct.currentImage) {
+        // If editing an existing product, no new file is selected, and there was no current image,
+        // explicitly send null to ensure the field is present but empty.
+        formData.append("image", ""); // Sending an empty string for file fields often works as null
+        console.log("DEBUG: Editing existing product, no new image selected, and no current image. Sending empty string for 'image'.");
+      } else if (!editingProduct && !newProduct.image) {
+        // For a new product without an image, do not append the field.
+        console.log("DEBUG: New product without image. 'image' field not appended to FormData.");
       }
-      // For new products (not editing) if newProduct.image is null, the 'image' field is simply not appended,
-      // which is the correct behavior for an optional file field.
       formData.append("hsn_code", newProduct.hsn_code);
       formData.append("category_id", newProduct.category_id); // Use category_id
       formData.append("is_active", newProduct.is_active);

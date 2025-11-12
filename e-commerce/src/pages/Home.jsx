@@ -40,7 +40,7 @@ export function TopSellerCard({ product }) { // Export TopSellerCard
         className={`flex justify-center items-center h-75 ${specificBgColor}`}
       >
         <img
-          src={product.images[0]} // Use the first image for the card
+          src={product.image} // Use product.image directly
           alt={product.name}
           className="max-h-full max-w-full object-fill p-4"
         />
@@ -245,7 +245,7 @@ function DealOfTheDay({ product, onProductClick }) {
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden p-6 md:p-8 grid md:grid-cols-2 gap-8 items-center">
           <div className="flex justify-center items-center bg-orange-50 rounded-lg p-8">
             <img
-              src={product.images[0]}
+              src={product.image}
               alt={product.name}
               className="max-h-80 object-contain"
             />
@@ -518,7 +518,7 @@ function Home() {
             online_mrp_price: p.current_batch.online_mrp_price,
             online_discount_percentage: p.current_batch.online_discount_percentage,
             online_selling_price: p.current_batch.online_selling_price,
-            images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"], // Updated Placeholder
+            image: p.image || "https://via.placeholder.com/300x200?text=No+Image+Available", // Directly use p.image
             fullDescription: p.description,
             usage: p.usage_instructions,
             ingredients: p.ingredients,

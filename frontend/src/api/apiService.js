@@ -79,7 +79,14 @@ export const productAPI = {
     axiosInstance.get('/api/products/enhanced-products/', { params: { ...params, page, page_size: pageSize } }),
   getProduct: (id) => axiosInstance.get(`/api/products/enhanced-products/${id}/`),
   createProduct: (productData) => axiosInstance.post('/api/products/enhanced-products/', productData),
-  updateProduct: (id, productData) => axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData),
+  updateProduct: (id, productData) => {
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+    return axiosInstance.patch(`/api/products/enhanced-products/${id}/`, productData, config);
+  },
   deleteProduct: (id) => axiosInstance.delete(`/api/products/enhanced-products/${id}/`),
   
   // Composition management

@@ -28,7 +28,7 @@ export const ProductCard = memo(({ product }) => { // Wrap in memo
         (entries, observer) => {
           entries.forEach(entry => {
             if (entry.isIntersecting) {
-              setImageSrc(product.images[0]);
+              setImageSrc(product.image);
               observer.unobserve(entry.target);
             }
           });
@@ -45,7 +45,7 @@ export const ProductCard = memo(({ product }) => { // Wrap in memo
         observer.unobserve(imgRef.current);
       }
     };
-  }, [product.images]);
+  }, [product.image]);
 
   return (
     <div

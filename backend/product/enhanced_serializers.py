@@ -178,6 +178,7 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
     # Batches
     batches = BatchSerializer(many=True, read_only=True)
     current_batch = serializers.SerializerMethodField()
+    image = ImageField(required=False, allow_null=True) # Removed write_only=True
     
     class Meta:
         model = Product
@@ -193,7 +194,8 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
             'is_active', 'is_featured',
             'created_at', 'updated_at', 'created_by', 'created_by_name',
             'batches', # Add batches to the fields
-            'current_batch' # Add current_batch to the fields
+            'current_batch', # Add current_batch to the fields
+            'image' # Add image to the fields
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
         extra_kwargs = {
@@ -247,33 +249,45 @@ class EnhancedProductSerializer(serializers.ModelSerializer):
         """Determine if a prescription is required based on prescription_type"""
         return obj.prescription_type in ['prescription', 'controlled']
 
-    # The to_internal_value method is no longer needed for custom parsing of composition_ids
-    # as ListField(child=UUIDField()) handles it automatically.
-    # The previous pop('compositions', None) in create/update methods is still necessary.
+    def validate_image(self, value):
+        """
+        Ensure that if an empty string or None is passed for the image,
+        it's treated as None. This prevents "not a file" errors when no file is uploaded.
+        """
+        if value == '' or value is None:
+            return None
+        return value
 
     def create(self, validated_data):
         """Create product with current user as creator"""
+        image_file = validated_data.pop('image', None)
         composition_ids_data = validated_data.pop('composition_ids', [])
         validated_data['created_by'] = self.context['request'].user
         product = super().create(validated_data)
         for comp_id in composition_ids_data:
             composition_instance = Composition.objects.get(id=comp_id)
             ProductComposition.objects.create(product=product, composition=composition_instance)
+        if image_file:
+            product.image.save(image_file.name, image_file, save=True)
         return product
 
     def update(self, instance, validated_data):
+        image_file = validated_data.pop('image', None)
         composition_ids_data = validated_data.pop('composition_ids', [])
 
         # Update basic product fields
         instance = super().update(instance, validated_data)
 
         # Handle product compositions
-        # Clear existing compositions
         instance.product_compositions.all().delete()
-        # Add new compositions
         for comp_id in composition_ids_data:
             composition_instance = Composition.objects.get(id=comp_id)
             ProductComposition.objects.create(product=instance, composition=composition_instance)
+        
+        if image_file:
+            instance.image.save(image_file.name, image_file, save=True)
+        elif 'image' in validated_data and validated_data['image'] is None:
+            instance.image.delete(save=True)
         
         return instance
 
@@ -291,7 +305,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), source='category', write_only=True, required=False, allow_null=True
     )
-    image = ImageField(write_only=True, required=False, allow_null=True) # Changed from image_url to image
+    image = ImageField(required=False, allow_null=True) # Removed write_only=True
     composition_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False, allow_empty=True
     )

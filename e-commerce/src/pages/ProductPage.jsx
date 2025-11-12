@@ -375,11 +375,11 @@ function ProductPage({ TopSellerCard }) { // Only accept TopSellerCard
           price: parseFloat(productData.current_batch.online_selling_price), // Store price as number
           mrp_price: `₹${parseFloat(productData.current_batch.online_mrp_price).toFixed(2)}`,
           discount_percentage: parseFloat(productData.current_batch.online_discount_percentage),
-          images: productData.images && productData.images.length > 0 ? productData.images.map(img => img.image_url) : ["https://via.placeholder.com/400x300?text=No+Image"],
+          images: productData.image ? [productData.image] : ["https://via.placeholder.com/400x300?text=No+Image"], // Use productData.image directly
           fullDescription: productData.description,
           usage: productData.usage_instructions,
           ingredients: productData.ingredients,
-          generic_name_display: productData.generic_name_display,
+          generic_name_display: productData.generic_name, // Use generic_name directly
           composition_summary: productData.composition_summary,
           reviews: [], // Assuming reviews are not directly in product API for now
         };
@@ -397,7 +397,7 @@ function ProductPage({ TopSellerCard }) { // Only accept TopSellerCard
             price: parseFloat(p.current_batch.online_selling_price), // Store price as number
             mrp_price: `₹${parseFloat(p.current_batch.online_mrp_price).toFixed(2)}`,
             discount_percentage: parseFloat(p.current_batch.online_discount_percentage),
-            images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
+            image: p.image || "https://via.placeholder.com/300x200?text=No+Image+Available", // Use p.image directly
             fullDescription: p.description,
             usage: p.usage_instructions,
             ingredients: p.ingredients,

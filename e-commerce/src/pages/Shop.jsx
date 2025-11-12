@@ -105,7 +105,7 @@ function Shop() {
           online_mrp_price: p.current_batch.online_mrp_price,
           online_discount_percentage: p.current_batch.online_discount_percentage,
           online_selling_price: p.current_batch.online_selling_price,
-          images: p.images && p.images.length > 0 ? [p.images[0].image_url] : ["https://via.placeholder.com/300x200?text=No+Image+Available"],
+          image: p.image || "https://via.placeholder.com/300x200?text=No+Image+Available", // Directly use p.image
           fullDescription: p.description,
           usage: p.usage_instructions,
           ingredients: p.ingredients,
