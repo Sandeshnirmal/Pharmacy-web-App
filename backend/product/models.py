@@ -177,7 +177,7 @@ class Batch(models.Model):
     manufacturing_date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField()
     quantity = models.DecimalField(max_digits=20, decimal_places=10, default=0)
-    current_quantity = models.DecimalField(max_digits=20, decimal_places=10)
+    current_quantity = models.DecimalField(max_digits=20, decimal_places=10, default=0) # Set default to 0
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
     

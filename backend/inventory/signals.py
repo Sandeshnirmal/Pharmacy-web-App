@@ -14,8 +14,10 @@ def update_batch_quantity_on_stock_movement_save(sender, instance, created, **kw
         # New stock movement
         if instance.movement_type == 'IN':
             batch.current_quantity += instance.quantity
+            batch.quantity += instance.quantity # Synchronize quantity
         elif instance.movement_type in ['OUT', 'EXPIRED', 'DAMAGED', 'SUPPLIER_RETURN']:
             batch.current_quantity -= instance.quantity
+            batch.quantity -= instance.quantity # Synchronize quantity
     else:
         # Existing stock movement updated (less common, but handle for robustness)
         # This would require comparing old and new quantities, which is more complex.
@@ -23,7 +25,7 @@ def update_batch_quantity_on_stock_movement_save(sender, instance, created, **kw
         # A more robust solution would involve pre_save to get old quantity.
         pass # For now, we'll focus on 'created' events.
 
-    batch.save(update_fields=['current_quantity'])
+    batch.save(update_fields=['current_quantity', 'quantity'])
 
 @receiver(post_delete, sender=StockMovement)
 def update_batch_quantity_on_stock_movement_delete(sender, instance, **kwargs):
@@ -33,6 +35,8 @@ def update_batch_quantity_on_stock_movement_delete(sender, instance, **kwargs):
     batch = instance.batch
     if instance.movement_type == 'IN':
         batch.current_quantity -= instance.quantity
+        batch.quantity -= instance.quantity # Synchronize quantity
     elif instance.movement_type in ['OUT', 'EXPIRED', 'DAMAGED', 'SUPPLIER_RETURN']:
         batch.current_quantity += instance.quantity
-    batch.save(update_fields=['current_quantity'])
+        batch.quantity += instance.quantity # Synchronize quantity
+    batch.save(update_fields=['current_quantity', 'quantity'])

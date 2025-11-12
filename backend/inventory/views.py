@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
+import logging # Import logging
 from django.db import transaction # Import transaction
 from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
 from .serializers import (
@@ -19,6 +20,8 @@ from .serializers import (
 from product.models import Product, Batch
 from product.serializers import BatchSerializer
 from .pagination import CustomPageNumberPagination
+
+logger = logging.getLogger(__name__) # Initialize logger
 
 class StockMovementViewSet(viewsets.ModelViewSet):
     queryset = StockMovement.objects.all().order_by('-created_at')

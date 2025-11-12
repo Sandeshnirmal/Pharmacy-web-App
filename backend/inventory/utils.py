@@ -1,8 +1,10 @@
 from django.db import transaction
+from django.db.models import F # Import F for atomic updates
 from django.utils import timezone
 from product.models import Product, Batch
 from inventory.models import StockMovement
 import logging
+from decimal import Decimal # Import Decimal for precise calculations
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +45,11 @@ def deduct_stock_from_batches(product: Product, quantity_to_deduct: int, user, o
         logger.info(f"deduct_stock_from_batches: Processing Batch {batch.id} (Batch No: {batch.batch_number}) for Product ID: {product.id}. Current quantity BEFORE deduction: {batch.current_quantity}, Deducting: {deduct_from_batch}")
 
         batch.current_quantity -= deduct_from_batch
-        batch.save(update_fields=['current_quantity'])
+        batch.quantity -= deduct_from_batch # Also deduct from the total quantity
+        batch.save(update_fields=['current_quantity', 'quantity'])
         # Re-fetch the batch to confirm the saved quantity from the database
         batch.refresh_from_db()
-        logger.info(f"deduct_stock_from_batches: Deducted {deduct_from_batch} units from Batch {batch.id} (Batch No: {batch.batch_number}). New current quantity AFTER save: {batch.current_quantity}")
+        logger.info(f"deduct_stock_from_batches: Deducted {deduct_from_batch} units from Batch {batch.id} (Batch No: {batch.batch_number}). New current quantity AFTER save: {batch.current_quantity}, New total quantity AFTER save: {batch.quantity}")
 
         # Record stock movement
         StockMovement.objects.create(
@@ -90,7 +93,8 @@ def return_stock_to_batches(order_item, user, reason="Order cancellation"):
     if batch:
         # Return to the original batch
         batch.current_quantity += quantity_to_return
-        batch.save(update_fields=['current_quantity'])
+        batch.quantity += quantity_to_return # Also add to the total quantity
+        batch.save(update_fields=['current_quantity', 'quantity'])
 
         # Record stock movement
         StockMovement.objects.create(
@@ -160,7 +164,9 @@ def add_stock_to_batches(product: Product, batch_number: str, expiry_date: str, 
     Creates the batch if it doesn't exist.
     Records stock movements for each addition.
     """
-    logger.info(f"add_stock_to_batches: Starting addition for Product ID: {product.id}, Batch No: {batch_number}, Expiry: {expiry_date}, Quantity to add: {quantity_to_add}, PO ID: {purchase_order_id}")
+    import uuid
+    call_id = str(uuid.uuid4())[:8] # Unique ID for this call
+    logger.info(f"add_stock_to_batches [{call_id}]: Starting addition for Product ID: {product.id}, Batch No: {batch_number}, Expiry: {expiry_date}, Quantity to add: {quantity_to_add}, PO ID: {purchase_order_id}")
 
     if quantity_to_add <= 0:
         logger.warning(f"add_stock_to_batches: Quantity to add is non-positive ({quantity_to_add}) for Product ID: {product.id}. No addition performed.")
@@ -173,10 +179,24 @@ def add_stock_to_batches(product: Product, batch_number: str, expiry_date: str, 
         defaults={'quantity': 0, 'current_quantity': 0} # Default values if creating a new batch
     )
 
-    batch.quantity += quantity_to_add
-    batch.current_quantity += quantity_to_add
-    batch.save(update_fields=['quantity', 'current_quantity'])
+    # Ensure we are working with Decimal for consistency
+    quantity_to_add_decimal = Decimal(str(quantity_to_add))
+
+    logger.info(f"add_stock_to_batches [{call_id}]: Before update - Batch ID: {batch.id}, Created: {created}, Existing Quantity: {batch.quantity}, Existing Current Quantity: {batch.current_quantity}, Quantity to Add: {quantity_to_add_decimal}")
+
+    if created:
+        # For a newly created batch, set both initial quantity and current available quantity
+        batch.quantity = quantity_to_add_decimal
+        batch.current_quantity = quantity_to_add_decimal
+        batch.save(update_fields=['quantity', 'current_quantity'])
+    else:
+        # For an existing batch, increment both quantity and current_quantity
+        batch.quantity = F('quantity') + quantity_to_add_decimal
+        batch.current_quantity = F('current_quantity') + quantity_to_add_decimal
+        batch.save(update_fields=['quantity', 'current_quantity'])
+    
     batch.refresh_from_db() # Re-fetch to confirm saved quantity
+    logger.info(f"add_stock_to_batches [{call_id}]: After update - Batch ID: {batch.id}, New Quantity: {batch.quantity}, New Current Quantity: {batch.current_quantity}")
 
     logger.info(f"add_stock_to_batches: Added {quantity_to_add} units to Batch {batch.id} (Batch No: {batch.batch_number}). New total quantity: {batch.quantity}, New current quantity: {batch.current_quantity}")
 

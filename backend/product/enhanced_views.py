@@ -328,8 +328,8 @@ class ProductViewSet(viewsets.ModelViewSet):
                         batch_number=f'AUTO-{product.id}-{timezone.now().strftime("%Y%m%d%H%M%S")}',
                         manufacturing_date=timezone.now().date(),
                         expiry_date=timezone.now().date() + timedelta(days=365),
-                        quantity=0,
-                        current_quantity=0,
+                        quantity=quantity, # Initialize with the provided quantity
+                        current_quantity=quantity, # Initialize with the provided quantity
                         cost_price=0,
                         selling_price=0,
                         online_mrp_price=0,
@@ -343,10 +343,13 @@ class ProductViewSet(viewsets.ModelViewSet):
             # Apply stock operation
             if operation == 'set':
                 batch.current_quantity = quantity
+                batch.quantity = quantity # Synchronize quantity
             elif operation == 'add':
                 batch.current_quantity += quantity
+                batch.quantity += quantity # Synchronize quantity
             elif operation == 'subtract':
                 batch.current_quantity = max(0, batch.current_quantity - quantity)
+                batch.quantity = max(0, batch.quantity - quantity) # Synchronize quantity
             else:
                 return Response(
                     {'error': 'Invalid operation. Use "set", "add", or "subtract"'},

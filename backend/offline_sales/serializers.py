@@ -191,7 +191,8 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                     quantity_in_base_units = old_item.quantity # Assume quantity is always in base units after removing ProductUnit
 
                     batch.current_quantity += quantity_in_base_units
-                    batch.save(update_fields=['current_quantity'])
+                    batch.quantity += quantity_in_base_units # Synchronize quantity
+                    batch.save(update_fields=['current_quantity', 'quantity'])
                     StockMovement.objects.create(
                         product=old_item.product,
                         batch=batch,

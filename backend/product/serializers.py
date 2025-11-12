@@ -239,13 +239,16 @@ class BatchSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        display_quantity = validated_data.get('quantity', None) # Get display quantity if provided
-
-        if display_quantity is not None:
-            instance.quantity = display_quantity
-            instance.current_quantity = display_quantity
-            validated_data['quantity'] = instance.quantity # Ensure validated_data reflects base unit quantity
-
+        # Prioritize current_quantity if provided, otherwise use quantity
+        # Ensure both quantity and current_quantity are always in sync
+        if 'current_quantity' in validated_data:
+            instance.current_quantity = validated_data['current_quantity']
+            instance.quantity = validated_data['current_quantity'] # Synchronize quantity
+            validated_data.pop('quantity', None) # Remove quantity from validated_data to avoid double update
+        elif 'quantity' in validated_data:
+            instance.quantity = validated_data['quantity']
+            instance.current_quantity = validated_data['quantity'] # Synchronize current_quantity
+        
         return super().update(instance, validated_data)
 
 

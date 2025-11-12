@@ -528,8 +528,13 @@ class EnhancedProductViewSet(viewsets.ModelViewSet):
 
         if not created:
             # Update existing batch
-            batch.quantity = batch_data.get('quantity', batch.quantity)
-            batch.current_quantity = batch_data.get('current_quantity', batch.current_quantity) # Assuming full replacement or adjustment
+            # If current_quantity is provided, update both quantity and current_quantity to match
+            if 'current_quantity' in batch_data:
+                batch.current_quantity = batch_data['current_quantity']
+                batch.quantity = batch_data['current_quantity'] # Synchronize quantity
+            else:
+                batch.quantity = batch_data.get('quantity', batch.quantity) # Only update if quantity is explicitly provided
+            
             batch.expiry_date = batch_data.get('expiry_date', batch.expiry_date)
             batch.cost_price = batch_data.get('cost_price', batch.cost_price)
             batch.mrp_price = batch_data.get('mrp_price', batch.mrp_price)

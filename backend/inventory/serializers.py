@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from rest_framework import serializers
 from .models import StockMovement, StockAlert, Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseReturn, PurchaseReturnItem
 from product.models import Batch, Product
@@ -51,16 +53,21 @@ class BatchCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ('created_at', 'updated_at')
     
     def create(self, validated_data):
+        # Ensure current_quantity is set to initial quantity if not provided
+        if 'current_quantity' not in validated_data and 'quantity' in validated_data:
+            validated_data['current_quantity'] = validated_data['quantity']
+        
         batch = super().create(validated_data)
         
         # Create stock movement record
+        # The quantity for the stock movement should be the initial quantity of the batch
         StockMovement.objects.create(
-            product=batch.product, # Use batch.product
+            product=batch.product,
             batch=batch,
             movement_type='IN',
-            quantity=batch.quantity,
+            quantity=batch.quantity, # Use batch.quantity (initial quantity)
             reference_number=f"BATCH-{batch.batch_number}",
-            notes=f"New batch added: {batch.batch_number}",
+            notes=f"New batch added: {batch.batch_number} with initial quantity {batch.quantity}",
             created_by=self.context.get('request').user if self.context.get('request') else None
         )
         
@@ -204,25 +211,41 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                     item_to_delete.purchase_order_item.returned_quantity -= item_to_delete.quantity
                     item_to_delete.purchase_order_item.save()
                 
-                # Reverse stock movement for deleted item
-                product = item_to_delete.product
-                quantity_to_reverse = item_to_delete.quantity
-                batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+                # Reverse stock movement for deleted item using centralized utility
+                from inventory.utils import return_stock_to_batches
+                class DummyOrderItemForReturn:
+                    def __init__(self, product, batch, quantity, order_id):
+                        self.product = product
+                        self.batch = batch
+                        self.quantity = quantity
+                        self.order = type('obj', (object,), {'id': order_id})() # Mock order object with ID
+
+                # Try to find the batch from which it was originally returned
+                batch = Batch.objects.filter(
+                    product=item_to_delete.product,
+                    batch_number=item_to_delete.batch_number,
+                    expiry_date=item_to_delete.expiry_date
+                ).first()
+
                 if batch:
-                    batch.current_quantity += quantity_to_reverse # Add back to stock
-                    batch.quantity += quantity_to_reverse # Add back to total quantity
-                    batch.save()
-                    StockMovement.objects.create(
-                        product=product,
+                    dummy_order_item = DummyOrderItemForReturn(
+                        product=item_to_delete.product,
                         batch=batch,
-                        movement_type='SUPPLIER_RETURN_REVERSAL', # New movement type for reversal
-                        quantity=quantity_to_reverse,
-                        reference_number=f"PR-REV-{instance.id}-{item_id}",
-                        notes=f"Reversed {quantity_to_reverse} units of {product.name} from batch {batch.batch_number} due to deletion from Purchase Return #{instance.id}.",
-                        created_by=self.context.get('request').user
+                        quantity=item_to_delete.quantity,
+                        order_id=instance.id # Use purchase return ID as order_id for reference
                     )
+                    try:
+                        return_stock_to_batches(
+                            order_item=dummy_order_item,
+                            user=self.context.get('request').user,
+                            reason=f"Purchase Return Item Deletion Reversal for PR #{instance.id}"
+                        )
+                    except ValueError as ve:
+                        logger.error(f"Stock return failed for product {item_to_delete.product.name} during return item deletion: {str(ve)}")
+                    except Exception as ex:
+                        logger.exception(f"Unexpected error during stock return for product {item_to_delete.product.name} during return item deletion.")
                 else:
-                    print(f"Warning: No active batch found for product {product.name} during return item deletion processing.")
+                    logger.warning(f"No specific batch found for product {item_to_delete.product.name} (batch_number: {item_to_delete.batch_number}) to reverse stock during return item deletion. Stock not reversed via utility.")
                 
                 item_to_delete.delete()
 
@@ -248,26 +271,60 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                         return_item.purchase_order_item.save()
                     
                     # Adjust stock movement for updated item
+                    # Adjust stock movement for updated item using centralized utility
                     quantity_difference = new_quantity - old_quantity
                     if quantity_difference != 0:
-                        batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+                        from inventory.utils import return_stock_to_batches, add_stock_to_batches
+                        class DummyOrderItemForReturn:
+                            def __init__(self, product, batch, quantity, order_id):
+                                self.product = product
+                                self.batch = batch
+                                self.quantity = quantity
+                                self.order = type('obj', (object,), {'id': order_id})() # Mock order object with ID
+
+                        # Try to find the batch from which it was originally returned
+                        batch = Batch.objects.filter(
+                            product=product,
+                            batch_number=return_item.batch_number,
+                            expiry_date=return_item.expiry_date
+                        ).first()
+
                         if batch:
-                            batch.current_quantity -= quantity_difference # Decrease if new_quantity > old_quantity, increase if new_quantity < old_quantity
-                            batch.quantity -= quantity_difference # Adjust total quantity as well
-                            batch.save()
-                            movement_type = 'SUPPLIER_RETURN' if quantity_difference > 0 else 'SUPPLIER_RETURN_REVERSAL'
-                            notes = f"Adjusted {abs(quantity_difference)} units of {product.name} from batch {batch.batch_number} due to update in Purchase Return #{instance.id}."
-                            StockMovement.objects.create(
-                                product=product,
-                                batch=batch,
-                                movement_type=movement_type,
-                                quantity=abs(quantity_difference),
-                                reference_number=f"PR-ADJ-{instance.id}-{item_id}",
-                                notes=notes,
-                                created_by=self.context.get('request').user
-                            )
+                            if quantity_difference > 0: # More items returned, so deduct more stock
+                                dummy_order_item = DummyOrderItemForReturn(
+                                    product=product,
+                                    batch=batch,
+                                    quantity=quantity_difference,
+                                    order_id=instance.id
+                                )
+                                try:
+                                    return_stock_to_batches(
+                                        order_item=dummy_order_item,
+                                        user=self.context.get('request').user,
+                                        reason=f"Purchase Return Item Adjustment (Increased Return) for PR #{instance.id}"
+                                    )
+                                except ValueError as ve:
+                                    logger.error(f"Stock return failed for product {product.name} during return item update (increase): {str(ve)}")
+                                except Exception as ex:
+                                    logger.exception(f"Unexpected error during stock return for product {product.name} during return item update (increase).")
+                            else: # Fewer items returned, so add stock back
+                                try:
+                                    # For adding stock back, we can use add_stock_to_batches
+                                    # Note: add_stock_to_batches expects batch_number and expiry_date directly
+                                    add_stock_to_batches(
+                                        product=product,
+                                        batch_number=batch.batch_number,
+                                        expiry_date=batch.expiry_date,
+                                        quantity_to_add=abs(quantity_difference),
+                                        user=self.context.get('request').user,
+                                        purchase_order_id=instance.id # Use purchase return ID as PO ID for reference
+                                    )
+                                except ValueError as ve:
+                                    logger.error(f"Stock addition failed for product {product.name} during return item update (decrease): {str(ve)}")
+                                except Exception as ex:
+                                    logger.exception(f"Unexpected error during stock addition for product {product.name} during return item update (decrease).")
                         else:
-                            print(f"Warning: No active batch found for product {product.name} during return item update processing.")
+                            logger.warning(f"No specific batch found for product {product.name} (batch_number: {return_item.batch_number}) to adjust stock during return item update. Stock not adjusted via utility.")
 
                 else: # Create new item
                     quantity = item_data['quantity']
@@ -284,23 +341,41 @@ class PurchaseReturnSerializer(serializers.ModelSerializer):
                         purchase_order_item.returned_quantity += quantity
                         purchase_order_item.save()
                     
-                    # Create StockMovement for new item
-                    batch = Batch.objects.filter(product=product, current_quantity__gt=0).order_by('expiry_date').first()
+                    # Create StockMovement for new item using centralized utility
+                    from inventory.utils import return_stock_to_batches
+                    class DummyOrderItemForReturn:
+                        def __init__(self, product, batch, quantity, order_id):
+                            self.product = product
+                            self.batch = batch
+                            self.quantity = quantity
+                            self.order = type('obj', (object,), {'id': order_id})() # Mock order object with ID
+
+                    # Try to find the batch from which it was originally returned
+                    batch = Batch.objects.filter(
+                        product=product,
+                        batch_number=return_item.batch_number, # Assuming batch_number is set on return_item
+                        expiry_date=return_item.expiry_date # Assuming expiry_date is set on return_item
+                    ).first()
+
                     if batch:
-                        batch.current_quantity -= quantity # Decrease stock for new return item
-                        batch.quantity -= quantity # Decrease total quantity for new return item
-                        batch.save()
-                        StockMovement.objects.create(
+                        dummy_order_item = DummyOrderItemForReturn(
                             product=product,
                             batch=batch,
-                            movement_type='SUPPLIER_RETURN',
                             quantity=quantity,
-                            reference_number=f"PR-{instance.id}-{return_item.id}",
-                            notes=f"Returned {quantity} units of {product.name} from batch {batch.batch_number} for new item in Purchase Return #{instance.id}.",
-                            created_by=self.context.get('request').user
+                            order_id=instance.id
                         )
+                        try:
+                            return_stock_to_batches(
+                                order_item=dummy_order_item,
+                                user=self.context.get('request').user,
+                                reason=f"New Purchase Return Item for PR #{instance.id}"
+                            )
+                        except ValueError as ve:
+                            logger.error(f"Stock return failed for product {product.name} during new return item creation: {str(ve)}")
+                        except Exception as ex:
+                            logger.exception(f"Unexpected error during stock return for product {product.name} during new return item creation.")
                     else:
-                        print(f"Warning: No active batch found for product {product.name} during new return item processing.")
+                        logger.warning(f"No specific batch found for product {product.name} (batch_number: {return_item.batch_number}) to deduct stock during new return item processing. Stock not deducted via utility.")
                 
                 total_amount += return_item.quantity * return_item.unit_price
             instance.total_amount = total_amount
@@ -373,50 +448,26 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             )
             total_amount += subtotal
 
-            # Find or create batch
-            batch, created = Batch.objects.get_or_create(
-                product=product,
-                batch_number=batch_number,
-                expiry_date=expiry_date,
-                defaults={
-                    'quantity': Decimal('0.00'), 
-                    'current_quantity': Decimal('0.00'), 
-                    'cost_price': unit_price,
-                    'tax_percentage': tax_percentage_item,
-                    'online_mrp_price': unit_price,
-                    'online_selling_price': unit_price,
-                    'offline_mrp_price': unit_price,
-                    'offline_selling_price': unit_price,
-                }
-            )
-
-            batch.quantity += quantity
-            batch.current_quantity += quantity
-            batch.cost_price = unit_price
-            batch.tax_percentage = tax_percentage_item
-            
-            # Set online/offline prices to unit_price if they are currently 0 or None
-            if batch.online_mrp_price is None or batch.online_mrp_price == Decimal('0.00'):
-                batch.online_mrp_price = unit_price
-            if batch.online_selling_price is None or batch.online_selling_price == Decimal('0.00'):
-                batch.online_selling_price = unit_price
-            if batch.offline_mrp_price is None or batch.offline_mrp_price == Decimal('0.00'):
-                batch.offline_mrp_price = unit_price
-            if batch.offline_selling_price is None or batch.offline_selling_price == Decimal('0.00'):
-                batch.offline_selling_price = unit_price
-
-            batch.save()
-
-            # Create stock movement record
-            StockMovement.objects.create(
-                product=product,
-                batch=batch,
-                movement_type='IN',
-                quantity=quantity,
-                reference_number=f"PO-{purchase_order.id}",
-                notes=f"Received {quantity} units for Purchase Order #{purchase_order.id} into batch {batch.batch_number} upon creation.",
-                created_by=self.context.get('request').user if self.context.get('request') else None
-            )
+            # If the purchase order is created with 'RECEIVED' status, add stock immediately.
+            # Otherwise, stock will be added via the 'receive_items' action.
+            if validated_data['status'] == 'RECEIVED':
+                from inventory.utils import add_stock_to_batches # Import centralized stock utility
+                try:
+                    batch = add_stock_to_batches(
+                        product=product,
+                        batch_number=batch_number,
+                        expiry_date=expiry_date,
+                        quantity_to_add=quantity,
+                        user=self.context.get('request').user if self.context.get('request') else None,
+                        purchase_order_id=purchase_order.id
+                    )
+                    if not batch:
+                        raise serializers.ValidationError(f"Stock addition failed for product {product.name}.")
+                except ValueError as ve:
+                    raise serializers.ValidationError(str(ve))
+                except Exception as ex:
+                    logger.exception(f"Unexpected error during stock addition for product {product.name} during purchase order creation.")
+                    raise serializers.ValidationError(f"An unexpected error occurred while adding stock for {product.name}: {str(ex)}")
 
         purchase_order.total_amount = total_amount
         purchase_order.save()
@@ -438,112 +489,107 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         new_status = instance.status # Get the new status after saving
 
         if items_data is not None:
-            # If items are being updated, and old status was RECEIVED, reverse old stock movements
-            if old_status == 'RECEIVED':
+            # Handle stock reversal if status changes from 'RECEIVED'
+            if old_status == 'RECEIVED' and new_status != 'RECEIVED':
+                from inventory.utils import return_stock_to_batches
+                class DummyOrderItemForReturn: # Re-using the dummy class for consistency
+                    def __init__(self, product, batch, quantity, order_id):
+                        self.product = product
+                        self.batch = batch
+                        self.quantity = quantity
+                        self.order = type('obj', (object,), {'id': order_id})() # Mock order object with ID
+
                 for old_item in instance.items.all():
-                    product = old_item.product
-                    quantity = old_item.quantity
-
-                    batch = Batch.objects.filter(product=product, batch_number=old_item.batch_number, expiry_date=old_item.expiry_date).first()
+                    batch = Batch.objects.filter(
+                        product=old_item.product,
+                        batch_number=old_item.batch_number,
+                        expiry_date=old_item.expiry_date
+                    ).first()
                     if batch:
-                        batch.quantity -= quantity
-                        batch.current_quantity -= quantity
-                        batch.save(update_fields=['quantity', 'current_quantity'])
-                        StockMovement.objects.create(
-                            product=product,
+                        dummy_order_item = DummyOrderItemForReturn(
+                            product=old_item.product,
                             batch=batch,
-                            movement_type='OUT', # Reverse movement
-                            quantity=quantity,
-                            reference_number=f"PO-UPDATE-REV-{instance.id}",
-                            notes=f"Reversed {quantity} units for Purchase Order #{instance.id} due to update from RECEIVED status.",
-                            created_by=self.context.get('request').user if self.context.get('request') else None
+                            quantity=old_item.quantity,
+                            order_id=instance.id
                         )
+                        try:
+                            return_stock_to_batches(
+                                order_item=dummy_order_item,
+                                user=self.context.get('request').user,
+                                reason=f"Purchase Order Update Reversal from RECEIVED status for PO #{instance.id}"
+                            )
+                        except ValueError as ve:
+                            logger.error(f"Stock return failed for product {old_item.product.name} during PO update reversal: {str(ve)}")
+                        except Exception as ex:
+                            logger.exception(f"Unexpected error during stock return for product {old_item.product.name} during PO update reversal.")
                     else:
-                        print(f"Warning: Batch not found for product {product.name}, batch_number {old_item.batch_number}, expiry_date {old_item.expiry_date}. Skipping stock reversal for this item.")
+                        logger.warning(f"No specific batch found for product {old_item.product.name} (batch_number: {old_item.batch_number}) to reverse stock during PO update reversal. Stock not reversed via utility.")
 
-            instance.items.all().delete() # Delete old items
+            # Delete old items and create new ones if items_data is provided
+            if items_data is not None:
+                instance.items.all().delete() # Clear existing items
+                total_amount = 0
+                for item_data in items_data:
+                    product_data = item_data.pop('product')
+                    if product_data is None:
+                        raise serializers.ValidationError({"product": "Product ID cannot be null for purchase order items."})
+                    if isinstance(product_data, Product):
+                        product = product_data
+                    else: # Assume it's an ID
+                        product = Product.objects.get(id=product_data)
+                    
+                    quantity = Decimal(str(item_data.pop('quantity')))
+                    unit_price = Decimal(str(item_data.pop('unit_price')))
+                    tax_percentage = Decimal(str(item_data.pop('tax_percentage', Decimal('0.00'))))
+                    discount_percentage = Decimal(str(item_data.pop('discount_percentage', Decimal('0.00'))))
+                    batch_number = item_data.get('batch_number')
+                    expiry_date = item_data.get('expiry_date')
+                    cost_price = Decimal(str(item_data.pop('cost_price', Decimal('0.00'))))
+                    tax_percentage_item = tax_percentage
 
-            total_amount = 0
-            for item_data in items_data:
-                product_data = item_data.pop('product')
-                if product_data is None:
-                    raise serializers.ValidationError({"product": "Product ID cannot be null for purchase order items."})
-                if isinstance(product_data, Product):
-                    product = product_data
-                else: # Assume it's an ID
-                    product = Product.objects.get(id=product_data)
-                
-                quantity = Decimal(str(item_data.pop('quantity')))
-
-                unit_price = Decimal(str(item_data.pop('unit_price')))
-                tax_percentage = Decimal(str(item_data.pop('tax_percentage', Decimal('0.00'))))
-                discount_percentage = Decimal(str(item_data.pop('discount_percentage', Decimal('0.00'))))
-                batch_number = item_data.get('batch_number')
-                expiry_date = item_data.get('expiry_date')
-                cost_price = Decimal(str(item_data.pop('cost_price', Decimal('0.00'))))
-                tax_percentage_item = tax_percentage
-
-                item_base_amount = quantity * unit_price
-                item_discount_amount = item_base_amount * (discount_percentage / Decimal('100'))
-                item_taxable_amount = item_base_amount - item_discount_amount
-                item_tax_amount = item_taxable_amount * (tax_percentage_item / Decimal('100'))
-                subtotal = item_taxable_amount + item_tax_amount
-                
-                PurchaseOrderItem.objects.create(
-                    purchase_order=instance,
-                    product=product,
-                    quantity=quantity,
-                    unit_price=unit_price,
-                    subtotal=subtotal,
-                    tax_percentage=tax_percentage_item,
-                    discount_percentage=discount_percentage,
-                    **item_data
-                )
-                total_amount += subtotal
-
-                # If the new status is RECEIVED, update stock and create stock movement
-                if new_status == 'RECEIVED':
-                    batch, created = Batch.objects.get_or_create(
+                    item_base_amount = quantity * unit_price
+                    item_discount_amount = item_base_amount * (discount_percentage / Decimal('100'))
+                    item_taxable_amount = item_base_amount - item_discount_amount
+                    item_tax_amount = item_taxable_amount * (tax_percentage_item / Decimal('100'))
+                    subtotal = item_taxable_amount + item_tax_amount
+                    
+                    PurchaseOrderItem.objects.create(
+                        purchase_order=instance,
                         product=product,
-                        batch_number=batch_number,
-                        expiry_date=expiry_date,
-                        defaults={
-                            'quantity': Decimal('0.00'),
-                            'current_quantity': Decimal('0.00'),
-                            'cost_price': unit_price,
-                            'tax_percentage': tax_percentage_item,
-                            'online_mrp_price': unit_price,
-                            'online_selling_price': unit_price,
-                            'offline_mrp_price': unit_price,
-                            'offline_selling_price': unit_price,
-                        }
-                    )
-                    batch.quantity += quantity
-                    batch.current_quantity += quantity
-                    batch.cost_price = unit_price
-                    batch.tax_percentage = tax_percentage_item
-
-                    if batch.online_mrp_price is None or batch.online_mrp_price == Decimal('0.00'):
-                        batch.online_mrp_price = unit_price
-                    if batch.online_selling_price is None or batch.online_selling_price == Decimal('0.00'):
-                        batch.online_selling_price = unit_price
-                    if batch.offline_mrp_price is None or batch.offline_mrp_price == Decimal('0.00'):
-                        batch.offline_mrp_price = unit_price
-                    if batch.offline_selling_price is None or batch.offline_selling_price == Decimal('0.00'):
-                        batch.offline_selling_price = unit_price
-
-                    batch.save()
-
-                    StockMovement.objects.create(
-                        product=product,
-                        batch=batch,
-                        movement_type='IN',
                         quantity=quantity,
-                        reference_number=f"PO-{instance.id}",
-                        notes=f"Received {quantity} units for Purchase Order #{instance.id} into batch {batch.batch_number} upon update.",
-                        created_by=self.context.get('request').user if self.context.get('request') else None
+                        unit_price=unit_price,
+                        subtotal=subtotal,
+                        tax_percentage=tax_percentage_item,
+                        discount_percentage=discount_percentage,
+                        **item_data
                     )
-            instance.total_amount = total_amount
-            instance.save()
+                    total_amount += subtotal
+
+                    # If the new status is RECEIVED, add stock immediately.
+                    if new_status == 'RECEIVED':
+                        from inventory.utils import add_stock_to_batches # Import centralized stock utility
+                        try:
+                            batch = add_stock_to_batches(
+                                product=product,
+                                batch_number=batch_number,
+                                expiry_date=expiry_date,
+                                quantity_to_add=quantity,
+                                user=self.context.get('request').user if self.context.get('request') else None,
+                                purchase_order_id=instance.id
+                            )
+                            if not batch:
+                                raise serializers.ValidationError(f"Stock addition failed for product {product.name}.")
+                        except ValueError as ve:
+                            raise serializers.ValidationError(str(ve))
+                        except Exception as ex:
+                            logger.exception(f"Unexpected error during stock addition for product {product.name} during purchase order update.")
+                            raise serializers.ValidationError(f"An unexpected error occurred while adding stock for {product.name}: {str(ex)}")
+                instance.total_amount = total_amount
+                instance.save() # Save again to update total_amount
+            else:
+                # Recalculate total_amount based on current items if items_data was not provided
+                total_amount = sum(item.subtotal for item in instance.items.all())
+                instance.total_amount = total_amount
+                instance.save() # Save again to update total_amount
 
         return instance
