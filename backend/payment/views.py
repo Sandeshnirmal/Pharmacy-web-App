@@ -134,11 +134,11 @@ def verify_payment(request):
             payment.status = 'completed'
             payment.save()
             
-            # Update order status
-            order = payment.order
-            order.payment_status = 'Paid'
-            order.order_status = 'payment_completed'
-            order.save()
+            # Update order status (removed, handled by create_paid_order_for_prescription)
+            order = payment.order # Re-introduce this line to define 'order'
+            # order.payment_status = 'Paid'
+            # order.order_status = 'payment_completed'
+            # order.save()
 
             # Create and mark invoice as paid
             invoice = InvoiceService.create_invoice_for_order(order)

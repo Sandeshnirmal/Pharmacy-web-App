@@ -60,7 +60,7 @@ class OrderSerializer(serializers.ModelSerializer):
         total_tax = Decimal('0.00')
         for item in obj.items.all():
             if item.batch and item.batch.tax_percentage is not None:
-                total_tax += item.unit_price_at_order * item.quantity * (obj.batch.tax_percentage / 100)
+                total_tax += item.unit_price_at_order * item.quantity * (item.batch.tax_percentage / 100)
         return total_tax
 
 class CancelOrderSerializer(serializers.Serializer):

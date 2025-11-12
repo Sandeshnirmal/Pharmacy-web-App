@@ -360,9 +360,19 @@ LOGGING = {
             'level': 'INFO', # Changed to INFO for production
             'propagate': False,
         },
+        'inventory': { # Logger for the inventory app
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'orders': { # Logger for the orders app
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
     'root': {
         'handlers': ['console'],
-        'level': 'WARNING',
+        'level': 'INFO', # Change root logger to INFO to catch all messages
     },
 }

@@ -145,7 +145,6 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 batch=batch,
                 movement_type='OUT',
                 quantity=quantity_in_base_units,
-                product_unit=product.product_unit, # Use product's default base unit for stock movement
                 reference_number=f"OFFLINE-SALE-{offline_sale.id}",
                 notes=f"Sold {quantity_in_base_units} base units for Offline Sale #{offline_sale.id} from batch {batch.batch_number}",
                 created_by=self.context.get('request').user if self.context.get('request') else None
@@ -198,7 +197,6 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                         batch=batch,
                         movement_type='IN',
                         quantity=quantity_in_base_units,
-                        product_unit=old_item.product.product_unit, # Use product's default base unit for stock movement
                         reference_number=f"OFFLINE-SALE-CANCEL-{instance.id}",
                         notes=f"Cancelled Sale #{instance.id}: Returned {quantity_in_base_units} base units of {old_item.product.name} to batch {batch.batch_number}",
                         created_by=self.context.get('request').user if self.context.get('request') else None
@@ -242,7 +240,6 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                         batch=batch,
                         movement_type='IN',
                         quantity=quantity_in_base_units,
-                        product_unit=old_item.product.product_unit, # Use product's default base unit for stock movement
                         reference_number=f"OFFLINE-SALE-UPDATE-REVERT-{instance.id}",
                         notes=f"Reverted {quantity_in_base_units} base units of {old_item.product.name} for Sale Update #{instance.id}",
                         created_by=self.context.get('request').user if self.context.get('request') else None
@@ -270,7 +267,6 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                     batch=batch,
                     movement_type='OUT',
                     quantity=quantity_in_base_units,
-                    product_unit=product.product_unit, # Use product's default base unit for stock movement
                     reference_number=f"OFFLINE-SALE-UPDATE-{instance.id}",
                     notes=f"Sold {quantity_in_base_units} base units for Offline Sale Update #{instance.id} from batch {batch.batch_number}",
                     created_by=self.context.get('request').user if self.context.get('request') else None
@@ -340,7 +336,6 @@ class BillReturnSerializer(serializers.ModelSerializer):
                 batch=batch,
                 movement_type='IN',
                 quantity=returned_quantity_in_base_units,
-                product_unit=offline_sale_item.product.product_unit, # Use product's default base unit for stock movement
                 reference_number=f"OFFLINE-RETURN-{bill_return.id}",
                 notes=f"Returned {returned_quantity_in_base_units} base units for Offline Sale Return #{bill_return.id} to batch {batch.batch_number}",
                 created_by=self.context.get('request').user if self.context.get('request') else None

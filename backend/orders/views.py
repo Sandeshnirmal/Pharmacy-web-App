@@ -438,7 +438,7 @@ def create_paid_order_for_prescription(request):
                     }, status=status.HTTP_200_OK)
                 
                 # If the order is pending or aborted, proceed to update it to paid
-                elif order.order_status in ['Pending', 'Aborted'] and order.payment_status == 'Pending':
+                elif order.order_status in ['Pending', 'Aborted']: # Removed 'and order.payment_status == 'Pending''
                     logger.info(f"Found existing order {existing_order_id} for user {request.user.id} with status {order.order_status}. Proceeding to update it to paid.")
                 else:
                     # This case means an order exists but is in an unexpected state (e.g., 'Cancelled', 'Processing' but not 'Paid')
@@ -564,36 +564,16 @@ def create_paid_order_for_prescription(request):
                 # Determine old status for history
                 old_status_for_history = order.order_status
                 
-                # Update existing order
-                order.address = selected_address
-                order.order_status = 'payment_completed'
-                order.payment_status = 'Paid'
-                order.payment_method = payment_method.upper()
-                order.total_amount = final_amount
-                order.discount_amount = discount_amount
-                order.shipping_fee = shipping_fee
-                order.is_prescription_order = _is_prescription_order_from_request # Use the explicitly bound variable
-                order.notes = notes
-                order.delivery_address = delivery_address_json
-
-                # Only set prescription fields if it's a prescription order
-                if _is_prescription_order_from_request: # Use the explicitly bound variable
-                    order.prescription_image_url = _prescription_image_url_to_set_from_request
-                    order.prescription_status = _prescription_status_to_set_from_request
-                else:
-                    # If it's no longer a prescription order, clear these fields
-                    order.prescription_image_url = None
-                    order.prescription_status = 'verified' # Reset to default or a non-prescription specific status
-
-                order.save()
+                order.save() # Save the initial updates
 
                 # Clear existing order items
                 order.items.all().delete()
                 
+                logger.info(f"create_paid_order_for_prescription: Starting stock deduction loop for order {order.id} with {len(validated_items)} items.")
                 # Deduct inventory and create OrderItems with linked batches
                 for item_data in validated_items:
                     if item_data['quantity'] <= 0:
-                        logger.warning(f"Skipping stock deduction for product {item_data['product'].id} as quantity is non-positive ({item_data['quantity']}).")
+                        logger.warning(f"create_paid_order_for_prescription: Skipping stock deduction for product {item_data['product'].id} as quantity is non-positive ({item_data['quantity']}).")
                         continue # Skip deduction and OrderItem creation for non-positive quantities
 
                     logger.debug(f"Attempting to deduct stock for product {item_data['product'].id} (Quantity: {item_data['quantity']}) for order {order.id}")
@@ -666,10 +646,11 @@ def create_paid_order_for_prescription(request):
 
                 order = Order.objects.create(**order_kwargs)
 
+                logger.info(f"create_paid_order_for_prescription: Starting stock deduction loop for new order {order.id} with {len(validated_items)} items.")
                 # Deduct inventory and create OrderItems with linked batches
                 for item_data in validated_items:
                     if item_data['quantity'] <= 0:
-                        logger.warning(f"Skipping stock deduction for product {item_data['product'].id} as quantity is non-positive ({item_data['quantity']}).")
+                        logger.warning(f"create_paid_order_for_prescription: Skipping stock deduction for product {item_data['product'].id} as quantity is non-positive ({item_data['quantity']}).")
                         continue # Skip deduction and OrderItem creation for non-positive quantities
 
                     logger.debug(f"Attempting to deduct stock for product {item_data['product'].id} (Quantity: {item_data['quantity']}) for order {order.id}")

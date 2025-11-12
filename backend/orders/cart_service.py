@@ -6,6 +6,7 @@ from .models import Order, OrderItem, OrderStatusHistory
 from prescriptions.models import Prescription
 from product.models import Product
 from courier.services import get_courier_service
+from inventory.utils import deduct_stock_from_batches # Import for stock deduction
 import logging
 
 logger = logging.getLogger(__name__)
@@ -124,7 +125,7 @@ class CartService:
                 
                 # Create order items
                 for item_data in validated_items:
-                    OrderItem.objects.create(
+                    order_item_instance = OrderItem.objects.create(
                         order=order,
                         product=item_data['product'],
                         quantity=item_data['quantity'],
@@ -132,6 +133,25 @@ class CartService:
                         unit_price_at_order=item_data['unit_price']
                     )
                     
+                    # Deduct stock and create StockMovement record
+                    try:
+                        deducted_batches_info = deduct_stock_from_batches(
+                            product=item_data['product'],
+                            quantity_to_deduct=item_data['quantity'],
+                            user=user, # The user placing the order
+                            order_id=order.id
+                        )
+                        if deducted_batches_info:
+                            # Link the OrderItem to the specific batch from which stock was deducted
+                            order_item_instance.batch = deducted_batches_info[0]['batch']
+                            order_item_instance.save(update_fields=['batch'])
+
+                    except ValueError as ve:
+                        logger.error(f"Stock deduction failed for product {item_data['product'].name} during online order creation: {str(ve)}")
+                        raise ValidationError(f"Stock deduction failed for {item_data['product'].name}: {str(ve)}")
+                    except Exception as ex:
+                        logger.exception(f"Unexpected error during stock deduction for product {item_data['product'].name} during online order creation.")
+                        raise ValidationError(f"An unexpected error occurred while deducting stock for {item_data['product'].name}: {str(ex)}")
                 
                 # Handle prescription upload if provided
                 if prescription_file and prescription_required:
