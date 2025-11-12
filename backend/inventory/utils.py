@@ -151,3 +151,44 @@ def return_stock_to_batches(order_item, user, reason="Order cancellation"):
                 'batch_number': 'N/A',
                 'returned_quantity': quantity_to_return
             }]
+
+
+@transaction.atomic
+def add_stock_to_batches(product: Product, batch_number: str, expiry_date: str, quantity_to_add: int, user, purchase_order_id: int):
+    """
+    Adds the specified quantity of a product to a batch.
+    Creates the batch if it doesn't exist.
+    Records stock movements for each addition.
+    """
+    logger.info(f"add_stock_to_batches: Starting addition for Product ID: {product.id}, Batch No: {batch_number}, Expiry: {expiry_date}, Quantity to add: {quantity_to_add}, PO ID: {purchase_order_id}")
+
+    if quantity_to_add <= 0:
+        logger.warning(f"add_stock_to_batches: Quantity to add is non-positive ({quantity_to_add}) for Product ID: {product.id}. No addition performed.")
+        return None
+
+    batch, created = Batch.objects.get_or_create(
+        product=product,
+        batch_number=batch_number,
+        expiry_date=expiry_date,
+        defaults={'quantity': 0, 'current_quantity': 0} # Default values if creating a new batch
+    )
+
+    batch.quantity += quantity_to_add
+    batch.current_quantity += quantity_to_add
+    batch.save(update_fields=['quantity', 'current_quantity'])
+    batch.refresh_from_db() # Re-fetch to confirm saved quantity
+
+    logger.info(f"add_stock_to_batches: Added {quantity_to_add} units to Batch {batch.id} (Batch No: {batch.batch_number}). New total quantity: {batch.quantity}, New current quantity: {batch.current_quantity}")
+
+    StockMovement.objects.create(
+        product=product,
+        batch=batch,
+        movement_type='IN',
+        quantity=quantity_to_add,
+        reference_number=f"PO-{purchase_order_id}",
+        notes=f"Received {quantity_to_add} units for Purchase Order #{purchase_order_id} into batch {batch.batch_number}",
+        created_by=user
+    )
+    logger.info(f"add_stock_to_batches: StockMovement 'IN' created for Product ID: {product.id}, Batch ID: {batch.id}, Quantity: {quantity_to_add}")
+
+    return batch

@@ -133,22 +133,22 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
             # Convert quantity from product_unit to base_unit
             quantity_in_base_units = quantity # Assume quantity is always in base units after removing ProductUnit
 
-            if batch.current_quantity < quantity_in_base_units:
-                raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity_in_base_units} base units.")
-            batch.current_quantity -= quantity_in_base_units
-            batch.save(update_fields=['current_quantity'])
-
-            # Create StockMovement record for OUT (quantity in base units)
-            from inventory.models import StockMovement
-            StockMovement.objects.create(
-                product=product,
-                batch=batch,
-                movement_type='OUT',
-                quantity=quantity_in_base_units,
-                reference_number=f"OFFLINE-SALE-{offline_sale.id}",
-                notes=f"Sold {quantity_in_base_units} base units for Offline Sale #{offline_sale.id} from batch {batch.batch_number}",
-                created_by=self.context.get('request').user if self.context.get('request') else None
-            )
+            from inventory.utils import deduct_stock_from_batches # Import centralized stock utility
+            try:
+                deducted_batches_info = deduct_stock_from_batches(
+                    product=product,
+                    quantity_to_deduct=quantity_in_base_units,
+                    user=self.context.get('request').user if self.context.get('request') else None,
+                    order_id=offline_sale.id # Use offline_sale.id as reference
+                )
+                # Ensure that stock was actually deducted and batch info is available
+                if not deducted_batches_info:
+                    raise serializers.ValidationError(f"Stock deduction failed for product {product.name}.")
+            except ValueError as ve:
+                raise serializers.ValidationError(str(ve))
+            except Exception as ex:
+                logger.exception(f"Unexpected error during stock deduction for product {product.name} during offline sale creation.")
+                raise serializers.ValidationError(f"An unexpected error occurred while deducting stock for {product.name}: {str(ex)}")
 
         # Update total_amount and change_amount for the OfflineSale instance
         offline_sale.total_amount = total_amount
@@ -222,28 +222,23 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
 
         if items_data is not None:
             # Stock adjustment for existing items before deleting
-            from inventory.models import StockMovement
+            from inventory.utils import return_stock_to_batches # Import centralized stock utility
             for old_item in instance.items.all():
-                batch = old_item.batch
-                if batch:
-                    # Convert old_item quantity to base units for reversal
-                    product_unit = old_item.product_unit
-                    if product_unit:
-                        quantity_in_base_units = old_item.quantity * product_unit.conversion_factor
-                    else:
-                        quantity_in_base_units = old_item.quantity # Assume already in base units
-
-                    batch.current_quantity += quantity_in_base_units # Return old quantity to stock
-                    batch.save(update_fields=['current_quantity'])
-                    StockMovement.objects.create(
-                        product=old_item.product,
-                        batch=batch,
-                        movement_type='IN',
-                        quantity=quantity_in_base_units,
-                        reference_number=f"OFFLINE-SALE-UPDATE-REVERT-{instance.id}",
-                        notes=f"Reverted {quantity_in_base_units} base units of {old_item.product.name} for Sale Update #{instance.id}",
-                        created_by=self.context.get('request').user if self.context.get('request') else None
+                # Convert old_item quantity to base units for reversal
+                quantity_in_base_units = old_item.quantity # Assume quantity is always in base units after removing ProductUnit
+                
+                try:
+                    return_stock_to_batches(
+                        order_item=old_item, # Use the old_item as it contains product, batch, and quantity
+                        user=self.context.get('request').user if self.context.get('request') else None,
+                        reason=f"Offline Sale Update Reversal for Sale #{instance.id}"
                     )
+                except ValueError as ve:
+                    logger.error(f"Stock return failed for product {old_item.product.name} during offline sale update reversal: {str(ve)}")
+                    raise serializers.ValidationError(str(ve))
+                except Exception as ex:
+                    logger.exception(f"Unexpected error during stock return for product {old_item.product.name} during offline sale update reversal.")
+                    raise serializers.ValidationError(f"An unexpected error occurred while returning stock for {old_item.product.name}: {str(ex)}")
             instance.items.all().delete() # Clear existing items
 
             total_amount = 0
@@ -257,20 +252,22 @@ class OfflineSaleSerializer(serializers.ModelSerializer):
                 # Convert quantity from product_unit to base_unit
                 quantity_in_base_units = quantity # Assume quantity is always in base units after removing ProductUnit
 
-                if batch.current_quantity < quantity_in_base_units:
-                    raise serializers.ValidationError(f"Insufficient stock for product {product.name} in batch {batch.batch_number}. Available: {batch.current_quantity}, Requested: {quantity_in_base_units} base units.")
-                batch.current_quantity -= quantity_in_base_units
-                batch.save(update_fields=['current_quantity'])
-
-                StockMovement.objects.create(
-                    product=product,
-                    batch=batch,
-                    movement_type='OUT',
-                    quantity=quantity_in_base_units,
-                    reference_number=f"OFFLINE-SALE-UPDATE-{instance.id}",
-                    notes=f"Sold {quantity_in_base_units} base units for Offline Sale Update #{instance.id} from batch {batch.batch_number}",
-                    created_by=self.context.get('request').user if self.context.get('request') else None
-                )
+                from inventory.utils import deduct_stock_from_batches # Import centralized stock utility
+                try:
+                    deducted_batches_info = deduct_stock_from_batches(
+                        product=product,
+                        quantity_to_deduct=quantity_in_base_units,
+                        user=self.context.get('request').user if self.context.get('request') else None,
+                        order_id=instance.id # Use offline_sale.id as reference
+                    )
+                    # Ensure that stock was actually deducted and batch info is available
+                    if not deducted_batches_info:
+                        raise serializers.ValidationError(f"Stock deduction failed for product {product.name}.")
+                except ValueError as ve:
+                    raise serializers.ValidationError(str(ve))
+                except Exception as ex:
+                    logger.exception(f"Unexpected error during stock deduction for product {product.name} during offline sale update.")
+                    raise serializers.ValidationError(f"An unexpected error occurred while deducting stock for {product.name}: {str(ex)}")
                 OfflineSaleItem.objects.create(sale=instance, subtotal=subtotal, **item_data)
                 total_amount += subtotal
             instance.total_amount = total_amount
@@ -326,20 +323,36 @@ class BillReturnSerializer(serializers.ModelSerializer):
             # Convert returned_quantity from its original unit to base units
             returned_quantity_in_base_units = returned_quantity # Assume quantity is always in base units after removing ProductUnit
 
-            batch.current_quantity += returned_quantity_in_base_units
-            batch.save(update_fields=['current_quantity'])
+            from inventory.utils import return_stock_to_batches # Import centralized stock utility
+            # Create a dummy OrderItem-like object for return_stock_to_batches
+            # This is a workaround because return_stock_to_batches expects an OrderItem
+            # In a more robust system, OfflineSaleItem might inherit from a common base or
+            # return_stock_to_batches could accept product, batch, quantity directly.
+            class DummyOrderItem:
+                def __init__(self, product, batch, quantity):
+                    self.product = product
+                    self.batch = batch
+                    self.quantity = quantity
+                    self.order = bill_return.sale # Link to the original sale for reference
 
-            # Create StockMovement record for IN (quantity in base units)
-            from inventory.models import StockMovement
-            StockMovement.objects.create(
+            dummy_order_item = DummyOrderItem(
                 product=offline_sale_item.product,
                 batch=batch,
-                movement_type='IN',
-                quantity=returned_quantity_in_base_units,
-                reference_number=f"OFFLINE-RETURN-{bill_return.id}",
-                notes=f"Returned {returned_quantity_in_base_units} base units for Offline Sale Return #{bill_return.id} to batch {batch.batch_number}",
-                created_by=self.context.get('request').user if self.context.get('request') else None
+                quantity=returned_quantity_in_base_units # Use the quantity to return
             )
+
+            try:
+                return_stock_to_batches(
+                    order_item=dummy_order_item,
+                    user=self.context.get('request').user if self.context.get('request') else None,
+                    reason=f"Offline Sale Return for Bill Return #{bill_return.id}"
+                )
+            except ValueError as ve:
+                logger.error(f"Stock return failed for product {offline_sale_item.product.name} during offline sale return: {str(ve)}")
+                raise serializers.ValidationError(str(ve))
+            except Exception as ex:
+                logger.exception(f"Unexpected error during stock return for product {offline_sale_item.product.name} during offline sale return.")
+                raise serializers.ValidationError(f"An unexpected error occurred while returning stock for {offline_sale_item.product.name}: {str(ex)}")
         
         bill_return.total_return_amount = total_return_amount
         bill_return.save()

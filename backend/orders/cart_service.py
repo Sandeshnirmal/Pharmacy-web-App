@@ -241,24 +241,19 @@ class CartService:
                         quantity_to_restore = item.quantity
                         
                         # Find an appropriate batch to restore stock to.
-                        # For simplicity, we'll try to find an existing batch for the product.
-                        # In a more complex scenario, you might track which batch the item was sold from.
-                        batch = product.batches.filter(expiry_date__gte=timezone.now().date()).order_by('-created_at').first()
-                        
-                        if batch:
-                            batch.current_quantity += quantity_to_restore
-                            batch.save()
-                            StockMovement.objects.create(
-                                product=product,
-                                batch=batch,
-                                movement_type='ADJUSTMENT', # Or a new type like 'ORDER_REJECTION_REVERSAL'
-                                quantity=quantity_to_restore,
-                                reference_number=f"ORDER-REJ-REV-{order.id}",
-                                notes=f"Restored {quantity_to_restore} units of {product.name} to batch {batch.batch_number} due to order rejection.",
-                                created_by=admin_user # Admin user is performing the verification
+                        # Use the centralized return_stock_to_batches utility
+                        try:
+                            return_stock_to_batches(
+                                order_item=item, # The order_item already has product, batch, and quantity
+                                user=admin_user,
+                                reason=f"Order rejection reversal for Order #{order.id}"
                             )
-                        else:
-                            logger.warning(f"No active batch found for product {product.name} to restore stock during order rejection. Stock not restored for this item.")
+                        except ValueError as ve:
+                            logger.error(f"Stock return failed for product {item.product.name} during order rejection: {str(ve)}")
+                            # Decide how to handle this error - e.g., log and continue, or re-raise
+                        except Exception as ex:
+                            logger.exception(f"Unexpected error during stock return for product {item.product.name} during order rejection.")
+                            # Decide how to handle this error
                     
                     courier_result = {'success': True, 'message': 'No courier needed for rejected order'}
                     message = 'Prescription rejected'

@@ -233,31 +233,23 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             batch_number = po_item.batch_number # Get batch number from purchase order item
             expiry_date = po_item.expiry_date # Get expiry date from purchase order item
 
-            batch, created = Batch.objects.get_or_create(
-                product=po_item.product, # Use po_item.product here
-                batch_number=batch_number,
-                expiry_date=expiry_date,
-                defaults={'quantity': 0, 'current_quantity': 0} # Default values if creating a new batch
-            )
-            
-            print(f"DEBUG: Before batch update - Product: {po_item.product.name}, Batch: {batch.batch_number}, Received Qty: {received_quantity}, Existing Batch Qty: {batch.quantity}, Existing Current Qty: {batch.current_quantity}")
-
-            # Update batch quantity
-            batch.quantity += received_quantity
-            batch.current_quantity += received_quantity
-            batch.save()
-
-            print(f"DEBUG: After batch update - Product: {po_item.product.name}, Batch: {batch.batch_number}, New Batch Qty: {batch.quantity}, New Current Qty: {batch.current_quantity}")
-
-            StockMovement.objects.create(
-                product=po_item.product, # Use po_item.product here
-                batch=batch,
-                movement_type='IN',
-                quantity=received_quantity,
-                reference_number=f"PO-{purchase_order.id}",
-                notes=f"Received {received_quantity} units for Purchase Order #{purchase_order.id} into batch {batch.batch_number}",
-                created_by=request.user
-            )
+            from inventory.utils import add_stock_to_batches # Import centralized stock utility
+            try:
+                batch = add_stock_to_batches(
+                    product=po_item.product,
+                    batch_number=batch_number,
+                    expiry_date=expiry_date,
+                    quantity_to_add=received_quantity,
+                    user=request.user,
+                    purchase_order_id=purchase_order.id
+                )
+                if not batch:
+                    raise ValueError(f"Stock addition failed for product {po_item.product.name}.")
+            except ValueError as ve:
+                return Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as ex:
+                logger.exception(f"Unexpected error during stock addition for product {po_item.product.name} during purchase order reception.")
+                return Response({'detail': f"An unexpected error occurred while adding stock for {po_item.product.name}: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Check if all items are fully received
         all_received = all(item.quantity == item.received_quantity for item in purchase_order.items.all())
